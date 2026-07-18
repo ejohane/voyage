@@ -1,8 +1,8 @@
-# Trip Commons: Product Vision
+# Voyage: Product Vision
 
 ## Mission
 
-Trip Commons helps everyone on a trip share the understanding of it.
+Voyage helps everyone on a trip share the understanding of it.
 
 It gives planners a dependable place to organize the many details they would otherwise have to carry in their heads, while giving every traveler a clear, current view of the plan without requiring them to become a planner themselves.
 
@@ -21,7 +21,7 @@ The problem is not simply that trip information is scattered. It is that the gro
 
 ## The vision
 
-Trip Commons becomes the living, shared home for a trip—from the first idea through the journey itself.
+Voyage becomes the living, shared home for a trip—from the first idea through the journey itself.
 
 It brings together the trip's possibilities, decisions, itinerary, reservations, responsibilities, documents, and updates. It gives the group one current source of truth while respecting that different travelers want and need different levels of involvement.
 
@@ -31,7 +31,7 @@ Everyone shares the trip. Not everyone has to manage it.
 
 ## Who it serves
 
-Trip Commons is for the whole travel party, not only the primary planner.
+Voyage is for the whole travel party, not only the primary planner.
 
 People may naturally take on different roles from trip to trip:
 
@@ -104,7 +104,7 @@ Conversation can support the plan, but the plan itself must remain structured, c
 
 ## The promise
 
-For the person carrying the trip in their head, Trip Commons provides relief: a trusted place to put it all.
+For the person carrying the trip in their head, Voyage provides relief: a trusted place to put it all.
 
 For everyone else, it provides confidence: a simple way to understand the trip and show up as a more informed, helpful traveler.
 
@@ -112,7 +112,7 @@ For the group, it creates alignment: one shared journey, visible to everyone, wi
 
 ## A simple test
 
-Trip Commons is working when:
+Voyage is working when:
 
 - The planner no longer has to remember or repeatedly explain everything.
 - Every traveler can tell what the trip is and what happens next.
@@ -122,5 +122,4 @@ Trip Commons is working when:
 
 ## Not yet decided
 
-This vision intentionally does not choose a platform, business model, technical architecture, or degree of automation. It also does not assume that artificial intelligence is the product. Automation may help collect, organize, summarize, and check the plan, but it should serve the shared understanding at the center of Trip Commons.
-
+This vision intentionally does not choose a platform, business model, technical architecture, or degree of automation. It also does not assume that artificial intelligence is the product. Automation may help collect, organize, summarize, and check the plan, but it should serve the shared understanding at the center of Voyage.
