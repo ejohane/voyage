@@ -1,0 +1,37 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.4/schema.json",
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!!**/bun.lock",
+      "!!**/dist",
+      "!!**/node_modules",
+      "!!**/.playwright-cli",
+      "!!**/.wrangler",
+      "!!**/worker-configuration.d.ts"
+    ]
+  },
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended"
+    }
+  }
+}

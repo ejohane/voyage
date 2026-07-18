@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --font-sans: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+}
+
+:root {
+  color-scheme: light;
+  --background: oklch(0.985 0.005 250);
+  --foreground: oklch(0.22 0.045 258);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.045 258);
+  --primary: oklch(0.37 0.13 259);
+  --primary-foreground: oklch(0.99 0 0);
+  --muted: oklch(0.955 0.012 250);
+  --muted-foreground: oklch(0.52 0.035 258);
+  --border: oklch(0.9 0.018 250);
+  --ring: oklch(0.58 0.17 255);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  min-width: 320px;
+  background: var(--background);
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: var(--background);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
