@@ -13,6 +13,7 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
+    "@clerk/react": "^6.12.5",
     "@voyage/contracts": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

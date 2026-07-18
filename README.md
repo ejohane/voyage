@@ -8,7 +8,7 @@ Voyage is the shared home for a trip: one place where everyone traveling can und
 
 The project is currently establishing its web foundation on Cloudflare.
 
-**Live application:** [voyage.yw9bvbwb9f.workers.dev](https://voyage.yw9bvbwb9f.workers.dev)
+**Live application:** [voyageplan.app](https://voyageplan.app)
 
 ## Development
 
@@ -17,8 +17,16 @@ with a Hono API and deploys them together as one Cloudflare Worker.
 
 ```bash
 bun install
+cp apps/web/.env.example apps/web/.env.local
 bun run dev
 ```
+
+Set `VITE_CLERK_PUBLISHABLE_KEY` in `.env.local` to the publishable key from your Clerk
+application before starting the web app. The authentication flow is available at `/sign-in` and
+`/sign-up`.
+
+Production deploys expect the same key in the GitHub environment variable
+`VITE_CLERK_PUBLISHABLE_KEY`.
 
 The local app is available at the URL printed by Vite. The frontend calls `/api/health` through the
 same Workers runtime used by production.
