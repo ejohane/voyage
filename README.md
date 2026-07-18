@@ -1,5 +1,7 @@
 # Voyage
 
+![Voyage logo](design/brand/voyage-logo-primary.png)
+
 Voyage is the shared home for a trip: one place where everyone traveling can understand the plan, contribute in the ways that suit them, and know what matters now.
 
 The project is currently in its product-definition phase.
@@ -7,3 +9,4 @@ The project is currently in its product-definition phase.
 ## Product documents
 
 - [Vision](docs/VISION.md)
+- [Brand direction](design/brand/README.md)
