@@ -31,13 +31,16 @@ docs/                 Product and technical decisions
 - `/api/*` routes run through the Worker first.
 - Clerk session tokens authenticate protected API routes. The Worker verifies their signatures with
   the production Clerk JWT public key and scopes trip access through D1 membership records.
-- D1 stores trips and memberships. SQL migrations under `apps/web/migrations/` are applied locally
-  for development and by GitHub Actions before production deployment.
+- D1 stores trips, memberships, travel segments, and stays. Travel times are stored as reservation
+  local times so departure and arrival details are not shifted across time zones. SQL migrations
+  under `apps/web/migrations/` are applied locally for development and by GitHub Actions before
+  production deployment.
 - `wrangler.jsonc` is the source of Cloudflare deployment configuration.
 - GitHub Actions validates every pull request and push to `main`.
 - A successful validation on `main` deploys the frontend and Worker together.
 
 ## Deferred intentionally
 
-File storage, maps, background jobs, invitations, and product analytics are not part of the current
-slice. They will be introduced when a product feature requires them.
+File storage, maps, background jobs, invitations, expense splitting, live travel status, and product
+analytics are not part of the current slice. They will be introduced when a product feature
+requires them.

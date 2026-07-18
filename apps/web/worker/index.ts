@@ -1,6 +1,7 @@
 import { type HealthResponse, healthEndpoint, tripsEndpoint } from "@voyage/contracts";
 import { Hono } from "hono";
 import { type AuthenticateRequest, authenticateClerkRequest } from "./auth";
+import { createPlanningRoutes } from "./planning-routes";
 import { createTripsRoutes } from "./trips-routes";
 import type { WorkerEnvironment } from "./types";
 
@@ -26,6 +27,7 @@ export function createApp(dependencies: AppDependencies = {}) {
   });
 
   app.route(tripsEndpoint, createTripsRoutes(authenticateRequest));
+  app.route(tripsEndpoint, createPlanningRoutes(authenticateRequest));
 
   app.notFound((context) => context.json({ error: "Not found" }, 404));
   app.onError((error, context) => {

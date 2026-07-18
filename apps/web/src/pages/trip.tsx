@@ -1,23 +1,24 @@
-import { ArrowLeft, CalendarDays, Check, MapPin, Route } from "lucide-react";
+import { ArrowLeft, CalendarDays } from "lucide-react";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, NavLink, useParams } from "react-router-dom";
 import { EditTripDialog } from "@/components/edit-trip-dialog";
+import { OverviewSection, StaysSection, TravelSection } from "@/components/trip-planning-sections";
 import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiRequestError } from "@/lib/api";
 import { formatTripDates } from "@/lib/format-trip";
 import { useTrip } from "@/lib/trips";
 import { cn } from "@/lib/utils";
 
-function TripPage() {
+type TripSection = "overview" | "travel" | "stays";
+
+function TripPage({ section = "overview" }: { section?: TripSection }) {
   const { tripId = "" } = useParams();
   const trip = useTrip(tripId);
   const [editOpen, setEditOpen] = useState(false);
 
-  if (trip.isPending) {
-    return <TripPageSkeleton />;
-  }
+  if (trip.isPending) return <TripPageSkeleton />;
 
   if (trip.isError) {
     const notFound = trip.error instanceof ApiRequestError && trip.error.status === 404;
@@ -57,6 +58,12 @@ function TripPage() {
     );
   }
 
+  const sections: { label: string; value: TripSection; to: string }[] = [
+    { label: "Overview", value: "overview", to: `/trips/${trip.data.id}` },
+    { label: "Travel", value: "travel", to: `/trips/${trip.data.id}/travel` },
+    { label: "Stays", value: "stays", to: `/trips/${trip.data.id}/stays` },
+  ];
+
   return (
     <main className="mx-auto w-full max-w-6xl px-5 py-10 sm:px-8 sm:py-14">
       <Link
@@ -76,73 +83,40 @@ function TripPage() {
             {formatTripDates(trip.data)}
           </p>
         </div>
-        <EditTripDialog trip={trip.data} open={editOpen} onOpenChange={setEditOpen} />
+        {trip.data.accessLevel === "viewer" ? (
+          <span className="rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground">
+            View only
+          </span>
+        ) : (
+          <EditTripDialog trip={trip.data} open={editOpen} onOpenChange={setEditOpen} />
+        )}
       </div>
 
-      <div className="mt-10 grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Trip overview</CardTitle>
-            <CardDescription>The shared basics everyone can trust.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-6 sm:grid-cols-2">
-            <Detail icon={MapPin} label="Destination" value={trip.data.destination} />
-            <Detail icon={CalendarDays} label="Dates" value={formatTripDates(trip.data)} />
-          </CardContent>
-        </Card>
+      <nav className="mt-9 flex gap-1 border-b" aria-label="Trip workspace">
+        {sections.map((item) => (
+          <NavLink
+            key={item.value}
+            to={item.to}
+            end={item.value === "overview"}
+            className={({ isActive }) =>
+              cn(
+                "relative px-3 py-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+                isActive &&
+                  "text-foreground after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:bg-foreground",
+              )
+            }
+          >
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Planning starts here</CardTitle>
-            <CardDescription>Your shared workspace is ready.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            <p className="flex items-start gap-3">
-              <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-foreground text-background">
-                <Check className="size-3" aria-hidden="true" />
-              </span>
-              <span>
-                <span className="font-medium">Trip created</span>
-                <span className="mt-0.5 block leading-5 text-muted-foreground">
-                  The overview is saved and available whenever you return.
-                </span>
-              </span>
-            </p>
-            <p className="flex items-start gap-3 border-t pt-4">
-              <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border">
-                <Route className="size-3 text-muted-foreground" aria-hidden="true" />
-              </span>
-              <span>
-                <span className="font-medium">More planning tools are next</span>
-                <span className="mt-0.5 block leading-5 text-muted-foreground">
-                  Itinerary, ideas, and invitations will build on this trip.
-                </span>
-              </span>
-            </p>
-          </CardContent>
-        </Card>
+      <div className="mt-8">
+        {section === "overview" ? <OverviewSection trip={trip.data} /> : null}
+        {section === "travel" ? <TravelSection trip={trip.data} /> : null}
+        {section === "stays" ? <StaysSection trip={trip.data} /> : null}
       </div>
     </main>
-  );
-}
-
-function Detail({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: typeof MapPin;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-lg border bg-muted/20 p-4">
-      <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-      <p className="mt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      <p className="mt-1 text-sm font-medium">{value}</p>
-    </div>
   );
 }
 
@@ -153,9 +127,13 @@ function TripPageSkeleton() {
       <Skeleton className="mt-8 h-4 w-32" />
       <Skeleton className="mt-3 h-9 w-64" />
       <Skeleton className="mt-4 h-4 w-48" />
-      <div className="mt-10 grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
-        <Skeleton className="h-64" />
-        <Skeleton className="h-64" />
+      <Skeleton className="mt-10 h-11 w-full" />
+      <div className="mt-8 grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
+        <Skeleton className="h-72" />
+        <div className="grid gap-5">
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+        </div>
       </div>
     </main>
   );

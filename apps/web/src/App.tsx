@@ -64,6 +64,8 @@ function App() {
           <Route element={<SignedInLayout />}>
             <Route path="/trips" element={<TripsPage />} />
             <Route path="/trips/:tripId" element={<TripPage />} />
+            <Route path="/trips/:tripId/travel" element={<TripPage section="travel" />} />
+            <Route path="/trips/:tripId/stays" element={<TripPage section="stays" />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate replace to="/" />} />

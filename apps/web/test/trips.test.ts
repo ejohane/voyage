@@ -40,6 +40,8 @@ async function createTrip(userId = "user_owner") {
 describe("trip API", () => {
   beforeEach(async () => {
     await env.DB.batch([
+      env.DB.prepare("DELETE FROM travel_segments"),
+      env.DB.prepare("DELETE FROM stays"),
       env.DB.prepare("DELETE FROM trip_memberships"),
       env.DB.prepare("DELETE FROM trips"),
     ]);
