@@ -1,4 +1,6 @@
+import { useAuth } from "@clerk/react";
 import { type ApiError, apiErrorSchema } from "@voyage/contracts";
+import { useCallback } from "react";
 
 type GetToken = () => Promise<string | null>;
 
@@ -35,7 +37,7 @@ async function apiRequest<T>(getToken: GetToken, path: string, init: RequestInit
   }
 
   const response = await fetch(path, { ...init, headers });
-  const payload: unknown = await response.json();
+  const payload: unknown = response.status === 204 ? undefined : await response.json();
 
   if (!response.ok) {
     const parsed = apiErrorSchema.safeParse(payload);
@@ -53,4 +55,13 @@ async function apiRequest<T>(getToken: GetToken, path: string, init: RequestInit
   return payload as T;
 }
 
-export { ApiRequestError, apiRequest };
+function useApiRequest() {
+  const { getToken } = useAuth();
+
+  return useCallback(
+    <T>(path: string, init?: RequestInit) => apiRequest<T>(() => getToken(), path, init),
+    [getToken],
+  );
+}
+
+export { ApiRequestError, apiRequest, useApiRequest };

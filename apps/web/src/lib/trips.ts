@@ -1,4 +1,3 @@
-import { useAuth } from "@clerk/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type CreateTripInput,
@@ -9,22 +8,12 @@ import {
   tripsEndpoint,
   type UpdateTripInput,
 } from "@voyage/contracts";
-import { useCallback } from "react";
-import { apiRequest } from "@/lib/api";
+import { useApiRequest } from "@/lib/api";
 
 const tripKeys = {
   all: ["trips"] as const,
   detail: (tripId: string) => ["trips", tripId] as const,
 };
-
-function useApiRequest() {
-  const { getToken } = useAuth();
-
-  return useCallback(
-    <T>(path: string, init?: RequestInit) => apiRequest<T>(() => getToken(), path, init),
-    [getToken],
-  );
-}
 
 function useTrips() {
   const request = useApiRequest();

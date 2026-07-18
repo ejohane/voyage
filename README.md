@@ -4,9 +4,11 @@
 
 ![Voyage logo](design/brand/voyage-logo-primary.png)
 
-Voyage is the shared home for a trip: one place where everyone traveling can understand the plan, contribute in the ways that suit them, and know what matters now.
+Voyage is the shared home for a trip: one place where everyone traveling can understand the plan,
+save travel and accommodation details, and know what matters next.
 
-The project is currently establishing its web foundation on Cloudflare.
+The current web experience supports authenticated trip workspaces with persisted travel segments,
+stays, booking status, and a chronological overview.
 
 **Live application:** [voyageplan.app](https://voyageplan.app)
 
