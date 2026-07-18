@@ -1,0 +1,131 @@
+import {
+  createTripInputSchema,
+  tripResponseSchema,
+  updateTripInputSchema,
+} from "@voyage/contracts";
+import { Hono } from "hono";
+import { type AuthenticateRequest, createAuthMiddleware } from "./auth";
+import { createTrip, getTrip, listTrips, updateTrip } from "./trips-repository";
+import type { WorkerEnvironment } from "./types";
+
+function validationError(fieldErrors?: Record<string, string[] | undefined>) {
+  return {
+    error: {
+      code: "validation_error" as const,
+      message: "Check the highlighted fields.",
+      fieldErrors: Object.fromEntries(
+        Object.entries(fieldErrors ?? {}).filter(
+          (entry): entry is [string, string[]] => entry[1] !== undefined,
+        ),
+      ),
+    },
+  };
+}
+
+async function readJson(request: Request): Promise<unknown | null> {
+  try {
+    return await request.json();
+  } catch {
+    return null;
+  }
+}
+
+export function createTripsRoutes(authenticateRequest: AuthenticateRequest) {
+  const routes = new Hono<WorkerEnvironment>();
+
+  routes.use("*", createAuthMiddleware(authenticateRequest));
+
+  routes.get("/", async (context) => {
+    const trips = await listTrips(context.env.DB, context.var.authUserId);
+    return context.json({ trips }, 200, { "Cache-Control": "no-store" });
+  });
+
+  routes.post("/", async (context) => {
+    const payload = await readJson(context.req.raw);
+    const parsed = createTripInputSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      return context.json(validationError(parsed.error.flatten().fieldErrors), 422);
+    }
+
+    const trip = await createTrip(context.env.DB, context.var.authUserId, parsed.data);
+    const response = tripResponseSchema.parse({ trip });
+
+    return context.json(response, 201, {
+      "Cache-Control": "no-store",
+      Location: `/trips/${trip.id}`,
+    });
+  });
+
+  routes.get("/:tripId", async (context) => {
+    const trip = await getTrip(context.env.DB, context.var.authUserId, context.req.param("tripId"));
+
+    if (!trip) {
+      return context.json(
+        { error: { code: "not_found" as const, message: "Trip not found." } },
+        404,
+      );
+    }
+
+    return context.json({ trip }, 200, { "Cache-Control": "no-store" });
+  });
+
+  routes.patch("/:tripId", async (context) => {
+    const existingTrip = await getTrip(
+      context.env.DB,
+      context.var.authUserId,
+      context.req.param("tripId"),
+    );
+
+    if (!existingTrip) {
+      return context.json(
+        { error: { code: "not_found" as const, message: "Trip not found." } },
+        404,
+      );
+    }
+
+    if (existingTrip.accessLevel === "viewer") {
+      return context.json(
+        { error: { code: "forbidden" as const, message: "You cannot edit this trip." } },
+        403,
+      );
+    }
+
+    const payload = await readJson(context.req.raw);
+    const parsed = updateTripInputSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      return context.json(validationError(parsed.error.flatten().fieldErrors), 422);
+    }
+
+    const merged = createTripInputSchema.safeParse({
+      name: parsed.data.name ?? existingTrip.name,
+      destination: parsed.data.destination ?? existingTrip.destination,
+      startDate:
+        parsed.data.startDate === undefined ? existingTrip.startDate : parsed.data.startDate,
+      endDate: parsed.data.endDate === undefined ? existingTrip.endDate : parsed.data.endDate,
+    });
+
+    if (!merged.success) {
+      return context.json(validationError(merged.error.flatten().fieldErrors), 422);
+    }
+
+    const trip = await updateTrip(
+      context.env.DB,
+      context.var.authUserId,
+      context.req.param("tripId"),
+      parsed.data,
+    );
+
+    if (!trip) {
+      return context.json(
+        { error: { code: "not_found" as const, message: "Trip not found." } },
+        404,
+      );
+    }
+
+    return context.json({ trip }, 200, { "Cache-Control": "no-store" });
+  });
+
+  return routes;
+}

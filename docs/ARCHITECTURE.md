@@ -9,7 +9,7 @@ Worker.
 ```text
 Browser
   ├── static app requests ──> Cloudflare static assets ──> React SPA
-  └── /api/* requests ─────> Cloudflare Worker ─────────> Hono API
+  └── /api/* requests ─────> Cloudflare Worker ─────────> Hono API ──> D1
 ```
 
 Keeping the frontend and API on one origin avoids cross-origin configuration and lets one deployment
@@ -29,11 +29,15 @@ docs/                 Product and technical decisions
 - `@cloudflare/vite-plugin` runs Worker code in the Workers runtime during local Vite development.
 - Static application routes are served as Cloudflare assets.
 - `/api/*` routes run through the Worker first.
+- Clerk session tokens authenticate protected API routes. The Worker verifies their signatures with
+  the production Clerk JWT public key and scopes trip access through D1 membership records.
+- D1 stores trips and memberships. SQL migrations under `apps/web/migrations/` are applied locally
+  for development and by GitHub Actions before production deployment.
 - `wrangler.jsonc` is the source of Cloudflare deployment configuration.
 - GitHub Actions validates every pull request and push to `main`.
 - A successful validation on `main` deploys the frontend and Worker together.
 
 ## Deferred intentionally
 
-Authentication, database storage, file storage, maps, background jobs, and product analytics are not
-part of this foundation slice. They will be introduced when a product feature requires them.
+File storage, maps, background jobs, invitations, and product analytics are not part of the current
+slice. They will be introduced when a product feature requires them.
