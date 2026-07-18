@@ -1,25 +1,44 @@
-import { type HealthResponse, healthEndpoint } from "@voyage/contracts";
+import { type HealthResponse, healthEndpoint, tripsEndpoint } from "@voyage/contracts";
 import { Hono } from "hono";
+import { type AuthenticateRequest, authenticateClerkRequest } from "./auth";
+import { createTripsRoutes } from "./trips-routes";
+import type { WorkerEnvironment } from "./types";
 
-type Bindings = {
-  ENVIRONMENT: string;
+type AppDependencies = {
+  authenticateRequest?: AuthenticateRequest;
 };
 
-export const app = new Hono<{ Bindings: Bindings }>();
+export function createApp(dependencies: AppDependencies = {}) {
+  const app = new Hono<WorkerEnvironment>();
+  const authenticateRequest = dependencies.authenticateRequest ?? authenticateClerkRequest;
 
-app.get(healthEndpoint, (context) => {
-  const response: HealthResponse = {
-    status: "ok",
-    service: "voyage-api",
-    environment: context.env.ENVIRONMENT,
-    checkedAt: new Date().toISOString(),
-  };
+  app.get(healthEndpoint, (context) => {
+    const response: HealthResponse = {
+      status: "ok",
+      service: "voyage-api",
+      environment: context.env.ENVIRONMENT,
+      checkedAt: new Date().toISOString(),
+    };
 
-  return context.json(response, 200, {
-    "Cache-Control": "no-store",
+    return context.json(response, 200, {
+      "Cache-Control": "no-store",
+    });
   });
-});
 
-app.notFound((context) => context.json({ error: "Not found" }, 404));
+  app.route(tripsEndpoint, createTripsRoutes(authenticateRequest));
+
+  app.notFound((context) => context.json({ error: "Not found" }, 404));
+  app.onError((error, context) => {
+    console.error("Unhandled API error", error);
+    return context.json(
+      { error: { code: "internal_error" as const, message: "Something went wrong." } },
+      500,
+    );
+  });
+
+  return app;
+}
+
+export const app = createApp();
 
 export default app;

@@ -18,6 +18,8 @@ with a Hono API and deploys them together as one Cloudflare Worker.
 ```bash
 bun install
 cp apps/web/.env.example apps/web/.env.local
+cp apps/web/.dev.vars.example apps/web/.dev.vars
+bun run --cwd apps/web db:migrate:local
 bun run dev
 ```
 
@@ -25,8 +27,12 @@ Set `VITE_CLERK_PUBLISHABLE_KEY` in `.env.local` to the publishable key from you
 application before starting the web app. The authentication flow is available at `/sign-in` and
 `/sign-up`.
 
+The Worker validates Clerk session tokens with the development instance JWT public key in
+`.dev.vars`. D1 data is local during development and is created by the committed migrations.
+
 Production deploys expect the same key in the GitHub environment variable
-`VITE_CLERK_PUBLISHABLE_KEY`.
+`VITE_CLERK_PUBLISHABLE_KEY`. GitHub Actions applies D1 migrations before deploying the Worker and
+frontend after changes reach `main`.
 
 The local app is available at the URL printed by Vite. The frontend calls `/api/health` through the
 same Workers runtime used by production.

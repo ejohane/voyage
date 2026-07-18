@@ -3,6 +3,7 @@ dist/
 .wrangler/
 .playwright-cli/
 .dev.vars*
+!.dev.vars.example
 .env*
 !.env.example
 *.tsbuildinfo

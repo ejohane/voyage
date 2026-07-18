@@ -13,12 +13,22 @@
       "custom_domain": true
     }
   ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "voyage-production",
+      "database_id": "d6747c04-a897-4d16-afc4-eff3d29acd6a",
+      "migrations_dir": "migrations"
+    }
+  ],
   "assets": {
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
   "vars": {
-    "ENVIRONMENT": "production"
+    "ENVIRONMENT": "production",
+    "CLERK_AUTHORIZED_PARTIES": "http://localhost:5173,https://voyageplan.app,https://www.voyageplan.app",
+    "CLERK_JWT_KEY": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA00ZSAZSdjDTZ237GmmvK\nNwdNhxJYa3mTd4IQAvDuWkJ6L1jjAyChY7gJvPyZZVqTYtX0JSKKI5IXqgUZXrKG\nVDD+/TIGG4c22A+SLXeIF2jF5epwWZQ7QrEvcVjKm28DjxcPGec23Bn/AWnD1ryB\nfJ4pYKFr39gGYotVjn0nMZ6ROmH/jM6PB7lwP3scgyd4OEvK1OBCQFjUzd/ZGWmx\n+IFTySkVQxzBLJqFpfkIujGeZKABbhZQ8taZU78jo8WVJh88MtQPFBlT3GBz7alU\ng1g3yoxQBD6KTe5rNb/aTx8PNPN2qxbOh7n4/7Yp0rQxtTd0w267EcQcDLw0fqon\nMQIDAQAB\n-----END PUBLIC KEY-----"
   },
   "observability": {
     "enabled": true
