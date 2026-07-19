@@ -2,6 +2,7 @@ import { ArrowLeft, CalendarDays } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink, useParams } from "react-router-dom";
 import { EditTripDialog } from "@/components/edit-trip-dialog";
+import { GmailImportDialog } from "@/components/gmail-import-dialog";
 import { ItinerarySection } from "@/components/trip-itinerary-section";
 import { OverviewSection, StaysSection, TravelSection } from "@/components/trip-planning-sections";
 import { buttonVariants } from "@/components/ui/button";
@@ -90,7 +91,10 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
             View only
           </span>
         ) : (
-          <EditTripDialog trip={trip.data} open={editOpen} onOpenChange={setEditOpen} />
+          <div className="flex flex-wrap gap-2">
+            <GmailImportDialog trip={trip.data} />
+            <EditTripDialog trip={trip.data} open={editOpen} onOpenChange={setEditOpen} />
+          </div>
         )}
       </div>
 

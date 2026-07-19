@@ -2,6 +2,19 @@ import { z } from "zod";
 
 export const healthEndpoint = "/api/health" as const;
 export const tripsEndpoint = "/api/trips" as const;
+export const gmailIntegrationEndpoint = "/api/integrations/gmail" as const;
+
+export function gmailConnectEndpoint() {
+  return `${gmailIntegrationEndpoint}/connect` as const;
+}
+
+export function tripGmailScanEndpoint(tripId: string) {
+  return `${tripEndpoint(tripId)}/imports/gmail/scan` as const;
+}
+
+export function tripGmailImportEndpoint(tripId: string) {
+  return `${tripEndpoint(tripId)}/imports/gmail` as const;
+}
 
 export function tripEndpoint(tripId: string) {
   return `${tripsEndpoint}/${tripId}` as const;
@@ -64,9 +77,10 @@ const localDateTimeSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Use a local date and time.")
   .refine((value) => {
-    const [dateValue, timeValue] = value.split("T");
-    const [year, month, day] = dateValue.split("-").map(Number);
-    const [hour, minute] = timeValue.split(":").map(Number);
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+    if (!match) return false;
+
+    const [year, month, day, hour, minute] = match.slice(1).map(Number);
     const date = new Date(Date.UTC(year, month - 1, day));
 
     return (
@@ -347,9 +361,101 @@ export const tripPlanSchema = planBaseFieldsSchema.extend({
 export const planResponseSchema = z.object({ plan: tripPlanSchema });
 export const planListResponseSchema = z.object({ plans: z.array(tripPlanSchema) });
 
+export const gmailConnectionSchema = z.discriminatedUnion("connected", [
+  z.object({ connected: z.literal(false) }),
+  z.object({
+    connected: z.literal(true),
+    email: z.string().email(),
+    connectedAt: z.string(),
+  }),
+]);
+
+export const gmailConnectInputSchema = z.object({
+  returnTo: z
+    .string()
+    .startsWith("/")
+    .max(500)
+    .refine((value) => !value.startsWith("//"), "Use a Voyage page."),
+});
+
+export const gmailConnectResponseSchema = z.object({
+  authorizationUrl: z.string().url(),
+});
+
+export const gmailCandidateSourceSchema = z.object({
+  key: z.string().min(1).max(300),
+  messageId: z.string().min(1).max(200),
+  threadId: z.string().min(1).max(200),
+  subject: z.string().max(500),
+  sender: z.string().max(500),
+  receivedAt: z.string(),
+  messageUrl: z.string().url(),
+});
+
+const gmailCandidateBaseSchema = z.object({
+  source: gmailCandidateSourceSchema,
+  sources: z.array(gmailCandidateSourceSchema).min(1).max(20).optional(),
+  confidence: z.enum(["high", "medium"]),
+});
+
+export const gmailTravelCandidateSchema = gmailCandidateBaseSchema.extend({
+  kind: z.literal("travel"),
+  input: createTravelInputSchema,
+});
+
+export const gmailStayCandidateSchema = gmailCandidateBaseSchema.extend({
+  kind: z.literal("stay"),
+  input: createStayInputSchema,
+});
+
+export const gmailImportCandidateSchema = z.discriminatedUnion("kind", [
+  gmailTravelCandidateSchema,
+  gmailStayCandidateSchema,
+]);
+
+export const gmailScanResponseSchema = z.object({
+  candidates: z.array(gmailImportCandidateSchema),
+  alreadyImported: z.number().int().nonnegative(),
+  messagesScanned: z.number().int().nonnegative(),
+  search: z.object({
+    rangeStart: dateOnlySchema,
+    rangeEnd: dateOnlySchema,
+    windowsSearched: z.number().int().positive(),
+    queriesRun: z.number().int().nonnegative(),
+    limitReached: z.boolean(),
+  }),
+});
+
+export const gmailImportInputSchema = z.object({
+  candidates: z.array(gmailImportCandidateSchema).min(1).max(20),
+});
+
+export const gmailImportResponseSchema = z.object({
+  imported: z.array(
+    z.object({
+      sourceKey: z.string(),
+      kind: z.enum(["travel", "stay"]),
+      itemId: z.string().uuid(),
+    }),
+  ),
+  skipped: z.array(
+    z.object({
+      sourceKey: z.string(),
+      reason: z.enum(["already_imported", "duplicate"]),
+    }),
+  ),
+});
+
 export const apiErrorSchema = z.object({
   error: z.object({
-    code: z.enum(["unauthorized", "forbidden", "not_found", "validation_error", "internal_error"]),
+    code: z.enum([
+      "unauthorized",
+      "forbidden",
+      "not_found",
+      "validation_error",
+      "gmail_not_connected",
+      "internal_error",
+    ]),
     message: z.string(),
     fieldErrors: z.record(z.string(), z.array(z.string())).optional(),
   }),
@@ -382,3 +488,13 @@ export type UpdatePlanInput = z.infer<typeof updatePlanInputSchema>;
 export type TripPlan = z.infer<typeof tripPlanSchema>;
 export type PlanResponse = z.infer<typeof planResponseSchema>;
 export type PlanListResponse = z.infer<typeof planListResponseSchema>;
+export type GmailConnection = z.infer<typeof gmailConnectionSchema>;
+export type GmailConnectInput = z.infer<typeof gmailConnectInputSchema>;
+export type GmailConnectResponse = z.infer<typeof gmailConnectResponseSchema>;
+export type GmailCandidateSource = z.infer<typeof gmailCandidateSourceSchema>;
+export type GmailTravelCandidate = z.infer<typeof gmailTravelCandidateSchema>;
+export type GmailStayCandidate = z.infer<typeof gmailStayCandidateSchema>;
+export type GmailImportCandidate = z.infer<typeof gmailImportCandidateSchema>;
+export type GmailScanResponse = z.infer<typeof gmailScanResponseSchema>;
+export type GmailImportInput = z.infer<typeof gmailImportInputSchema>;
+export type GmailImportResponse = z.infer<typeof gmailImportResponseSchema>;

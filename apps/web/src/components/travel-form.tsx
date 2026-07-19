@@ -27,6 +27,7 @@ type TravelFormProps = {
   onCancel: () => void;
   onSubmit: (input: CreateTravelInput) => Promise<void>;
   stops: TripStop[];
+  submitLabel?: string;
 };
 
 type TravelFormValues = {
@@ -76,7 +77,7 @@ function initialValues(initialTravel?: Travel): TravelFormValues {
   };
 }
 
-function TravelForm({ initialTravel, onCancel, onSubmit, stops }: TravelFormProps) {
+function TravelForm({ initialTravel, onCancel, onSubmit, stops, submitLabel }: TravelFormProps) {
   const [values, setValues] = useState(() => initialValues(initialTravel));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [formError, setFormError] = useState<string>();
@@ -347,7 +348,7 @@ function TravelForm({ initialTravel, onCancel, onSubmit, stops }: TravelFormProp
         </Button>
         <Button type="submit" disabled={isPending}>
           {isPending ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : null}
-          {isPending ? "Saving…" : initialTravel ? "Save changes" : "Add travel"}
+          {isPending ? "Saving…" : (submitLabel ?? (initialTravel ? "Save changes" : "Add travel"))}
         </Button>
       </DialogFooter>
     </form>

@@ -27,7 +27,7 @@
   },
   "vars": {
     "ENVIRONMENT": "production",
-    "CLERK_AUTHORIZED_PARTIES": "http://localhost:5173,https://voyageplan.app,https://www.voyageplan.app",
+    "CLERK_AUTHORIZED_PARTIES": "http://localhost:5173,http://127.0.0.1:5173,https://voyageplan.app,https://www.voyageplan.app",
     "CLERK_JWT_KEY": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA00ZSAZSdjDTZ237GmmvK\nNwdNhxJYa3mTd4IQAvDuWkJ6L1jjAyChY7gJvPyZZVqTYtX0JSKKI5IXqgUZXrKG\nVDD+/TIGG4c22A+SLXeIF2jF5epwWZQ7QrEvcVjKm28DjxcPGec23Bn/AWnD1ryB\nfJ4pYKFr39gGYotVjn0nMZ6ROmH/jM6PB7lwP3scgyd4OEvK1OBCQFjUzd/ZGWmx\n+IFTySkVQxzBLJqFpfkIujGeZKABbhZQ8taZU78jo8WVJh88MtQPFBlT3GBz7alU\ng1g3yoxQBD6KTe5rNb/aTx8PNPN2qxbOh7n4/7Yp0rQxtTd0w267EcQcDLw0fqon\nMQIDAQAB\n-----END PUBLIC KEY-----"
   },
   "observability": {

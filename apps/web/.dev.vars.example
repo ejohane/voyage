@@ -2,3 +2,6 @@ VITE_CLERK_PUBLISHABLE_KEY=pk_test_your_publishable_key
 CLERK_JWT_KEY="-----BEGIN PUBLIC KEY-----
 your_development_instance_jwt_public_key
 -----END PUBLIC KEY-----"
+GOOGLE_OAUTH_CLIENT_ID=your_local_web_oauth_client_id.apps.googleusercontent.com
+GOOGLE_OAUTH_CLIENT_SECRET=your_local_web_oauth_client_secret
+GMAIL_TOKEN_ENCRYPTION_KEY=your_base64_encoded_32_byte_key

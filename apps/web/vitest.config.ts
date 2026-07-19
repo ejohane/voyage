@@ -8,7 +8,13 @@ export default defineConfig({
     cloudflareTest({
       wrangler: { configPath: "./wrangler.jsonc" },
       miniflare: {
-        bindings: { TEST_MIGRATIONS: migrations },
+        bindings: {
+          TEST_MIGRATIONS: migrations,
+          GOOGLE_OAUTH_CLIENT_ID: "test-client.apps.googleusercontent.com",
+          GOOGLE_OAUTH_CLIENT_SECRET: "test-client-secret",
+          GMAIL_TOKEN_ENCRYPTION_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+          CLERK_AUTHORIZED_PARTIES: "https://voyage.test",
+        },
       },
     }),
   ],
