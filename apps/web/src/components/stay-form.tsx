@@ -26,6 +26,7 @@ type StayFormProps = {
   onCancel: () => void;
   onSubmit: (input: CreateStayInput) => Promise<void>;
   stops: TripStop[];
+  submitLabel?: string;
 };
 
 type StayFormValues = {
@@ -54,7 +55,7 @@ function initialValues(stops: TripStop[], initialStay?: Stay): StayFormValues {
   };
 }
 
-function StayForm({ initialStay, onCancel, onSubmit, stops }: StayFormProps) {
+function StayForm({ initialStay, onCancel, onSubmit, stops, submitLabel }: StayFormProps) {
   const [values, setValues] = useState(() => initialValues(stops, initialStay));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [formError, setFormError] = useState<string>();
@@ -217,7 +218,7 @@ function StayForm({ initialStay, onCancel, onSubmit, stops }: StayFormProps) {
         </Button>
         <Button type="submit" disabled={isPending}>
           {isPending ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : null}
-          {isPending ? "Saving…" : initialStay ? "Save changes" : "Add stay"}
+          {isPending ? "Saving…" : (submitLabel ?? (initialStay ? "Save changes" : "Add stay"))}
         </Button>
       </DialogFooter>
     </form>

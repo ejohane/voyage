@@ -30,6 +30,8 @@ application before starting the web app. The authentication flow is available at
 
 The Worker validates Clerk session tokens with the development instance JWT public key in
 `.dev.vars`. D1 data is local during development and is created by the committed migrations.
+Local Gmail integration development also requires the development Google OAuth client values in
+`.dev.vars`; see the [Gmail OAuth infrastructure guide](docs/GMAIL_OAUTH.md).
 
 The setup command fetches and fast-forwards to `origin/main`, verifies the local environment,
 installs the locked Bun dependencies, and applies the local D1 migrations. Codex-managed worktrees
@@ -61,4 +63,5 @@ bun run deploy
 
 - [Vision](docs/VISION.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Gmail OAuth infrastructure](docs/GMAIL_OAUTH.md)
 - [Brand direction](design/brand/README.md)

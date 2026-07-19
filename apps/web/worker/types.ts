@@ -3,6 +3,9 @@ export type Bindings = {
   ENVIRONMENT: string;
   CLERK_JWT_KEY: string;
   CLERK_AUTHORIZED_PARTIES: string;
+  GOOGLE_OAUTH_CLIENT_ID: string;
+  GOOGLE_OAUTH_CLIENT_SECRET: string;
+  GMAIL_TOKEN_ENCRYPTION_KEY: string;
 };
 
 export type Variables = {
