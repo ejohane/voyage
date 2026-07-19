@@ -98,12 +98,30 @@ export function createTripsRoutes(authenticateRequest: AuthenticateRequest) {
       return context.json(validationError(parsed.error.flatten().fieldErrors), 422);
     }
 
+    if (parsed.data.stops) {
+      const existingStopIds = new Set(existingTrip.stops.map((stop) => stop.id));
+      const hasUnknownStop = parsed.data.stops.some(
+        (stop) => stop.id && !existingStopIds.has(stop.id),
+      );
+
+      if (hasUnknownStop) {
+        return context.json(
+          validationError({ stops: ["One or more destinations no longer belong to this trip."] }),
+          422,
+        );
+      }
+    }
+
     const merged = createTripInputSchema.safeParse({
       name: parsed.data.name ?? existingTrip.name,
-      destination: parsed.data.destination ?? existingTrip.destination,
-      startDate:
-        parsed.data.startDate === undefined ? existingTrip.startDate : parsed.data.startDate,
-      endDate: parsed.data.endDate === undefined ? existingTrip.endDate : parsed.data.endDate,
+      stops:
+        parsed.data.stops ??
+        existingTrip.stops.map((stop) => ({
+          id: stop.id,
+          name: stop.name,
+          arrivalDate: stop.arrivalDate,
+          departureDate: stop.departureDate,
+        })),
     });
 
     if (!merged.success) {

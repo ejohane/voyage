@@ -23,6 +23,14 @@ export function stayEndpoint(tripId: string, stayId: string) {
   return `${tripStaysEndpoint(tripId)}/${stayId}` as const;
 }
 
+export function tripPlansEndpoint(tripId: string) {
+  return `${tripEndpoint(tripId)}/plans` as const;
+}
+
+export function planEndpoint(tripId: string, planId: string) {
+  return `${tripPlansEndpoint(tripId)}/${planId}` as const;
+}
+
 export type HealthResponse = {
   status: "ok";
   service: "voyage-api";
@@ -45,6 +53,13 @@ const dateOnlySchema = z
   }, "Use a valid calendar date.");
 
 const nullableDateSchema = dateOnlySchema.nullable();
+const timeOnlySchema = z
+  .string()
+  .regex(/^\d{2}:\d{2}$/, "Use a time in HH:MM format.")
+  .refine((value) => {
+    const [hour, minute] = value.split(":").map(Number);
+    return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+  }, "Use a valid local time.");
 const localDateTimeSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Use a local date and time.")
@@ -74,61 +89,89 @@ const nullableUrlSchema = z
   .max(500, "Keep the booking link under 500 characters.")
   .nullable();
 
-const tripFieldsSchema = z.object({
+const tripBaseFieldsSchema = z.object({
   name: z
     .string()
     .trim()
     .min(1, "Enter a trip name.")
     .max(80, "Keep the name under 80 characters."),
-  destination: z
-    .string()
-    .trim()
-    .min(1, "Enter a destination.")
-    .max(160, "Keep the destination under 160 characters."),
   startDate: nullableDateSchema,
   endDate: nullableDateSchema,
 });
 
-function validateDateRange(
-  value: { startDate?: string | null; endDate?: string | null },
-  context: z.RefinementCtx,
-) {
-  if (value.endDate && !value.startDate) {
-    context.addIssue({
-      code: "custom",
-      message: "Choose a start date before the end date.",
-      path: ["endDate"],
-    });
-  }
+const tripStopFieldsSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Enter a destination.")
+    .max(160, "Keep the destination under 160 characters."),
+  arrivalDate: nullableDateSchema,
+  departureDate: nullableDateSchema,
+});
 
-  if (value.startDate && value.endDate && value.endDate < value.startDate) {
-    context.addIssue({
-      code: "custom",
-      message: "End date must be on or after the start date.",
-      path: ["endDate"],
-    });
-  }
-}
-
-export const createTripInputSchema = tripFieldsSchema.superRefine(validateDateRange);
-
-export const updateTripInputSchema = tripFieldsSchema
-  .partial()
-  .refine((value) => Object.keys(value).length > 0, "Provide at least one field to update.")
+const tripStopInputSchema = tripStopFieldsSchema
+  .extend({ id: z.string().uuid().optional() })
   .superRefine((value, context) => {
-    if (value.startDate && value.endDate && value.endDate < value.startDate) {
+    if (value.departureDate && !value.arrivalDate) {
       context.addIssue({
         code: "custom",
-        message: "End date must be on or after the start date.",
-        path: ["endDate"],
+        message: "Choose an arrival date before the departure date.",
+        path: ["departureDate"],
+      });
+    }
+
+    if (value.arrivalDate && value.departureDate && value.departureDate < value.arrivalDate) {
+      context.addIssue({
+        code: "custom",
+        message: "Departure must be on or after arrival.",
+        path: ["departureDate"],
       });
     }
   });
 
+const tripStopsInputSchema = z
+  .array(tripStopInputSchema)
+  .min(1, "Add at least one destination.")
+  .max(20, "Keep the itinerary to 20 destinations or fewer.")
+  .superRefine((stops, context) => {
+    const seenIds = new Set<string>();
+
+    stops.forEach((stop, index) => {
+      if (!stop.id) return;
+
+      if (seenIds.has(stop.id)) {
+        context.addIssue({
+          code: "custom",
+          message: "Each destination must be unique in the itinerary.",
+          path: [index, "id"],
+        });
+      }
+
+      seenIds.add(stop.id);
+    });
+  });
+
+const tripInputFieldsSchema = z.object({
+  name: tripBaseFieldsSchema.shape.name,
+  stops: tripStopsInputSchema,
+});
+
+export const createTripInputSchema = tripInputFieldsSchema;
+
+export const updateTripInputSchema = tripInputFieldsSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, "Provide at least one field to update.");
+
 export const tripAccessLevelSchema = z.enum(["owner", "editor", "viewer"]);
 
-export const tripSchema = tripFieldsSchema.extend({
+export const tripStopSchema = tripStopFieldsSchema.extend({
   id: z.string().uuid(),
+  position: z.number().int().nonnegative(),
+});
+
+export const tripSchema = tripBaseFieldsSchema.extend({
+  id: z.string().uuid(),
+  stops: z.array(tripStopSchema).min(1),
   accessLevel: tripAccessLevelSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -143,6 +186,8 @@ export const travelTypeSchema = z.enum(["flight", "train", "bus", "drive", "ferr
 const travelFieldsSchema = z.object({
   type: travelTypeSchema,
   status: reservationStatusSchema,
+  departureStopId: z.string().uuid().nullable(),
+  arrivalStopId: z.string().uuid().nullable(),
   departureLocation: z
     .string()
     .trim()
@@ -179,6 +224,7 @@ export const travelListResponseSchema = z.object({ travel: z.array(travelSchema)
 
 const stayBaseFieldsSchema = z.object({
   status: reservationStatusSchema,
+  tripStopId: z.string().uuid().nullable(),
   propertyName: z
     .string()
     .trim()
@@ -196,7 +242,7 @@ const stayBaseFieldsSchema = z.object({
   notes: nullableText(2_000, "Keep notes under 2,000 characters."),
 });
 
-const stayFieldsSchema = stayBaseFieldsSchema.refine(
+export const stayFieldsSchema = stayBaseFieldsSchema.refine(
   (value) => value.checkOutDate >= value.checkInDate,
   {
     message: "Checkout must be on or after check-in.",
@@ -204,7 +250,10 @@ const stayFieldsSchema = stayBaseFieldsSchema.refine(
   },
 );
 
-export const createStayInputSchema = stayFieldsSchema;
+export const createStayInputSchema = stayFieldsSchema.refine((value) => value.tripStopId !== null, {
+  message: "Choose the destination for this stay.",
+  path: ["tripStopId"],
+});
 export const updateStayInputSchema = stayBaseFieldsSchema
   .partial()
   .refine((value) => Object.keys(value).length > 0, "Provide at least one field to update.");
@@ -219,6 +268,85 @@ export const staySchema = stayBaseFieldsSchema.extend({
 export const stayResponseSchema = z.object({ stay: staySchema });
 export const stayListResponseSchema = z.object({ stays: z.array(staySchema) });
 
+export const planCategorySchema = z.enum(["activity", "food", "event", "sightseeing", "other"]);
+export const planStatusSchema = z.enum(["idea", "planned", "booked"]);
+
+const planBaseFieldsSchema = z.object({
+  tripStopId: z.string().uuid("Choose a destination."),
+  title: z
+    .string()
+    .trim()
+    .min(1, "Enter a title.")
+    .max(160, "Keep the title under 160 characters."),
+  category: planCategorySchema,
+  status: planStatusSchema,
+  scheduledDate: nullableDateSchema,
+  startTime: timeOnlySchema.nullable(),
+  endTime: timeOnlySchema.nullable(),
+  location: nullableText(300, "Keep the location under 300 characters."),
+  confirmationNumber: nullableText(120, "Keep the confirmation number under 120 characters."),
+  bookingUrl: nullableUrlSchema,
+  notes: nullableText(2_000, "Keep notes under 2,000 characters."),
+});
+
+function validatePlan(value: z.infer<typeof planBaseFieldsSchema>, context: z.RefinementCtx) {
+  if (!value.scheduledDate && (value.startTime || value.endTime)) {
+    context.addIssue({
+      code: "custom",
+      message: "Choose a date before adding a time.",
+      path: ["scheduledDate"],
+    });
+  }
+
+  if (value.endTime && !value.startTime) {
+    context.addIssue({
+      code: "custom",
+      message: "Choose a start time before the end time.",
+      path: ["endTime"],
+    });
+  }
+
+  if (value.startTime && value.endTime && value.endTime < value.startTime) {
+    context.addIssue({
+      code: "custom",
+      message: "End time must be on or after the start time.",
+      path: ["endTime"],
+    });
+  }
+
+  if (!value.scheduledDate && value.status !== "idea") {
+    context.addIssue({
+      code: "custom",
+      message: "Choose a date for a planned or booked item.",
+      path: ["scheduledDate"],
+    });
+  }
+
+  if (value.scheduledDate && value.status === "idea") {
+    context.addIssue({
+      code: "custom",
+      message: "Scheduled items must be planned or booked.",
+      path: ["status"],
+    });
+  }
+}
+
+export const planFieldsSchema = planBaseFieldsSchema.superRefine(validatePlan);
+export const createPlanInputSchema = planFieldsSchema;
+export const updatePlanInputSchema = planBaseFieldsSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, "Provide at least one field to update.");
+
+export const tripPlanSchema = planBaseFieldsSchema.extend({
+  id: z.string().uuid(),
+  tripId: z.string().uuid(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const planResponseSchema = z.object({ plan: tripPlanSchema });
+export const planListResponseSchema = z.object({ plans: z.array(tripPlanSchema) });
+
 export const apiErrorSchema = z.object({
   error: z.object({
     code: z.enum(["unauthorized", "forbidden", "not_found", "validation_error", "internal_error"]),
@@ -231,6 +359,7 @@ export type ApiError = z.infer<typeof apiErrorSchema>;
 export type CreateTripInput = z.infer<typeof createTripInputSchema>;
 export type UpdateTripInput = z.infer<typeof updateTripInputSchema>;
 export type Trip = z.infer<typeof tripSchema>;
+export type TripStop = z.infer<typeof tripStopSchema>;
 export type TripAccessLevel = z.infer<typeof tripAccessLevelSchema>;
 export type TripListResponse = z.infer<typeof tripListResponseSchema>;
 export type TripResponse = z.infer<typeof tripResponseSchema>;
@@ -246,3 +375,10 @@ export type UpdateStayInput = z.infer<typeof updateStayInputSchema>;
 export type Stay = z.infer<typeof staySchema>;
 export type StayResponse = z.infer<typeof stayResponseSchema>;
 export type StayListResponse = z.infer<typeof stayListResponseSchema>;
+export type PlanCategory = z.infer<typeof planCategorySchema>;
+export type PlanStatus = z.infer<typeof planStatusSchema>;
+export type CreatePlanInput = z.infer<typeof createPlanInputSchema>;
+export type UpdatePlanInput = z.infer<typeof updatePlanInputSchema>;
+export type TripPlan = z.infer<typeof tripPlanSchema>;
+export type PlanResponse = z.infer<typeof planResponseSchema>;
+export type PlanListResponse = z.infer<typeof planListResponseSchema>;

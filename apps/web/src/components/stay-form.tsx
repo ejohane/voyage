@@ -1,4 +1,9 @@
-import { type CreateStayInput, createStayInputSchema, type Stay } from "@voyage/contracts";
+import {
+  type CreateStayInput,
+  createStayInputSchema,
+  type Stay,
+  type TripStop,
+} from "@voyage/contracts";
 import { LoaderCircle } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { DateRangePicker } from "@/components/date-range-picker";
@@ -20,10 +25,12 @@ type StayFormProps = {
   initialStay?: Stay;
   onCancel: () => void;
   onSubmit: (input: CreateStayInput) => Promise<void>;
+  stops: TripStop[];
 };
 
 type StayFormValues = {
   status: "planning" | "booked";
+  tripStopId: string;
   propertyName: string;
   address: string;
   checkInDate: string;
@@ -33,9 +40,10 @@ type StayFormValues = {
   notes: string;
 };
 
-function initialValues(initialStay?: Stay): StayFormValues {
+function initialValues(stops: TripStop[], initialStay?: Stay): StayFormValues {
   return {
     status: initialStay?.status ?? "planning",
+    tripStopId: initialStay?.tripStopId ?? (stops.length === 1 ? stops[0].id : ""),
     propertyName: initialStay?.propertyName ?? "",
     address: initialStay?.address ?? "",
     checkInDate: initialStay?.checkInDate ?? "",
@@ -46,8 +54,8 @@ function initialValues(initialStay?: Stay): StayFormValues {
   };
 }
 
-function StayForm({ initialStay, onCancel, onSubmit }: StayFormProps) {
-  const [values, setValues] = useState(() => initialValues(initialStay));
+function StayForm({ initialStay, onCancel, onSubmit, stops }: StayFormProps) {
+  const [values, setValues] = useState(() => initialValues(stops, initialStay));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [formError, setFormError] = useState<string>();
   const [isPending, setIsPending] = useState(false);
@@ -66,6 +74,7 @@ function StayForm({ initialStay, onCancel, onSubmit }: StayFormProps) {
 
     const parsed = createStayInputSchema.safeParse({
       status: values.status,
+      tripStopId: values.tripStopId || null,
       propertyName: values.propertyName,
       address: values.address,
       checkInDate: values.checkInDate,
@@ -106,6 +115,21 @@ function StayForm({ initialStay, onCancel, onSubmit }: StayFormProps) {
 
   return (
     <form className="grid gap-5" onSubmit={handleSubmit}>
+      <FormField id="stay-destination" label="Destination" error={fieldErrors.tripStopId?.[0]}>
+        <Select value={values.tripStopId} onValueChange={(value) => setValue("tripStopId", value)}>
+          <SelectTrigger id="stay-destination">
+            <SelectValue placeholder="Choose a destination" />
+          </SelectTrigger>
+          <SelectContent>
+            {stops.map((stop) => (
+              <SelectItem value={stop.id} key={stop.id}>
+                {stop.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </FormField>
+
       <div className="grid gap-4 sm:grid-cols-[1fr_11rem]">
         <FormField id="stay-property" label="Property name" error={fieldErrors.propertyName?.[0]}>
           <Input

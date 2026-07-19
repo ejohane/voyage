@@ -2,16 +2,17 @@ import { ArrowLeft, CalendarDays } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink, useParams } from "react-router-dom";
 import { EditTripDialog } from "@/components/edit-trip-dialog";
+import { ItinerarySection } from "@/components/trip-itinerary-section";
 import { OverviewSection, StaysSection, TravelSection } from "@/components/trip-planning-sections";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiRequestError } from "@/lib/api";
-import { formatTripDates } from "@/lib/format-trip";
+import { formatTripDates, formatTripDestinations } from "@/lib/format-trip";
 import { useTrip } from "@/lib/trips";
 import { cn } from "@/lib/utils";
 
-type TripSection = "overview" | "travel" | "stays";
+type TripSection = "overview" | "itinerary" | "travel" | "stays";
 
 function TripPage({ section = "overview" }: { section?: TripSection }) {
   const { tripId = "" } = useParams();
@@ -60,6 +61,7 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
 
   const sections: { label: string; value: TripSection; to: string }[] = [
     { label: "Overview", value: "overview", to: `/trips/${trip.data.id}` },
+    { label: "Itinerary", value: "itinerary", to: `/trips/${trip.data.id}/itinerary` },
     { label: "Travel", value: "travel", to: `/trips/${trip.data.id}/travel` },
     { label: "Stays", value: "stays", to: `/trips/${trip.data.id}/stays` },
   ];
@@ -76,7 +78,7 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
 
       <div className="mt-6 flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
         <div>
-          <p className="text-sm text-muted-foreground">{trip.data.destination}</p>
+          <p className="text-sm text-muted-foreground">{formatTripDestinations(trip.data)}</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">{trip.data.name}</h1>
           <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
             <CalendarDays className="size-4" aria-hidden="true" />
@@ -113,6 +115,7 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
 
       <div className="mt-8">
         {section === "overview" ? <OverviewSection trip={trip.data} /> : null}
+        {section === "itinerary" ? <ItinerarySection trip={trip.data} /> : null}
         {section === "travel" ? <TravelSection trip={trip.data} /> : null}
         {section === "stays" ? <StaysSection trip={trip.data} /> : null}
       </div>

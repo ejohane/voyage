@@ -6,7 +6,7 @@ import { CreateTripDialog } from "@/components/create-trip-dialog";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatTripDates } from "@/lib/format-trip";
+import { formatTripDates, formatTripDestinations } from "@/lib/format-trip";
 import { useTrips } from "@/lib/trips";
 import { cn } from "@/lib/utils";
 
@@ -56,8 +56,8 @@ function TripsPage() {
             </span>
             <h2 className="mt-4 text-base font-medium">Create your first trip</h2>
             <p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
-              Give the trip a name and destination. Dates can stay flexible until the plan takes
-              shape.
+              Give the trip a name and add each destination in order. Dates can stay flexible until
+              the plan takes shape.
             </p>
             <div className="mt-5">
               <CreateTripDialog
@@ -99,7 +99,9 @@ function TripCard({ trip }: { trip: Trip }) {
             />
           </div>
           <h2 className="mt-5 font-medium tracking-tight">{trip.name}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{trip.destination}</p>
+          <p className="mt-1 truncate text-sm text-muted-foreground">
+            {formatTripDestinations(trip, 2)}
+          </p>
           <p className="mt-5 flex items-center gap-2 text-xs text-muted-foreground">
             <CalendarDays className="size-3.5" aria-hidden="true" />
             {formatTripDates(trip)}

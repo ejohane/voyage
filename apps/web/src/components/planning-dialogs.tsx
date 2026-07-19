@@ -1,5 +1,14 @@
-import type { CreateStayInput, CreateTravelInput, Stay, Travel } from "@voyage/contracts";
+import type {
+  CreatePlanInput,
+  CreateStayInput,
+  CreateTravelInput,
+  Stay,
+  Travel,
+  TripPlan,
+  TripStop,
+} from "@voyage/contracts";
 import type { ReactElement } from "react";
+import { PlanForm } from "@/components/plan-form";
 import { StayForm } from "@/components/stay-form";
 import { TravelForm } from "@/components/travel-form";
 import {
@@ -10,13 +19,21 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { useCreateStay, useCreateTravel, useUpdateStay, useUpdateTravel } from "@/lib/planning";
+import {
+  useCreatePlan,
+  useCreateStay,
+  useCreateTravel,
+  useUpdatePlan,
+  useUpdateStay,
+  useUpdateTravel,
+} from "@/lib/planning";
 
 type DialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   trigger: ReactElement;
   tripId: string;
+  stops: TripStop[];
 };
 
 function TravelDialog({
@@ -25,6 +42,7 @@ function TravelDialog({
   travel,
   trigger,
   tripId,
+  stops,
 }: DialogProps & { travel?: Travel }) {
   const createTravel = useCreateTravel(tripId);
   const updateTravel = useUpdateTravel(tripId, travel?.id ?? "");
@@ -48,6 +66,7 @@ function TravelDialog({
         {open ? (
           <TravelForm
             initialTravel={travel}
+            stops={stops}
             onCancel={() => onOpenChange(false)}
             onSubmit={handleSubmit}
           />
@@ -57,7 +76,14 @@ function TravelDialog({
   );
 }
 
-function StayDialog({ open, onOpenChange, stay, trigger, tripId }: DialogProps & { stay?: Stay }) {
+function StayDialog({
+  open,
+  onOpenChange,
+  stay,
+  stops,
+  trigger,
+  tripId,
+}: DialogProps & { stay?: Stay }) {
   const createStay = useCreateStay(tripId);
   const updateStay = useUpdateStay(tripId, stay?.id ?? "");
 
@@ -80,6 +106,7 @@ function StayDialog({ open, onOpenChange, stay, trigger, tripId }: DialogProps &
         {open ? (
           <StayForm
             initialStay={stay}
+            stops={stops}
             onCancel={() => onOpenChange(false)}
             onSubmit={handleSubmit}
           />
@@ -89,4 +116,46 @@ function StayDialog({ open, onOpenChange, stay, trigger, tripId }: DialogProps &
   );
 }
 
-export { StayDialog, TravelDialog };
+function PlanDialog({
+  initialStopId,
+  onOpenChange,
+  open,
+  plan,
+  stops,
+  trigger,
+  tripId,
+}: DialogProps & { initialStopId?: string; plan?: TripPlan }) {
+  const createPlan = useCreatePlan(tripId);
+  const updatePlan = useUpdatePlan(tripId, plan?.id ?? "");
+
+  async function handleSubmit(input: CreatePlanInput) {
+    if (plan) await updatePlan.mutateAsync(input);
+    else await createPlan.mutateAsync(input);
+    onOpenChange(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent className="max-h-[calc(100svh-2rem)] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{plan ? "Edit plan" : "Add a plan"}</DialogTitle>
+          <DialogDescription>
+            Save an idea now, or add a date to place it in the itinerary.
+          </DialogDescription>
+        </DialogHeader>
+        {open ? (
+          <PlanForm
+            initialPlan={plan}
+            initialStopId={initialStopId}
+            stops={stops}
+            onCancel={() => onOpenChange(false)}
+            onSubmit={handleSubmit}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export { PlanDialog, StayDialog, TravelDialog };

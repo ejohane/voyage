@@ -30,7 +30,7 @@ function EditTripDialog({ trip, open, onOpenChange }: EditTripDialogProps) {
       <DialogTrigger asChild>
         <Button variant="outline">Edit trip</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[calc(100svh-2rem)] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit trip</DialogTitle>
           <DialogDescription>Keep the shared overview current for everyone.</DialogDescription>
