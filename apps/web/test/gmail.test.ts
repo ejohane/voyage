@@ -40,6 +40,7 @@ function oneStop(name: string, arrivalDate: string | null, departureDate: string
       position: 0,
       arrivalDate,
       departureDate,
+      location: null,
     },
   ];
 }

@@ -83,6 +83,43 @@ describe("trip API", () => {
     ]);
   });
 
+  it("persists a selected destination's structured place identity", async () => {
+    const response = await request(tripsEndpoint, "user_owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Roman holiday",
+        stops: [
+          {
+            name: "Rome, Metropolitan City of Rome Capital, Italy",
+            arrivalDate: null,
+            departureDate: null,
+            location: {
+              provider: "google",
+              placeId: "ChIJu46S-ZZhLxMROG5lkwZ3D7k",
+            },
+          },
+        ],
+      }),
+    });
+    const { trip } = await response.json<TripResponse>();
+    const stored = await env.DB.prepare(
+      "SELECT place_provider, place_id FROM trip_stops WHERE trip_id = ?",
+    )
+      .bind(trip.id)
+      .first();
+
+    expect(response.status).toBe(201);
+    expect(trip.stops[0]?.location).toMatchObject({
+      provider: "google",
+      placeId: "ChIJu46S-ZZhLxMROG5lkwZ3D7k",
+    });
+    expect(stored).toEqual({
+      place_provider: "google",
+      place_id: "ChIJu46S-ZZhLxMROG5lkwZ3D7k",
+    });
+  });
+
   it("lists and reads only trips that belong to the current user", async () => {
     const { trip } = await createTrip();
     await createTrip("user_other");

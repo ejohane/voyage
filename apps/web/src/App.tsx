@@ -5,8 +5,10 @@ import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { AppHeader } from "@/components/app-header";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
+const PrivacyPage = lazy(() => import("@/pages/privacy"));
 const SignInPage = lazy(() => import("@/pages/sign-in"));
 const SignUpPage = lazy(() => import("@/pages/sign-up"));
+const TermsPage = lazy(() => import("@/pages/terms"));
 const TripPage = lazy(() => import("@/pages/trip"));
 const TripsPage = lazy(() => import("@/pages/trips"));
 
@@ -58,8 +60,10 @@ function App() {
     <Suspense fallback={<FullPageLoader />}>
       <Routes>
         <Route path="/" element={<RootPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/sign-in/*" element={<SignInPage />} />
         <Route path="/sign-up/*" element={<SignUpPage />} />
+        <Route path="/terms" element={<TermsPage />} />
         <Route element={<RequireAuth />}>
           <Route element={<SignedInLayout />}>
             <Route path="/trips" element={<TripsPage />} />

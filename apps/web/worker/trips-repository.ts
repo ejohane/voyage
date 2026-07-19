@@ -23,6 +23,8 @@ type TripStopRow = {
   position: number;
   arrival_date: string | null;
   departure_date: string | null;
+  place_provider: "google" | null;
+  place_id: string | null;
 };
 
 function mapTripStop(row: TripStopRow): TripStop {
@@ -32,6 +34,10 @@ function mapTripStop(row: TripStopRow): TripStop {
     position: row.position,
     arrivalDate: row.arrival_date,
     departureDate: row.departure_date,
+    location:
+      row.place_provider && row.place_id
+        ? { provider: row.place_provider, placeId: row.place_id }
+        : null,
   };
 }
 
@@ -85,7 +91,9 @@ async function listTripStops(database: D1Database, tripIds: string[]) {
 
   const result = await database
     .prepare(
-      `SELECT id, trip_id, name, position, arrival_date, departure_date
+      `SELECT
+         id, trip_id, name, position, arrival_date, departure_date,
+         place_provider, place_id
        FROM trip_stops
        WHERE trip_id IN (${tripIds.map(() => "?").join(", ")})
        ORDER BY trip_id, position`,
@@ -135,6 +143,7 @@ export async function createTrip(
     position,
     arrivalDate: stop.arrivalDate,
     departureDate: stop.departureDate,
+    location: stop.location,
   }));
   const { startDate, endDate } = deriveTripDates(stops);
 
@@ -156,8 +165,10 @@ export async function createTrip(
       database
         .prepare(
           `INSERT INTO trip_stops (
-            id, trip_id, name, position, arrival_date, departure_date, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            id, trip_id, name, position, arrival_date, departure_date,
+            place_provider, place_id,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           stop.id,
@@ -166,6 +177,8 @@ export async function createTrip(
           stop.position,
           stop.arrivalDate,
           stop.departureDate,
+          stop.location?.provider ?? null,
+          stop.location?.placeId ?? null,
           now,
           now,
         ),
@@ -255,6 +268,7 @@ export async function updateTrip(
       position,
       arrivalDate: stop.arrivalDate,
       departureDate: stop.departureDate,
+      location: stop.location,
     }));
 
     statements.push(
@@ -269,7 +283,8 @@ export async function updateTrip(
           ? database
               .prepare(
                 `UPDATE trip_stops
-                 SET name = ?, position = ?, arrival_date = ?, departure_date = ?, updated_at = ?
+                 SET name = ?, position = ?, arrival_date = ?, departure_date = ?,
+                     place_provider = ?, place_id = ?, updated_at = ?
                  WHERE id = ? AND trip_id = ?`,
               )
               .bind(
@@ -277,6 +292,8 @@ export async function updateTrip(
                 stop.position,
                 stop.arrivalDate,
                 stop.departureDate,
+                stop.location?.provider ?? null,
+                stop.location?.placeId ?? null,
                 updatedAt,
                 stop.id,
                 tripId,
@@ -284,8 +301,10 @@ export async function updateTrip(
           : database
               .prepare(
                 `INSERT INTO trip_stops (
-                  id, trip_id, name, position, arrival_date, departure_date, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                  id, trip_id, name, position, arrival_date, departure_date,
+                  place_provider, place_id,
+                  created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               )
               .bind(
                 stop.id,
@@ -294,6 +313,8 @@ export async function updateTrip(
                 stop.position,
                 stop.arrivalDate,
                 stop.departureDate,
+                stop.location?.provider ?? null,
+                stop.location?.placeId ?? null,
                 updatedAt,
                 updatedAt,
               ),

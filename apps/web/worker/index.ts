@@ -1,8 +1,15 @@
-import { type HealthResponse, healthEndpoint, tripsEndpoint } from "@voyage/contracts";
+import {
+  type HealthResponse,
+  healthEndpoint,
+  locationsEndpoint,
+  tripsEndpoint,
+} from "@voyage/contracts";
 import { Hono } from "hono";
 import { type AuthenticateRequest, authenticateClerkRequest } from "./auth";
 import { createGmailImportRoutes } from "./gmail-import-routes";
 import { createGmailIntegrationRoutes } from "./gmail-integration-routes";
+import type { PlacesClient } from "./google-places";
+import { createLocationRoutes } from "./location-routes";
 import { createPlanningRoutes } from "./planning-routes";
 import { createTripsRoutes } from "./trips-routes";
 import type { WorkerEnvironment } from "./types";
@@ -10,6 +17,7 @@ import type { WorkerEnvironment } from "./types";
 type AppDependencies = {
   authenticateRequest?: AuthenticateRequest;
   gmailFetch?: typeof fetch;
+  placesClient?: PlacesClient;
 };
 
 export function createApp(dependencies: AppDependencies = {}) {
@@ -38,6 +46,10 @@ export function createApp(dependencies: AppDependencies = {}) {
   app.route(
     tripsEndpoint,
     createGmailImportRoutes(authenticateRequest, { fetcher: dependencies.gmailFetch }),
+  );
+  app.route(
+    locationsEndpoint,
+    createLocationRoutes(authenticateRequest, { placesClient: dependencies.placesClient }),
   );
 
   app.notFound((context) => context.json({ error: "Not found" }, 404));
