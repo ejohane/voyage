@@ -12,6 +12,7 @@ type DateRangePickerProps = {
   id: string;
   invalid?: boolean;
   onChange: (startDate: string, endDate: string) => void;
+  placeholder?: string;
   startDate: string;
 };
 
@@ -33,8 +34,8 @@ function formatDateOnly(date?: Date) {
   return `${year}-${month}-${day}`;
 }
 
-function rangeLabel(range: DateRange | undefined) {
-  if (!range?.from) return "Choose travel dates";
+function rangeLabel(range: DateRange | undefined, placeholder: string) {
+  if (!range?.from) return placeholder;
   if (!range.to) return `${format(range.from, "MMM d, yyyy")} – Select end date`;
   return `${format(range.from, "MMM d, yyyy")} – ${format(range.to, "MMM d, yyyy")}`;
 }
@@ -44,6 +45,7 @@ function DateRangePicker({
   id,
   invalid = false,
   onChange,
+  placeholder = "Choose travel dates",
   startDate,
 }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
@@ -71,7 +73,7 @@ function DateRangePicker({
           )}
         >
           <CalendarDays className="size-4 text-muted-foreground" aria-hidden="true" />
-          <span className="truncate">{rangeLabel(range)}</span>
+          <span className="truncate">{rangeLabel(range, placeholder)}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-0">

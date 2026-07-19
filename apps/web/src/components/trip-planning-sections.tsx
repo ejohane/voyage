@@ -1,4 +1,4 @@
-import type { Stay, Travel, Trip } from "@voyage/contracts";
+import type { Stay, Travel, Trip, TripStop } from "@voyage/contracts";
 import { format, parse } from "date-fns";
 import {
   ArrowRight,
@@ -24,7 +24,7 @@ import { StayDialog, TravelDialog } from "@/components/planning-dialogs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useDeleteStay, useDeleteTravel, useStays, useTravel } from "@/lib/planning";
+import { useDeleteStay, useDeleteTravel, usePlans, useStays, useTravel } from "@/lib/planning";
 import { cn } from "@/lib/utils";
 
 type SectionProps = { trip: Trip };
@@ -68,7 +68,8 @@ function StatusBadge({ status }: { status: "planning" | "booked" }) {
 function OverviewSection({ trip }: SectionProps) {
   const travel = useTravel(trip.id);
   const stays = useStays(trip.id);
-  const loading = travel.isPending || stays.isPending;
+  const plans = usePlans(trip.id);
+  const loading = travel.isPending || stays.isPending || plans.isPending;
   const items = [
     ...(travel.data ?? []).map((item) => ({
       id: `travel-${item.id}`,
@@ -86,93 +87,153 @@ function OverviewSection({ trip }: SectionProps) {
       title: item.propertyName,
       detail: `${formatDateOnly(item.checkInDate)} – ${formatDateOnly(item.checkOutDate)}`,
     })),
+    ...(plans.data ?? [])
+      .filter((item) => item.scheduledDate)
+      .map((item) => ({
+        id: `plan-${item.id}`,
+        start: `${item.scheduledDate}T${item.startTime ?? "23:59"}`,
+        icon: CalendarCheck,
+        eyebrow: `${titleCase(item.category)} · ${titleCase(item.status)}`,
+        title: item.title,
+        detail: item.startTime
+          ? `${formatDateOnly(item.scheduledDate ?? "")} · ${format(
+              parse(item.startTime, "HH:mm", new Date()),
+              "h:mm a",
+            )}`
+          : formatDateOnly(item.scheduledDate ?? ""),
+      })),
   ].sort((left, right) => left.start.localeCompare(right.start));
   const travelBooked = travel.data?.filter((item) => item.status === "booked").length ?? 0;
   const staysBooked = stays.data?.filter((item) => item.status === "booked").length ?? 0;
+  const scheduledPlans = plans.data?.filter((item) => item.scheduledDate).length ?? 0;
+  const savedIdeas = plans.data?.filter((item) => !item.scheduledDate).length ?? 0;
   const nextItem = items.find((item) => item.start >= format(new Date(), "yyyy-MM-dd'T'HH:mm"));
 
-  if (travel.isError || stays.isError) {
+  if (travel.isError || stays.isError || plans.isError) {
     return (
       <LoadError
         onRetry={() => {
           void travel.refetch();
           void stays.refetch();
+          void plans.refetch();
         }}
       />
     );
   }
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
+    <div className="grid gap-5">
       <Card>
         <CardHeader>
-          <CardTitle>Trip timeline</CardTitle>
-          <CardDescription>Travel and stays in chronological order.</CardDescription>
+          <CardTitle>Destinations</CardTitle>
+          <CardDescription>Your itinerary in travel order.</CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="space-y-4">
-              <Skeleton className="h-16" />
-              <Skeleton className="h-16" />
-            </div>
-          ) : items.length > 0 ? (
-            <div className="relative space-y-1 before:absolute before:bottom-5 before:left-[15px] before:top-5 before:w-px before:bg-border">
-              {items.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <div className="relative flex gap-4 py-3" key={item.id}>
-                    <span className="relative z-10 grid size-8 shrink-0 place-items-center rounded-full border bg-background">
-                      <Icon className="size-4 text-muted-foreground" />
-                    </span>
-                    <div className="min-w-0 pt-0.5">
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        {item.eyebrow}
-                      </p>
-                      <p className="mt-1 font-medium">{item.title}</p>
-                      <p className="mt-0.5 text-sm text-muted-foreground">{item.detail}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyMessage
-              icon={CalendarCheck}
-              title="Your timeline is ready"
-              description="Add travel and stays to see the shape of this trip come together."
-            />
-          )}
+          <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {trip.stops.map((stop, index) => (
+              <li className="flex gap-3 rounded-lg border bg-muted/20 p-3" key={stop.id}>
+                <span className="grid size-7 shrink-0 place-items-center rounded-full border bg-background text-xs font-medium">
+                  {index + 1}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{stop.name}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {stop.arrivalDate
+                      ? `${formatDateOnly(stop.arrivalDate)}${
+                          stop.departureDate ? ` – ${formatDateOnly(stop.departureDate)}` : ""
+                        }`
+                      : "Dates flexible"}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
         </CardContent>
       </Card>
 
-      <div className="grid content-start gap-5">
+      <div className="grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
         <Card>
-          <CardContent className="flex items-center gap-4">
-            <span className="grid size-10 place-items-center rounded-lg border bg-background">
-              <CalendarCheck className="size-4 text-muted-foreground" />
-            </span>
-            <div className="min-w-0">
-              <p className="font-medium">Next up</p>
-              <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                {loading ? "Loading…" : (nextItem?.title ?? "No upcoming reservations")}
-              </p>
-            </div>
+          <CardHeader>
+            <CardTitle>Trip timeline</CardTitle>
+            <CardDescription>Travel, stays, and plans in chronological order.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-16" />
+                <Skeleton className="h-16" />
+              </div>
+            ) : items.length > 0 ? (
+              <div className="relative space-y-1 before:absolute before:bottom-5 before:left-[15px] before:top-5 before:w-px before:bg-border">
+                {items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <div className="relative flex gap-4 py-3" key={item.id}>
+                      <span className="relative z-10 grid size-8 shrink-0 place-items-center rounded-full border bg-background">
+                        <Icon className="size-4 text-muted-foreground" />
+                      </span>
+                      <div className="min-w-0 pt-0.5">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          {item.eyebrow}
+                        </p>
+                        <p className="mt-1 font-medium">{item.title}</p>
+                        <p className="mt-0.5 text-sm text-muted-foreground">{item.detail}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyMessage
+                icon={CalendarCheck}
+                title="Your timeline is ready"
+                description="Add travel, stays, or a plan to see the trip come together."
+              />
+            )}
           </CardContent>
         </Card>
-        <SummaryCard
-          icon={Route}
-          label="Travel"
-          value={
-            travel.data?.length ? `${travelBooked} of ${travel.data.length} booked` : "Not added"
-          }
-          href={`/trips/${trip.id}/travel`}
-        />
-        <SummaryCard
-          icon={BedDouble}
-          label="Stays"
-          value={stays.data?.length ? `${staysBooked} of ${stays.data.length} booked` : "Not added"}
-          href={`/trips/${trip.id}/stays`}
-        />
+
+        <div className="grid content-start gap-5">
+          <Card>
+            <CardContent className="flex items-center gap-4">
+              <span className="grid size-10 place-items-center rounded-lg border bg-background">
+                <CalendarCheck className="size-4 text-muted-foreground" />
+              </span>
+              <div className="min-w-0">
+                <p className="font-medium">Next up</p>
+                <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                  {loading ? "Loading…" : (nextItem?.title ?? "No upcoming reservations")}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+          <SummaryCard
+            icon={CalendarCheck}
+            label="Itinerary"
+            value={
+              scheduledPlans || savedIdeas
+                ? `${scheduledPlans} scheduled · ${savedIdeas} saved`
+                : "No plans yet"
+            }
+            href={`/trips/${trip.id}/itinerary`}
+          />
+          <SummaryCard
+            icon={Route}
+            label="Travel"
+            value={
+              travel.data?.length ? `${travelBooked} of ${travel.data.length} booked` : "Not added"
+            }
+            href={`/trips/${trip.id}/travel`}
+          />
+          <SummaryCard
+            icon={BedDouble}
+            label="Stays"
+            value={
+              stays.data?.length ? `${staysBooked} of ${stays.data.length} booked` : "Not added"
+            }
+            href={`/trips/${trip.id}/stays`}
+          />
+        </div>
       </div>
     </div>
   );
@@ -224,6 +285,7 @@ function TravelSection({ trip }: SectionProps) {
           canEdit ? (
             <TravelDialog
               tripId={trip.id}
+              stops={trip.stops}
               open={addOpen}
               onOpenChange={setAddOpen}
               trigger={
@@ -253,7 +315,7 @@ function TravelSection({ trip }: SectionProps) {
       ) : (
         <div className="mt-5 grid gap-4">
           {travel.data.map((item) => (
-            <TravelCard key={item.id} item={item} canEdit={canEdit} />
+            <TravelCard key={item.id} item={item} canEdit={canEdit} stops={trip.stops} />
           ))}
         </div>
       )}
@@ -261,10 +323,20 @@ function TravelSection({ trip }: SectionProps) {
   );
 }
 
-function TravelCard({ item, canEdit }: { item: Travel; canEdit: boolean }) {
+function TravelCard({
+  item,
+  canEdit,
+  stops,
+}: {
+  item: Travel;
+  canEdit: boolean;
+  stops: TripStop[];
+}) {
   const [editOpen, setEditOpen] = useState(false);
   const remove = useDeleteTravel(item.tripId, item.id);
   const Icon = travelIcons[item.type];
+  const departureStop = stops.find((stop) => stop.id === item.departureStopId);
+  const arrivalStop = stops.find((stop) => stop.id === item.arrivalStopId);
 
   return (
     <Card className="gap-4 py-5">
@@ -284,6 +356,12 @@ function TravelCard({ item, canEdit }: { item: Travel; canEdit: boolean }) {
             {formatLocalDateTime(item.departureAt)}
             {item.arrivalAt ? ` – ${formatLocalDateTime(item.arrivalAt)}` : ""}
           </p>
+          {departureStop || arrivalStop ? (
+            <p className="mt-2 text-xs font-medium text-muted-foreground">
+              {departureStop?.name ?? "Outside this trip"} →{" "}
+              {arrivalStop?.name ?? "Outside this trip"}
+            </p>
+          ) : null}
           {item.carrier || item.referenceNumber ? (
             <p className="mt-3 text-sm">
               {[item.carrier, item.referenceNumber].filter(Boolean).join(" · ")}
@@ -315,6 +393,7 @@ function TravelCard({ item, canEdit }: { item: Travel; canEdit: boolean }) {
           <div className="flex shrink-0 gap-2">
             <TravelDialog
               tripId={item.tripId}
+              stops={stops}
               travel={item}
               open={editOpen}
               onOpenChange={setEditOpen}
@@ -355,6 +434,7 @@ function StaysSection({ trip }: SectionProps) {
           canEdit ? (
             <StayDialog
               tripId={trip.id}
+              stops={trip.stops}
               open={addOpen}
               onOpenChange={setAddOpen}
               trigger={
@@ -384,7 +464,7 @@ function StaysSection({ trip }: SectionProps) {
       ) : (
         <div className="mt-5 grid gap-4">
           {stays.data.map((item) => (
-            <StayCard key={item.id} item={item} canEdit={canEdit} />
+            <StayCard key={item.id} item={item} canEdit={canEdit} stops={trip.stops} />
           ))}
         </div>
       )}
@@ -392,9 +472,10 @@ function StaysSection({ trip }: SectionProps) {
   );
 }
 
-function StayCard({ item, canEdit }: { item: Stay; canEdit: boolean }) {
+function StayCard({ item, canEdit, stops }: { item: Stay; canEdit: boolean; stops: TripStop[] }) {
   const [editOpen, setEditOpen] = useState(false);
   const remove = useDeleteStay(item.tripId, item.id);
+  const stop = stops.find((candidate) => candidate.id === item.tripStopId);
 
   return (
     <Card className="gap-4 py-5">
@@ -407,6 +488,9 @@ function StayCard({ item, canEdit }: { item: Stay; canEdit: boolean }) {
             <p className="font-semibold">{item.propertyName}</p>
             <StatusBadge status={item.status} />
           </div>
+          {stop ? (
+            <p className="mt-1 text-xs font-medium text-muted-foreground">{stop.name}</p>
+          ) : null}
           <p className="mt-1 flex items-start gap-1.5 text-sm text-muted-foreground">
             <MapPin className="mt-0.5 size-3.5 shrink-0" />
             {item.address}
@@ -440,6 +524,7 @@ function StayCard({ item, canEdit }: { item: Stay; canEdit: boolean }) {
           <div className="flex shrink-0 gap-2">
             <StayDialog
               tripId={item.tripId}
+              stops={stops}
               stay={item}
               open={editOpen}
               onOpenChange={setEditOpen}

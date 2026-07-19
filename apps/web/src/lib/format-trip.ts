@@ -16,11 +16,23 @@ function formatTripDates(trip: Pick<Trip, "startDate" | "endDate">) {
     return "Dates not set";
   }
 
-  if (!trip.endDate || trip.endDate === trip.startDate) {
+  if (!trip.endDate) {
+    return `${formatDate(trip.startDate)} – flexible`;
+  }
+
+  if (trip.endDate === trip.startDate) {
     return formatDate(trip.startDate);
   }
 
   return `${formatDate(trip.startDate)} – ${formatDate(trip.endDate)}`;
 }
 
-export { formatTripDates };
+function formatTripDestinations(trip: Pick<Trip, "stops">, limit = Number.POSITIVE_INFINITY) {
+  const names = trip.stops.map((stop) => stop.name);
+
+  if (names.length <= limit) return names.join(" → ");
+
+  return `${names.slice(0, limit).join(" → ")} +${names.length - limit}`;
+}
+
+export { formatTripDates, formatTripDestinations };

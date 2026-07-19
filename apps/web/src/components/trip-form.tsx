@@ -1,5 +1,5 @@
 import { type CreateTripInput, createTripInputSchema, type Trip } from "@voyage/contracts";
-import { LoaderCircle } from "lucide-react";
+import { ArrowDown, ArrowUp, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { Button } from "@/components/ui/button";
@@ -9,27 +9,54 @@ import { Label } from "@/components/ui/label";
 import { ApiRequestError } from "@/lib/api";
 
 type TripFormProps = {
-  initialTrip?: Pick<Trip, "name" | "destination" | "startDate" | "endDate">;
+  initialTrip?: Pick<Trip, "name" | "stops">;
   pendingLabel: string;
   submitLabel: string;
   onCancel: () => void;
   onSubmit: (input: CreateTripInput) => Promise<void>;
 };
 
+type StopFormValue = {
+  clientId: string;
+  id?: string;
+  name: string;
+  arrivalDate: string;
+  departureDate: string;
+};
+
 type FormValues = {
   name: string;
-  destination: string;
-  startDate: string;
-  endDate: string;
+  stops: StopFormValue[];
 };
+
+function blankStop(): StopFormValue {
+  return { clientId: crypto.randomUUID(), name: "", arrivalDate: "", departureDate: "" };
+}
 
 function initialValues(initialTrip?: TripFormProps["initialTrip"]): FormValues {
   return {
     name: initialTrip?.name ?? "",
-    destination: initialTrip?.destination ?? "",
-    startDate: initialTrip?.startDate ?? "",
-    endDate: initialTrip?.endDate ?? "",
+    stops: initialTrip?.stops.map((stop) => ({
+      clientId: stop.id,
+      id: stop.id,
+      name: stop.name,
+      arrivalDate: stop.arrivalDate ?? "",
+      departureDate: stop.departureDate ?? "",
+    })) ?? [blankStop()],
   };
+}
+
+function validationErrors(error: {
+  issues: { message: string; path: PropertyKey[] }[];
+}): Record<string, string[]> {
+  const errors: Record<string, string[]> = {};
+
+  for (const issue of error.issues) {
+    const key = issue.path.map(String).join(".");
+    errors[key] = [...(errors[key] ?? []), issue.message];
+  }
+
+  return errors;
 }
 
 function TripForm({ initialTrip, pendingLabel, submitLabel, onCancel, onSubmit }: TripFormProps) {
@@ -38,9 +65,52 @@ function TripForm({ initialTrip, pendingLabel, submitLabel, onCancel, onSubmit }
   const [formError, setFormError] = useState<string>();
   const [isPending, setIsPending] = useState(false);
 
-  function setValue(field: keyof FormValues, value: string) {
+  function setValue(field: "name", value: string) {
     setValues((current) => ({ ...current, [field]: value }));
     setFieldErrors((current) => ({ ...current, [field]: [] }));
+  }
+
+  function setStopValue(
+    index: number,
+    field: "name" | "arrivalDate" | "departureDate",
+    value: string,
+  ) {
+    setValues((current) => ({
+      ...current,
+      stops: current.stops.map((stop, stopIndex) =>
+        stopIndex === index ? { ...stop, [field]: value } : stop,
+      ),
+    }));
+    setFieldErrors((current) => ({
+      ...current,
+      [`stops.${index}.${field}`]: [],
+      stops: [],
+    }));
+  }
+
+  function addStop() {
+    setValues((current) => ({ ...current, stops: [...current.stops, blankStop()] }));
+    setFieldErrors((current) => ({ ...current, stops: [] }));
+  }
+
+  function removeStop(index: number) {
+    setValues((current) => ({
+      ...current,
+      stops: current.stops.filter((_, stopIndex) => stopIndex !== index),
+    }));
+    setFieldErrors({});
+  }
+
+  function moveStop(index: number, direction: -1 | 1) {
+    setValues((current) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= current.stops.length) return current;
+
+      const stops = [...current.stops];
+      [stops[index], stops[nextIndex]] = [stops[nextIndex], stops[index]];
+      return { ...current, stops };
+    });
+    setFieldErrors({});
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -49,20 +119,16 @@ function TripForm({ initialTrip, pendingLabel, submitLabel, onCancel, onSubmit }
 
     const parsed = createTripInputSchema.safeParse({
       name: values.name,
-      destination: values.destination,
-      startDate: values.startDate || null,
-      endDate: values.endDate || null,
+      stops: values.stops.map((stop) => ({
+        id: stop.id,
+        name: stop.name,
+        arrivalDate: stop.arrivalDate || null,
+        departureDate: stop.departureDate || null,
+      })),
     });
 
     if (!parsed.success) {
-      const flattened = parsed.error.flatten();
-      setFieldErrors(
-        Object.fromEntries(
-          Object.entries(flattened.fieldErrors).filter(
-            (entry): entry is [string, string[]] => entry[1] !== undefined,
-          ),
-        ),
-      );
+      setFieldErrors(validationErrors(parsed.error));
       return;
     }
 
@@ -88,42 +154,115 @@ function TripForm({ initialTrip, pendingLabel, submitLabel, onCancel, onSubmit }
         <Input
           id="trip-name"
           name="name"
-          placeholder="Summer in Japan"
+          placeholder="European summer"
           value={values.name}
           onChange={(event) => setValue("name", event.target.value)}
           autoFocus
         />
       </FormField>
 
-      <FormField error={fieldErrors.destination?.[0]} id="trip-destination" label="Destination">
-        <Input
-          id="trip-destination"
-          name="destination"
-          placeholder="Tokyo, Japan"
-          value={values.destination}
-          onChange={(event) => setValue("destination", event.target.value)}
-        />
-      </FormField>
+      <div className="grid gap-3">
+        <div>
+          <Label>Destinations</Label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Add each stop in the order you plan to visit it.
+          </p>
+        </div>
 
-      <FormField
-        error={fieldErrors.startDate?.[0] ?? fieldErrors.endDate?.[0]}
-        id="trip-dates"
-        label="Trip dates"
-      >
-        <DateRangePicker
-          id="trip-dates"
-          startDate={values.startDate}
-          endDate={values.endDate}
-          invalid={Boolean(fieldErrors.startDate?.[0] ?? fieldErrors.endDate?.[0])}
-          onChange={(startDate, endDate) => {
-            setValue("startDate", startDate);
-            setValue("endDate", endDate);
-          }}
-        />
-      </FormField>
+        {values.stops.map((stop, index) => {
+          const nameError = fieldErrors[`stops.${index}.name`]?.[0];
+          const dateError =
+            fieldErrors[`stops.${index}.arrivalDate`]?.[0] ??
+            fieldErrors[`stops.${index}.departureDate`]?.[0];
+          const stopNameId = `trip-stop-${index}-name`;
+          const stopDatesId = `trip-stop-${index}-dates`;
+
+          return (
+            <div className="grid gap-3 rounded-lg border bg-muted/20 p-4" key={stop.clientId}>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">Stop {index + 1}</p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="size-8"
+                    aria-label={`Move stop ${index + 1} up`}
+                    disabled={index === 0 || isPending}
+                    onClick={() => moveStop(index, -1)}
+                  >
+                    <ArrowUp className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="size-8"
+                    aria-label={`Move stop ${index + 1} down`}
+                    disabled={index === values.stops.length - 1 || isPending}
+                    onClick={() => moveStop(index, 1)}
+                  >
+                    <ArrowDown className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="size-8"
+                    aria-label={`Remove stop ${index + 1}`}
+                    disabled={values.stops.length === 1 || isPending}
+                    onClick={() => removeStop(index)}
+                  >
+                    <Trash2 className="size-4 text-muted-foreground" />
+                  </Button>
+                </div>
+              </div>
+
+              <FormField error={nameError} id={stopNameId} label="Destination">
+                <Input
+                  id={stopNameId}
+                  name={`stops.${index}.name`}
+                  placeholder={index === 0 ? "Paris, France" : "Amsterdam, Netherlands"}
+                  value={stop.name}
+                  onChange={(event) => setStopValue(index, "name", event.target.value)}
+                />
+              </FormField>
+
+              <FormField error={dateError} id={stopDatesId} label="Stop dates (optional)">
+                <DateRangePicker
+                  id={stopDatesId}
+                  startDate={stop.arrivalDate}
+                  endDate={stop.departureDate}
+                  placeholder="Add arrival and departure"
+                  invalid={Boolean(dateError)}
+                  onChange={(arrivalDate, departureDate) => {
+                    setStopValue(index, "arrivalDate", arrivalDate);
+                    setStopValue(index, "departureDate", departureDate);
+                  }}
+                />
+              </FormField>
+            </div>
+          );
+        })}
+
+        {fieldErrors.stops?.[0] ? (
+          <p className="text-xs text-red-600">{fieldErrors.stops[0]}</p>
+        ) : null}
+
+        <Button
+          type="button"
+          variant="outline"
+          className="justify-start border-dashed"
+          disabled={values.stops.length >= 20 || isPending}
+          onClick={addStop}
+        >
+          <Plus className="size-4" />
+          Add destination
+        </Button>
+      </div>
 
       <p className="-mt-2 text-xs text-muted-foreground">
-        Dates are optional. You can add them later.
+        Destination dates are optional. Your trip dates update automatically from them.
       </p>
 
       {formError ? <p className="text-sm text-red-600">{formError}</p> : null}

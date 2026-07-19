@@ -1,10 +1,13 @@
 import { env } from "cloudflare:test";
 import {
+  type PlanListResponse,
+  type PlanResponse,
   type StayListResponse,
   type StayResponse,
   type TravelListResponse,
   type TravelResponse,
   type TripResponse,
+  tripPlansEndpoint,
   tripStaysEndpoint,
   tripsEndpoint,
   tripTravelEndpoint,
@@ -32,9 +35,13 @@ async function createTrip(userId = "user_owner") {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: "Autumn in Lisbon",
-      destination: "Lisbon, Portugal",
-      startDate: "2026-10-04",
-      endDate: "2026-10-12",
+      stops: [
+        {
+          name: "Lisbon, Portugal",
+          arrivalDate: "2026-10-04",
+          departureDate: "2026-10-12",
+        },
+      ],
     }),
   });
   return response.json<TripResponse>();
@@ -43,6 +50,8 @@ async function createTrip(userId = "user_owner") {
 const travelInput = {
   type: "flight",
   status: "planning",
+  departureStopId: null,
+  arrivalStopId: null,
   departureLocation: "ORD · Chicago",
   arrivalLocation: "LIS · Lisbon",
   departureAt: "2026-10-04T18:30",
@@ -65,11 +74,29 @@ const stayInput = {
   notes: "Late arrival",
 } as const;
 
+function planInput(tripStopId: string) {
+  return {
+    tripStopId,
+    title: "Visit the MAAT",
+    category: "sightseeing",
+    status: "idea",
+    scheduledDate: null,
+    startTime: null,
+    endTime: null,
+    location: "Av. Brasília, Lisbon",
+    confirmationNumber: null,
+    bookingUrl: "https://example.com/maat",
+    notes: "Go near sunset",
+  } as const;
+}
+
 describe("trip planning API", () => {
   beforeEach(async () => {
     await env.DB.batch([
+      env.DB.prepare("DELETE FROM trip_plans"),
       env.DB.prepare("DELETE FROM travel_segments"),
       env.DB.prepare("DELETE FROM stays"),
+      env.DB.prepare("DELETE FROM trip_stops"),
       env.DB.prepare("DELETE FROM trip_memberships"),
       env.DB.prepare("DELETE FROM trips"),
     ]);
@@ -80,7 +107,7 @@ describe("trip planning API", () => {
     const createResponse = await request(tripTravelEndpoint(trip.id), "user_owner", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(travelInput),
+      body: JSON.stringify({ ...travelInput, arrivalStopId: trip.stops[0].id }),
     });
     const created = await createResponse.json<TravelResponse>();
 
@@ -103,6 +130,7 @@ describe("trip planning API", () => {
     );
 
     expect(createResponse.status).toBe(201);
+    expect(created.travel.arrivalStopId).toBe(trip.stops[0].id);
     expect(list.travel).toHaveLength(1);
     expect(updated.travel.status).toBe("booked");
     expect(deleteResponse.status).toBe(204);
@@ -118,7 +146,7 @@ describe("trip planning API", () => {
     const createResponse = await request(tripStaysEndpoint(trip.id), "user_owner", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(stayInput),
+      body: JSON.stringify({ ...stayInput, tripStopId: trip.stops[0].id }),
     });
     const created = await createResponse.json<StayResponse>();
     const listResponse = await request(tripStaysEndpoint(trip.id), "user_owner");
@@ -136,11 +164,16 @@ describe("trip planning API", () => {
     const invalidResponse = await request(tripStaysEndpoint(trip.id), "user_owner", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...stayInput, checkOutDate: "2026-10-01" }),
+      body: JSON.stringify({
+        ...stayInput,
+        tripStopId: trip.stops[0].id,
+        checkOutDate: "2026-10-01",
+      }),
     });
 
     expect(createResponse.status).toBe(201);
     expect(created.stay.propertyName).toBe("Memmo Alfama");
+    expect(created.stay.tripStopId).toBe(trip.stops[0].id);
     expect(list.stays).toHaveLength(1);
     expect(updated.stay.status).toBe("booked");
     expect(invalidResponse.status).toBe(422);
@@ -153,14 +186,94 @@ describe("trip planning API", () => {
     expect(deleteResponse.status).toBe(204);
   });
 
+  it("moves ideas into the itinerary and supports full plan CRUD", async () => {
+    const { trip } = await createTrip();
+    const createResponse = await request(tripPlansEndpoint(trip.id), "user_owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(planInput(trip.stops[0].id)),
+    });
+    const created = await createResponse.json<PlanResponse>();
+    const ideasResponse = await request(tripPlansEndpoint(trip.id), "user_owner");
+    const ideas = await ideasResponse.json<PlanListResponse>();
+    const updateResponse = await request(
+      `${tripPlansEndpoint(trip.id)}/${created.plan.id}`,
+      "user_owner",
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "planned",
+          scheduledDate: "2026-10-07",
+          startTime: "10:30",
+          endTime: "12:00",
+        }),
+      },
+    );
+    const updated = await updateResponse.json<PlanResponse>();
+    const invalidResponse = await request(
+      `${tripPlansEndpoint(trip.id)}/${created.plan.id}`,
+      "user_owner",
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endTime: "09:00" }),
+      },
+    );
+    const deleteResponse = await request(
+      `${tripPlansEndpoint(trip.id)}/${created.plan.id}`,
+      "user_owner",
+      { method: "DELETE" },
+    );
+
+    expect(createResponse.status).toBe(201);
+    expect(created.plan).toMatchObject({ status: "idea", scheduledDate: null });
+    expect(ideas.plans).toHaveLength(1);
+    expect(updateResponse.status).toBe(200);
+    expect(updated.plan).toMatchObject({
+      status: "planned",
+      scheduledDate: "2026-10-07",
+      startTime: "10:30",
+      endTime: "12:00",
+    });
+    expect(invalidResponse.status).toBe(422);
+    expect(deleteResponse.status).toBe(204);
+  });
+
   it("conceals another user’s planning data", async () => {
     const { trip } = await createTrip();
 
     const travelResponse = await request(tripTravelEndpoint(trip.id), "user_other");
     const staysResponse = await request(tripStaysEndpoint(trip.id), "user_other");
+    const plansResponse = await request(tripPlansEndpoint(trip.id), "user_other");
 
     expect(travelResponse.status).toBe(404);
     expect(staysResponse.status).toBe(404);
+    expect(plansResponse.status).toBe(404);
+  });
+
+  it("rejects destination ids from another trip", async () => {
+    const { trip } = await createTrip();
+    const { trip: otherTrip } = await createTrip("user_other");
+    const travelResponse = await request(tripTravelEndpoint(trip.id), "user_owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...travelInput, arrivalStopId: otherTrip.stops[0].id }),
+    });
+    const stayResponse = await request(tripStaysEndpoint(trip.id), "user_owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...stayInput, tripStopId: otherTrip.stops[0].id }),
+    });
+    const planResponse = await request(tripPlansEndpoint(trip.id), "user_owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(planInput(otherTrip.stops[0].id)),
+    });
+
+    expect(travelResponse.status).toBe(422);
+    expect(stayResponse.status).toBe(422);
+    expect(planResponse.status).toBe(422);
   });
 
   it("allows viewers to read but not change planning data", async () => {
@@ -177,8 +290,16 @@ describe("trip planning API", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(travelInput),
     });
+    const plansResponse = await request(tripPlansEndpoint(trip.id), "user_viewer");
+    const createPlanResponse = await request(tripPlansEndpoint(trip.id), "user_viewer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(planInput(trip.stops[0].id)),
+    });
 
     expect(listResponse.status).toBe(200);
     expect(createResponse.status).toBe(403);
+    expect(plansResponse.status).toBe(200);
+    expect(createPlanResponse.status).toBe(403);
   });
 });

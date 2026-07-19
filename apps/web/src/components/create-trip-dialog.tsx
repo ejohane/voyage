@@ -37,11 +37,11 @@ function CreateTripDialog({ buttonLabel = "New trip", open, onOpenChange }: Crea
           {buttonLabel}
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[calc(100svh-2rem)] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create a trip</DialogTitle>
           <DialogDescription>
-            Start with the basics. Everything else can take shape inside the trip.
+            Add your destinations in order. You can keep dates flexible and refine them later.
           </DialogDescription>
         </DialogHeader>
         {open ? (

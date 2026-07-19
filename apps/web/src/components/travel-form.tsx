@@ -3,6 +3,7 @@ import {
   createTravelInputSchema,
   type Travel,
   type TravelType,
+  type TripStop,
 } from "@voyage/contracts";
 import { LoaderCircle } from "lucide-react";
 import { type FormEvent, useState } from "react";
@@ -25,11 +26,14 @@ type TravelFormProps = {
   initialTravel?: Travel;
   onCancel: () => void;
   onSubmit: (input: CreateTravelInput) => Promise<void>;
+  stops: TripStop[];
 };
 
 type TravelFormValues = {
   type: TravelType;
   status: "planning" | "booked";
+  departureStopId: string;
+  arrivalStopId: string;
   departureLocation: string;
   arrivalLocation: string;
   departureDate: string;
@@ -56,6 +60,8 @@ function initialValues(initialTravel?: Travel): TravelFormValues {
   return {
     type: initialTravel?.type ?? "flight",
     status: initialTravel?.status ?? "planning",
+    departureStopId: initialTravel?.departureStopId ?? "",
+    arrivalStopId: initialTravel?.arrivalStopId ?? "",
     departureLocation: initialTravel?.departureLocation ?? "",
     arrivalLocation: initialTravel?.arrivalLocation ?? "",
     departureDate: departure.date,
@@ -70,7 +76,7 @@ function initialValues(initialTravel?: Travel): TravelFormValues {
   };
 }
 
-function TravelForm({ initialTravel, onCancel, onSubmit }: TravelFormProps) {
+function TravelForm({ initialTravel, onCancel, onSubmit, stops }: TravelFormProps) {
   const [values, setValues] = useState(() => initialValues(initialTravel));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [formError, setFormError] = useState<string>();
@@ -81,11 +87,12 @@ function TravelForm({ initialTravel, onCancel, onSubmit }: TravelFormProps) {
     value: TravelFormValues[Field],
   ) {
     setValues((current) => ({ ...current, [field]: value }));
-    const errorField = field.startsWith("departure")
-      ? "departureAt"
-      : field.startsWith("arrival")
-        ? "arrivalAt"
-        : field;
+    const errorField =
+      field === "departureDate" || field === "departureTime"
+        ? "departureAt"
+        : field === "arrivalDate" || field === "arrivalTime"
+          ? "arrivalAt"
+          : field;
     setFieldErrors((current) => ({ ...current, [errorField]: [] }));
   }
 
@@ -104,6 +111,8 @@ function TravelForm({ initialTravel, onCancel, onSubmit }: TravelFormProps) {
     const parsed = createTravelInputSchema.safeParse({
       type: values.type,
       status: values.status,
+      departureStopId: values.departureStopId || null,
+      arrivalStopId: values.arrivalStopId || null,
       departureLocation: values.departureLocation,
       arrivalLocation: values.arrivalLocation,
       departureAt:
@@ -180,6 +189,53 @@ function TravelForm({ initialTravel, onCancel, onSubmit }: TravelFormProps) {
             <SelectContent>
               <SelectItem value="planning">Planning</SelectItem>
               <SelectItem value="booked">Booked</SelectItem>
+            </SelectContent>
+          </Select>
+        </FormField>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FormField
+          id="departure-stop"
+          label="Leaving destination (optional)"
+          error={fieldErrors.departureStopId?.[0]}
+        >
+          <Select
+            value={values.departureStopId || "none"}
+            onValueChange={(value) => setValue("departureStopId", value === "none" ? "" : value)}
+          >
+            <SelectTrigger id="departure-stop">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Outside this trip</SelectItem>
+              {stops.map((stop) => (
+                <SelectItem value={stop.id} key={stop.id}>
+                  {stop.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormField>
+        <FormField
+          id="arrival-stop"
+          label="Arriving destination (optional)"
+          error={fieldErrors.arrivalStopId?.[0]}
+        >
+          <Select
+            value={values.arrivalStopId || "none"}
+            onValueChange={(value) => setValue("arrivalStopId", value === "none" ? "" : value)}
+          >
+            <SelectTrigger id="arrival-stop">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Outside this trip</SelectItem>
+              {stops.map((stop) => (
+                <SelectItem value={stop.id} key={stop.id}>
+                  {stop.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </FormField>

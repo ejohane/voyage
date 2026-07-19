@@ -18,10 +18,9 @@ Voyage is a Bun-managed TypeScript monorepo. Its first application combines a Vi
 with a Hono API and deploys them together as one Cloudflare Worker.
 
 ```bash
-bun install
 cp apps/web/.env.example apps/web/.env.local
 cp apps/web/.dev.vars.example apps/web/.dev.vars
-bun run --cwd apps/web db:migrate:local
+bun run setup:worktree
 bun run dev
 ```
 
@@ -31,6 +30,12 @@ application before starting the web app. The authentication flow is available at
 
 The Worker validates Clerk session tokens with the development instance JWT public key in
 `.dev.vars`. D1 data is local during development and is created by the committed migrations.
+
+The setup command fetches and fast-forwards to `origin/main`, verifies the local environment,
+installs the locked Bun dependencies, and applies the local D1 migrations. Codex-managed worktrees
+receive `.env.local` and `.dev.vars` from the primary checkout through `.worktreeinclude`, then run
+the same setup command through the checked-in Codex environment. Existing destination files are not
+overwritten, so update the primary checkout whenever local credentials rotate.
 
 Production deploys expect the same key in the GitHub environment variable
 `VITE_CLERK_PUBLISHABLE_KEY`. GitHub Actions applies D1 migrations before deploying the Worker and
