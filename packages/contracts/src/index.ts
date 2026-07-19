@@ -3,6 +3,10 @@ import { z } from "zod";
 export const healthEndpoint = "/api/health" as const;
 export const tripsEndpoint = "/api/trips" as const;
 export const gmailIntegrationEndpoint = "/api/integrations/gmail" as const;
+export const locationsEndpoint = "/api/locations" as const;
+
+export const locationSuggestionsEndpoint = `${locationsEndpoint}/suggestions` as const;
+export const resolveLocationEndpoint = `${locationsEndpoint}/resolve` as const;
 
 export function gmailConnectEndpoint() {
   return `${gmailIntegrationEndpoint}/connect` as const;
@@ -113,6 +117,20 @@ const tripBaseFieldsSchema = z.object({
   endDate: nullableDateSchema,
 });
 
+export const locationKindSchema = z.enum([
+  "country",
+  "region",
+  "city",
+  "neighborhood",
+  "address",
+  "place",
+]);
+
+export const tripStopLocationSchema = z.object({
+  provider: z.literal("google"),
+  placeId: z.string().trim().min(1).max(300),
+});
+
 const tripStopFieldsSchema = z.object({
   name: z
     .string()
@@ -121,6 +139,7 @@ const tripStopFieldsSchema = z.object({
     .max(160, "Keep the destination under 160 characters."),
   arrivalDate: nullableDateSchema,
   departureDate: nullableDateSchema,
+  location: tripStopLocationSchema.nullable().default(null),
 });
 
 const tripStopInputSchema = tripStopFieldsSchema
@@ -193,6 +212,28 @@ export const tripSchema = tripBaseFieldsSchema.extend({
 
 export const tripResponseSchema = z.object({ trip: tripSchema });
 export const tripListResponseSchema = z.object({ trips: z.array(tripSchema) });
+
+export const locationSuggestionSchema = z.object({
+  placeId: z.string().trim().min(1).max(300),
+  label: z.string().trim().min(1).max(160),
+  primaryText: z.string().trim().min(1).max(160),
+  secondaryText: z.string().trim().max(300).nullable(),
+  types: z.array(z.string().trim().min(1).max(80)).max(20),
+  kind: locationKindSchema,
+});
+
+export const locationSuggestionsResponseSchema = z.object({
+  suggestions: z.array(locationSuggestionSchema).max(5),
+});
+
+export const resolveLocationInputSchema = z.object({
+  placeId: z.string().trim().min(1).max(300),
+  sessionToken: z.string().uuid(),
+});
+
+export const resolvedLocationResponseSchema = z.object({
+  location: tripStopLocationSchema,
+});
 
 export const reservationStatusSchema = z.enum(["planning", "booked"]);
 export const travelTypeSchema = z.enum(["flight", "train", "bus", "drive", "ferry", "other"]);
@@ -469,6 +510,12 @@ export type TripStop = z.infer<typeof tripStopSchema>;
 export type TripAccessLevel = z.infer<typeof tripAccessLevelSchema>;
 export type TripListResponse = z.infer<typeof tripListResponseSchema>;
 export type TripResponse = z.infer<typeof tripResponseSchema>;
+export type LocationKind = z.infer<typeof locationKindSchema>;
+export type TripStopLocation = z.infer<typeof tripStopLocationSchema>;
+export type LocationSuggestion = z.infer<typeof locationSuggestionSchema>;
+export type LocationSuggestionsResponse = z.infer<typeof locationSuggestionsResponseSchema>;
+export type ResolveLocationInput = z.infer<typeof resolveLocationInputSchema>;
+export type ResolvedLocationResponse = z.infer<typeof resolvedLocationResponseSchema>;
 export type ReservationStatus = z.infer<typeof reservationStatusSchema>;
 export type TravelType = z.infer<typeof travelTypeSchema>;
 export type CreateTravelInput = z.infer<typeof createTravelInputSchema>;

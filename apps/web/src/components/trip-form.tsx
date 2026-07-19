@@ -1,7 +1,13 @@
-import { type CreateTripInput, createTripInputSchema, type Trip } from "@voyage/contracts";
+import {
+  type CreateTripInput,
+  createTripInputSchema,
+  type Trip,
+  type TripStopLocation,
+} from "@voyage/contracts";
 import { ArrowDown, ArrowUp, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { DateRangePicker } from "@/components/date-range-picker";
+import { DestinationAutocomplete } from "@/components/destination-autocomplete";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -20,6 +26,7 @@ type StopFormValue = {
   clientId: string;
   id?: string;
   name: string;
+  location: TripStopLocation | null;
   arrivalDate: string;
   departureDate: string;
 };
@@ -30,7 +37,13 @@ type FormValues = {
 };
 
 function blankStop(): StopFormValue {
-  return { clientId: crypto.randomUUID(), name: "", arrivalDate: "", departureDate: "" };
+  return {
+    clientId: crypto.randomUUID(),
+    name: "",
+    location: null,
+    arrivalDate: "",
+    departureDate: "",
+  };
 }
 
 function initialValues(initialTrip?: TripFormProps["initialTrip"]): FormValues {
@@ -40,6 +53,7 @@ function initialValues(initialTrip?: TripFormProps["initialTrip"]): FormValues {
       clientId: stop.id,
       id: stop.id,
       name: stop.name,
+      location: stop.location,
       arrivalDate: stop.arrivalDate ?? "",
       departureDate: stop.departureDate ?? "",
     })) ?? [blankStop()],
@@ -88,6 +102,20 @@ function TripForm({ initialTrip, pendingLabel, submitLabel, onCancel, onSubmit }
     }));
   }
 
+  function setStopDestination(index: number, name: string, location: TripStopLocation | null) {
+    setValues((current) => ({
+      ...current,
+      stops: current.stops.map((stop, stopIndex) =>
+        stopIndex === index ? { ...stop, name, location } : stop,
+      ),
+    }));
+    setFieldErrors((current) => ({
+      ...current,
+      [`stops.${index}.name`]: [],
+      stops: [],
+    }));
+  }
+
   function addStop() {
     setValues((current) => ({ ...current, stops: [...current.stops, blankStop()] }));
     setFieldErrors((current) => ({ ...current, stops: [] }));
@@ -122,6 +150,7 @@ function TripForm({ initialTrip, pendingLabel, submitLabel, onCancel, onSubmit }
       stops: values.stops.map((stop) => ({
         id: stop.id,
         name: stop.name,
+        location: stop.location,
         arrivalDate: stop.arrivalDate || null,
         departureDate: stop.departureDate || null,
       })),
@@ -219,12 +248,14 @@ function TripForm({ initialTrip, pendingLabel, submitLabel, onCancel, onSubmit }
               </div>
 
               <FormField error={nameError} id={stopNameId} label="Destination">
-                <Input
+                <DestinationAutocomplete
                   id={stopNameId}
-                  name={`stops.${index}.name`}
                   placeholder={index === 0 ? "Paris, France" : "Amsterdam, Netherlands"}
                   value={stop.name}
-                  onChange={(event) => setStopValue(index, "name", event.target.value)}
+                  location={stop.location}
+                  invalid={Boolean(nameError)}
+                  disabled={isPending}
+                  onChange={(name, location) => setStopDestination(index, name, location)}
                 />
               </FormField>
 

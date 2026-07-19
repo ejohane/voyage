@@ -1,5 +1,6 @@
 import { SignInButton, SignUpButton } from "@clerk/react";
 import { ArrowRight, Check, Map as MapIcon, Users } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Brand } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 
@@ -86,7 +87,14 @@ function LandingPage() {
       <footer className="border-t">
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-5 text-xs text-muted-foreground sm:px-8">
           <span>© 2026 Voyage</span>
-          <span>Plan well. Travel together.</span>
+          <span className="flex items-center gap-4">
+            <Link className="hover:text-foreground" to="/privacy">
+              Privacy
+            </Link>
+            <Link className="hover:text-foreground" to="/terms">
+              Terms
+            </Link>
+          </span>
         </div>
       </footer>
     </div>
