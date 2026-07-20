@@ -11,6 +11,7 @@ import type {
 import { format, parse } from "date-fns";
 import {
   BedDouble,
+  CarFront,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -96,6 +97,16 @@ function normalizeRouteLocation(value: string) {
 function candidateGroupKey(candidate: GmailImportCandidate) {
   const confirmationNumber = normalizeGroupValue(candidate.input.confirmationNumber);
   if (candidate.kind === "travel") {
+    if (candidate.input.kind === "rental") {
+      if (confirmationNumber) return `travel:rental:confirmation:${confirmationNumber}`;
+      return [
+        candidate.kind,
+        "rental",
+        normalizeGroupValue(candidate.input.carrier),
+        normalizeRouteLocation(candidate.input.departureLocation),
+        candidate.input.departureAt.slice(0, 10),
+      ].join(":");
+    }
     if (confirmationNumber) {
       return [
         candidate.kind,
@@ -171,6 +182,30 @@ function Fact({ label, value }: { label: string; value: string }) {
 
 function CandidateSummary({ candidate }: { candidate: GmailImportCandidate }) {
   if (candidate.kind === "travel") {
+    if (candidate.input.kind === "rental") {
+      return (
+        <div className="min-w-0">
+          <p className="break-words text-base font-semibold leading-6 [overflow-wrap:anywhere]">
+            {[candidate.input.carrier ?? "Rental car", candidate.input.vehicleDescription]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+          <dl className="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Fact
+              label="Pick up"
+              value={`${candidate.input.departureLocation} · ${formatLocalDateTime(candidate.input.departureAt)}`}
+            />
+            <Fact
+              label="Return"
+              value={`${candidate.input.arrivalLocation} · ${formatLocalDateTime(candidate.input.arrivalAt ?? candidate.input.departureAt)}`}
+            />
+            {candidate.input.confirmationNumber ? (
+              <Fact label="Confirmation" value={candidate.input.confirmationNumber} />
+            ) : null}
+          </dl>
+        </div>
+      );
+    }
     return (
       <div className="min-w-0">
         <p className="break-words text-base font-semibold leading-6 [overflow-wrap:anywhere]">
@@ -521,7 +556,8 @@ function GmailImportDialog({ trip }: { trip: Trip }) {
                   <CardContent className="py-10 text-center">
                     <p className="font-medium">No new supported bookings found</p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Voyage currently recognizes flights and lodging that match this trip.
+                      Voyage currently recognizes flights, rental cars, and lodging that match this
+                      trip.
                     </p>
                   </CardContent>
                 </Card>
@@ -529,8 +565,9 @@ function GmailImportDialog({ trip }: { trip: Trip }) {
                 candidateGroups.map((group) => {
                   const candidate = group.representative;
                   const included = group.candidates.some((match) => selected.has(match.source.key));
-                  const Icon = candidate.kind === "travel" ? Plane : BedDouble;
-                  const KindIcon = candidate.kind === "travel" ? Plane : MapPin;
+                  const rental = candidate.kind === "travel" && candidate.input.kind === "rental";
+                  const Icon = rental ? CarFront : candidate.kind === "travel" ? Plane : BedDouble;
+                  const KindIcon = rental ? CarFront : candidate.kind === "travel" ? Plane : MapPin;
                   return (
                     <Card
                       key={group.key}
@@ -567,7 +604,11 @@ function GmailImportDialog({ trip }: { trip: Trip }) {
                             <div className="mb-2 flex flex-wrap items-center gap-2">
                               <span className="inline-flex items-center gap-1 rounded-full border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">
                                 <KindIcon className="size-3" />
-                                {candidate.kind === "travel" ? "Flight" : "Stay"}
+                                {rental
+                                  ? "Rental car"
+                                  : candidate.kind === "travel"
+                                    ? "Flight"
+                                    : "Stay"}
                               </span>
                               <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
                                 <CircleCheck className="size-3.5" />
@@ -578,6 +619,12 @@ function GmailImportDialog({ trip }: { trip: Trip }) {
                               {candidate.eventType === "schedule_change" ? (
                                 <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
                                   <History className="size-3" /> Schedule updated{" "}
+                                  {formatDateOnly(candidate.source.receivedAt.slice(0, 10))}
+                                </span>
+                              ) : null}
+                              {candidate.eventType === "modification" ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
+                                  <History className="size-3" /> Reservation updated{" "}
                                   {formatDateOnly(candidate.source.receivedAt.slice(0, 10))}
                                 </span>
                               ) : null}
@@ -660,8 +707,9 @@ function GmailImportDialog({ trip }: { trip: Trip }) {
                   <div>
                     <p className="font-medium">Ready to find bookings</p>
                     <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                      Voyage ranks likely flight and lodging confirmations, then searches for
-                      updates and missing connections without opening every matching email.
+                      Voyage ranks likely flight, rental car, and lodging confirmations, then
+                      searches for updates and missing connections without opening every matching
+                      email.
                     </p>
                     {scan.isPending ? (
                       <p className="mt-3 text-sm font-medium text-foreground">

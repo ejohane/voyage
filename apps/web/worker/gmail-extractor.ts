@@ -151,6 +151,28 @@ function placeLabel(value: unknown) {
   return code && name && !name.includes(code) ? `${code} · ${name}` : code || name;
 }
 
+function rentalPlaceLabel(value: unknown) {
+  const place = firstRecord(value);
+  const name = text(place.name);
+  const address = postalAddress(place.address);
+  if (name && address && !name.toLocaleLowerCase().includes(address.toLocaleLowerCase())) {
+    return `${name} · ${address}`;
+  }
+  return name || address;
+}
+
+function rentalVehicleDescription(value: unknown) {
+  const vehicle = firstRecord(value);
+  const brand = text(firstRecord(vehicle.brand).name);
+  const model = text(vehicle.model);
+  const name = text(vehicle.name);
+  const description = text(vehicle.description);
+  const values = [name, [brand, model].filter(Boolean).join(" "), description].filter(Boolean);
+  return [...new Map(values.map((item) => [item.toLocaleLowerCase(), item])).values()]
+    .join(" · ")
+    .slice(0, 200);
+}
+
 function postalAddress(value: unknown) {
   if (typeof value === "string") return value.trim();
   const address = firstRecord(value);
@@ -179,6 +201,77 @@ function structuredNodes(html: string) {
   return nodes;
 }
 
+function microdataValues(html: string, property: string) {
+  const values: string[] = [];
+  for (const match of html.matchAll(/<[a-z][a-z0-9-]*\b([^>]*)>/gi)) {
+    const attributes = match[1];
+    const itemprop = attributes.match(/\bitemprop=["']([^"']+)["']/i)?.[1] ?? "";
+    if (!itemprop.split(/\s+/).includes(property)) continue;
+    const value =
+      attributes.match(/\bcontent=["']([^"']*)["']/i)?.[1] ??
+      attributes.match(/\bhref=["']([^"']*)["']/i)?.[1] ??
+      attributes.match(/\bdatetime=["']([^"']*)["']/i)?.[1];
+    if (value) values.push(decodeHtmlEntities(value).trim());
+  }
+  return values;
+}
+
+function microdataSection(html: string, property: string, until?: string) {
+  const start = html.search(new RegExp(`\\bitemprop=["'][^"']*\\b${property}\\b[^"']*["']`, "i"));
+  if (start < 0) return "";
+  if (!until) return html.slice(start);
+  const remainder = html.slice(start + 1);
+  const end = remainder.search(new RegExp(`\\bitemprop=["'][^"']*\\b${until}\\b[^"']*["']`, "i"));
+  return end < 0 ? html.slice(start) : html.slice(start, start + 1 + end);
+}
+
+function microdataRentalNodes(html: string): Record<string, unknown>[] {
+  if (!/itemtype=["'][^"']*RentalCarReservation["']/i.test(html)) return [];
+  const vehicleSection = microdataSection(html, "reservationFor", "pickupLocation");
+  const pickupSection = microdataSection(html, "pickupLocation", "pickupTime");
+  const returnSection = microdataSection(html, "dropoffLocation", "dropoffTime");
+  const vehicleNames = microdataValues(vehicleSection, "name");
+  const pickupNames = microdataValues(pickupSection, "name");
+  const returnNames = microdataValues(returnSection, "name");
+  const address = (section: string) => ({
+    "@type": "PostalAddress",
+    streetAddress: microdataValues(section, "streetAddress")[0],
+    addressLocality: microdataValues(section, "addressLocality")[0],
+    addressRegion: microdataValues(section, "addressRegion")[0],
+    postalCode: microdataValues(section, "postalCode")[0],
+    addressCountry: microdataValues(section, "addressCountry")[0],
+  });
+  return [
+    {
+      "@type": "RentalCarReservation",
+      reservationNumber: microdataValues(html, "reservationNumber")[0],
+      reservationStatus: microdataValues(html, "reservationStatus")[0],
+      url: microdataValues(html, "url")[0],
+      modifyReservationUrl: microdataValues(html, "modifyReservationUrl")[0],
+      pickupTime: microdataValues(html, "pickupTime")[0],
+      dropoffTime: microdataValues(html, "dropoffTime")[0],
+      pickupLocation: {
+        "@type": "Place",
+        name: pickupNames[0],
+        address: address(pickupSection),
+      },
+      dropoffLocation: {
+        "@type": "Place",
+        name: returnNames[0],
+        address: address(returnSection),
+      },
+      reservationFor: {
+        "@type": "RentalCar",
+        name: vehicleNames[0],
+        model: microdataValues(vehicleSection, "model")[0],
+        description: microdataValues(vehicleSection, "description")[0],
+        brand: { "@type": "Brand", name: vehicleNames[1] },
+        rentalCompany: { "@type": "Organization", name: vehicleNames.at(-1) },
+      },
+    },
+  ];
+}
+
 function linksFromHtml(html: string) {
   return [...html.matchAll(/href=["'](https?:\/\/[^"']+)["']/gi)]
     .map((match) => decodeHtmlEntities(match[1]))
@@ -189,6 +282,11 @@ function bookingLink(links: string[], preferred?: unknown) {
   const explicit = text(preferred);
   if (explicit.startsWith("http")) return explicit;
   return (
+    links.find((url) =>
+      /(?:cars\.booking\.com\/my-booking|rentalcars\.com\/(?:[^?#]+\/)?(?:manage|booking|reservation))/i.test(
+        url,
+      ),
+    ) ??
     links.find(
       (url) =>
         /confirmation|manage|modify|reservation|itinerary|check.?in/i.test(url) &&
@@ -245,7 +343,7 @@ function confirmationNumber(value: string) {
   if (urlValue) return urlValue.toUpperCase();
 
   for (const match of value.matchAll(
-    /(?:confirmation|record locator|booking(?:\s+(?:reference|number|no\.?))|reservation code|confirmation code|PNR)(?:\s+(?:number|no\.?))?\s*[:#-]?\s*([A-Z0-9]{5,14})/gi,
+    /(?:confirmation|record locator|booking(?:\s+(?:reference|number|no\.?))|reservation(?:\s+(?:code|reference|number|no\.?|id))|confirmation code|PNR)(?:\s+(?:number|no\.?))?\s*[:#-]?\s*([A-Z0-9]{5,14})/gi,
   )) {
     const candidate = match[1].toUpperCase();
     if (candidate !== "HTTP" && candidate !== "HTTPS") return candidate;
@@ -282,6 +380,123 @@ function namedDateTimes(value: string, fallbackYear?: string) {
     );
   }
   return found;
+}
+
+function dayMonthDateTimes(value: string, fallbackYear?: string) {
+  const found: string[] = [];
+  const pattern = new RegExp(
+    `\\b(\\d{1,2})(?:st|nd|rd|th)?[ \\t]+(${Object.keys(monthNumbers).join("|")})(?:,?[ \\t]+(\\d{4}))?(?:[^\\d\\n]{0,20})(\\d{1,2})[:.](\\d{2})\\s*(am|pm)?`,
+    "gi",
+  );
+  for (const match of value.matchAll(pattern)) {
+    const year = match[3] ?? fallbackYear;
+    if (!year) continue;
+    found.push(
+      `${year}-${monthNumbers[match[2].toLowerCase()]}-${match[1].padStart(2, "0")}T${normalizedTime(match[4], match[5], match[6])}`,
+    );
+  }
+  return found;
+}
+
+function numericDateTimes(value: string) {
+  const found: string[] = [];
+  for (const match of value.matchAll(
+    /\b(\d{1,2})[/.](\d{1,2})[/.](20\d{2})(?:[^\d\n]{0,20})(\d{1,2})[:.](\d{2})\s*(am|pm)?/gi,
+  )) {
+    found.push(
+      `${match[3]}-${match[2].padStart(2, "0")}-${match[1].padStart(2, "0")}T${normalizedTime(match[4], match[5], match[6])}`,
+    );
+  }
+  return found;
+}
+
+function allDateTimes(value: string, fallbackYear?: string) {
+  return [
+    ...namedDateTimes(value, fallbackYear),
+    ...dayMonthDateTimes(value, fallbackYear),
+    ...numericDateTimes(value),
+  ];
+}
+
+function labeledSection(value: string, labels: RegExp) {
+  const lines = value
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const index = lines.findIndex((line) => labels.test(line));
+  if (index < 0) return "";
+  const sameLine = lines[index]
+    .replace(labels, "")
+    .replace(/^\s*[:\-–—]\s*/, "")
+    .trim();
+  return [sameLine, ...lines.slice(index + 1, index + 6)].filter(Boolean).join("\n");
+}
+
+function firstLocationLine(section: string) {
+  return (
+    section
+      .split("\n")
+      .map((line) => line.trim())
+      .find(
+        (line) =>
+          /[A-Za-zÀ-ž]{2}/.test(line) &&
+          !allDateTimes(line).length &&
+          !/\b(?:mon|tue|wed|thu|fri|sat|sun)(?:day)?\b/i.test(line) &&
+          !/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/i.test(line) &&
+          !/^(?:date|time|telephone|phone|hours?)\b/i.test(line) &&
+          !/^(?:pick[ -]?up|drop[ -]?off|return)(?:\s*\/\s*(?:pick[ -]?up|drop[ -]?off|return))?(?:\s+(?:location|date|time|details?))?\s*:?$/i.test(
+            line,
+          ),
+      ) ?? ""
+  );
+}
+
+function cleanVehicleDescription(value: string) {
+  const cleaned = value
+    .replace(/^\s*(?:vehicle|car|vehicle\s+class|car\s+class|car\s+category)\s*[:\-–—]?\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (
+    !cleaned ||
+    /^(?:hire charge|car hire charge|car confirmation|rental charge|payment|price|total|\d+\s+days?)$/i.test(
+      cleaned,
+    )
+  ) {
+    return "";
+  }
+  return cleaned.length <= 120 ? cleaned : "";
+}
+
+function bookingRentalVehicle(visibleText: string) {
+  const lineMatch = visibleText.match(
+    /(?:^|\n)\s*(?:vehicle\s*:?\s*)?([^\n]{2,70}?\bor similar)\b(?:\s+(Automatic|Manual)(?:\s+(gearbox|transmission))?)?/im,
+  );
+  const compactMatch = visibleText.match(
+    /\b((?:[A-Z0-9][A-Za-zÀ-ž0-9.'+-]*\s+){1,4}or similar)\s+(Automatic|Manual)(?:\s+(gearbox|transmission))?/,
+  );
+  const match = lineMatch ?? compactMatch;
+  if (!match) return "";
+
+  const model = cleanVehicleDescription(match[1]).replace(/^(?:your|a|the)\s+/i, "");
+  if (!model) return "";
+  const transmission = match[2]
+    ? `${match[2][0].toUpperCase()}${match[2].slice(1).toLowerCase()} ${match[3]?.toLowerCase() ?? "transmission"}`
+    : "";
+  return [model, transmission].filter(Boolean).join(" · ");
+}
+
+function rentalEventType(subject: string, visibleText: string, reservationStatus?: unknown) {
+  const status = text(reservationStatus);
+  if (/cancel(?:led|ed|ation)/i.test(`${status}\n${subject}`)) return "cancellation" as const;
+  if (/\b(?:modified|updated|changed|amended)\b/i.test(subject)) return "modification" as const;
+  if (
+    /\b(?:reservation|booking)\s+(?:has been|was)\s+(?:modified|updated|changed)\b/i.test(
+      visibleText,
+    )
+  ) {
+    return "modification" as const;
+  }
+  return "confirmation" as const;
 }
 
 function namedDates(value: string, fallbackYear?: string) {
@@ -476,6 +691,7 @@ function extractChaseTravel(
     const carrier =
       block.match(/([A-Za-z][A-Za-z ]{2,80}(?:Airlines?|Airways?))/i)?.[1] ?? "Chase Travel";
     const input = createTravelInputSchema.safeParse({
+      kind: "journey",
       type: "flight",
       status: "booked",
       departureStopId: null,
@@ -492,6 +708,7 @@ function extractChaseTravel(
       arrivalAt: `${nextDay ? shiftedDate(date, 1) : date}T${arrivalTime}`,
       carrier: carrier.trim(),
       referenceNumber: references.length ? references.join(" · ") : null,
+      vehicleDescription: null,
       confirmationNumber: confirmation,
       bookingUrl: bookingLink(links),
       notes: null,
@@ -533,6 +750,7 @@ function extractBookingDotComFlight(
   );
   if (!route || !confirmation || dateTimes.length < 2) return [];
   const input = createTravelInputSchema.safeParse({
+    kind: "journey",
     type: "flight",
     status: "booked",
     departureStopId: null,
@@ -543,6 +761,7 @@ function extractBookingDotComFlight(
     arrivalAt: dateTimes[1],
     carrier: flight?.[1]?.trim() ?? "Booking.com Flights",
     referenceNumber: flight?.[2]?.replace(/\s+/g, "") ?? null,
+    vehicleDescription: null,
     confirmationNumber: confirmation,
     bookingUrl: bookingLink(links),
     notes: null,
@@ -587,6 +806,7 @@ function extractFlightScheduleChange(
   const flightNumber = currentText.match(/\b([A-Z][A-Z0-9]\s?\d{1,4})\b/)?.[1];
   if (!date || times.length < 2 || !departure || !arrival) return [];
   const input = createTravelInputSchema.safeParse({
+    kind: "journey",
     type: "flight",
     status: "booked",
     departureStopId: null,
@@ -597,6 +817,7 @@ function extractFlightScheduleChange(
     arrivalAt: `${date}T${times[1]}`,
     carrier: /\bVolotea\b/i.test(currentText) ? "Volotea" : senderName(sender),
     referenceNumber: flightNumber?.replace(/\s+/g, "") ?? null,
+    vehicleDescription: null,
     confirmationNumber: confirmation,
     bookingUrl: bookingLink(links),
     notes: null,
@@ -713,10 +934,11 @@ function extractStructured(
 ) {
   const candidates: GmailImportCandidate[] = [];
   let index = 0;
-  for (const node of structuredNodes(html)) {
+  for (const node of [...structuredNodes(html), ...microdataRentalNodes(html)]) {
     if (typeMatches(node["@type"], "FlightReservation")) {
       const flight = firstRecord(node.reservationFor);
       const input = createTravelInputSchema.safeParse({
+        kind: "journey",
         type: "flight",
         status: "booked",
         departureStopId: null,
@@ -727,6 +949,7 @@ function extractStructured(
         arrivalAt: localDateTime(flight.arrivalTime),
         carrier: text(firstRecord(flight.airline).name) || null,
         referenceNumber: text(flight.flightNumber) || null,
+        vehicleDescription: null,
         confirmationNumber: text(node.reservationNumber) || null,
         bookingUrl: bookingLink(links, node.url ?? node.modifyReservationUrl),
         notes: null,
@@ -737,6 +960,44 @@ function extractStructured(
           confidence: "high",
           eventType: "confirmation",
           source: sourceFor(message, subject, sender, `travel:${index++}`, accountEmail),
+          input: input.data,
+        });
+      }
+    }
+
+    if (typeMatches(node["@type"], "RentalCarReservation")) {
+      const vehicle = firstRecord(node.reservationFor);
+      const pickupAt = localDateTime(node.pickupTime);
+      const returnAt = localDateTime(node.dropoffTime);
+      const pickupLocation = rentalPlaceLabel(node.pickupLocation);
+      const returnLocation = rentalPlaceLabel(node.dropoffLocation);
+      const provider =
+        text(firstRecord(vehicle.rentalCompany).name) ||
+        text(firstRecord(node.provider).name) ||
+        senderName(sender);
+      const input = createTravelInputSchema.safeParse({
+        kind: "rental",
+        type: "car",
+        status: "booked",
+        departureStopId: stayStopId(trip, pickupLocation, pickupAt?.slice(0, 10) ?? null),
+        arrivalStopId: stayStopId(trip, returnLocation, returnAt?.slice(0, 10) ?? null),
+        departureLocation: pickupLocation,
+        arrivalLocation: returnLocation,
+        departureAt: pickupAt,
+        arrivalAt: returnAt,
+        carrier: provider || null,
+        referenceNumber: null,
+        vehicleDescription: rentalVehicleDescription(vehicle) || null,
+        confirmationNumber: text(node.reservationNumber ?? node.reservationId) || null,
+        bookingUrl: bookingLink(links, node.url ?? node.modifyReservationUrl),
+        notes: null,
+      });
+      if (input.success) {
+        candidates.push({
+          kind: "travel",
+          confidence: "high",
+          eventType: rentalEventType(subject, visibleText, node.reservationStatus),
+          source: sourceFor(message, subject, sender, `rental:${index++}`, accountEmail),
           input: input.data,
         });
       }
@@ -777,6 +1038,85 @@ function extractStructured(
   return candidates;
 }
 
+function extractHeuristicRental(
+  message: GmailMessage,
+  trip: Trip,
+  subject: string,
+  sender: string,
+  visibleText: string,
+  links: string[],
+  accountEmail?: string,
+) {
+  const combined = `${subject}\n${visibleText}`;
+  if (
+    !/\b(?:car|vehicle|auto)\s+(?:rental|hire)\b|\b(?:rental|hire)\s+car\b|\brent-a-car\b/i.test(
+      combined,
+    ) ||
+    looksPromotional(subject, sender)
+  ) {
+    return [];
+  }
+
+  const pickup = labeledSection(
+    visibleText,
+    /^(?:pick[ -]?up|collect(?:ion)?)(?:\s+(?:location|date|time|details?))?\b/i,
+  );
+  const dropoff = labeledSection(
+    visibleText,
+    /^(?:drop[ -]?off|return)(?:\s+(?:location|date|time|details?))?\b/i,
+  );
+  if (!pickup || !dropoff) return [];
+
+  const fallbackYear =
+    trip.startDate?.slice(0, 4) ??
+    (message.internalDate
+      ? new Date(Number(message.internalDate)).getUTCFullYear().toString()
+      : undefined);
+  const pickupAt = allDateTimes(pickup, fallbackYear)[0];
+  const returnAt = allDateTimes(dropoff, fallbackYear)[0];
+  const pickupLocation = firstLocationLine(pickup);
+  const returnLocation = firstLocationLine(dropoff);
+  const companySection = labeledSection(
+    visibleText,
+    /^(?:rental\s+company|supplier|provider|company)\b/i,
+  );
+  const vehicleSection = labeledSection(
+    visibleText,
+    /^(?:vehicle|car|vehicle\s+class|car\s+class|car\s+category)\b/i,
+  );
+  const provider = firstLocationLine(companySection) || senderName(sender);
+  const vehicleDescription =
+    (isBookingDotCom(subject, sender) ? bookingRentalVehicle(visibleText) : "") ||
+    cleanVehicleDescription(firstLocationLine(vehicleSection));
+  const input = createTravelInputSchema.safeParse({
+    kind: "rental",
+    type: "car",
+    status: "booked",
+    departureStopId: stayStopId(trip, pickupLocation, pickupAt?.slice(0, 10) ?? null),
+    arrivalStopId: stayStopId(trip, returnLocation, returnAt?.slice(0, 10) ?? null),
+    departureLocation: pickupLocation,
+    arrivalLocation: returnLocation,
+    departureAt: pickupAt ?? "",
+    arrivalAt: returnAt ?? null,
+    carrier: provider || null,
+    referenceNumber: null,
+    vehicleDescription: vehicleDescription || null,
+    confirmationNumber: confirmationNumber(combined),
+    bookingUrl: bookingLink(links),
+    notes: null,
+  });
+  if (!input.success) return [];
+  return [
+    {
+      kind: "travel" as const,
+      confidence: input.data.confirmationNumber ? ("high" as const) : ("medium" as const),
+      eventType: rentalEventType(subject, visibleText),
+      source: sourceFor(message, subject, sender, "rental:heuristic", accountEmail),
+      input: input.data,
+    },
+  ];
+}
+
 function extractHeuristic(
   message: GmailMessage,
   trip: Trip,
@@ -795,6 +1135,17 @@ function extractHeuristic(
   const candidates: GmailImportCandidate[] = [];
   const confirmation = confirmationNumber(combined);
   if (looksPromotional(subject, sender)) return candidates;
+
+  const rental = extractHeuristicRental(
+    message,
+    trip,
+    subject,
+    sender,
+    visibleText,
+    links,
+    accountEmail,
+  );
+  if (rental.length) return rental;
 
   if (confirmation && /\b(flight|airlines?|airways?|departure|boarding)\b/i.test(combined)) {
     const codes = airportCodes(combined);
@@ -818,6 +1169,7 @@ function extractHeuristic(
       ?.slice(1)
       .join(" ");
     const input = createTravelInputSchema.safeParse({
+      kind: "journey",
       type: "flight",
       status: "booked",
       departureStopId: null,
@@ -828,6 +1180,7 @@ function extractHeuristic(
       arrivalAt: dateTimes[1] ?? null,
       carrier: senderName(sender) || null,
       referenceNumber: itineraryFlightNumber(combined) ?? flightNumber ?? null,
+      vehicleDescription: null,
       confirmationNumber: confirmation,
       bookingUrl: bookingLink(links),
       notes: null,

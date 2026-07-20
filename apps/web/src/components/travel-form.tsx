@@ -1,6 +1,7 @@
 import {
   type CreateTravelInput,
   createTravelInputSchema,
+  type TransportationKind,
   type Travel,
   type TravelType,
   type TripStop,
@@ -31,6 +32,7 @@ type TravelFormProps = {
 };
 
 type TravelFormValues = {
+  kind: TransportationKind;
   type: TravelType;
   status: "planning" | "booked";
   departureStopId: string;
@@ -43,6 +45,7 @@ type TravelFormValues = {
   arrivalTime: string;
   carrier: string;
   referenceNumber: string;
+  vehicleDescription: string;
   confirmationNumber: string;
   bookingUrl: string;
   notes: string;
@@ -59,6 +62,7 @@ function initialValues(initialTravel?: Travel): TravelFormValues {
   const arrival = splitLocalDateTime(initialTravel?.arrivalAt);
 
   return {
+    kind: initialTravel?.kind ?? "journey",
     type: initialTravel?.type ?? "flight",
     status: initialTravel?.status ?? "planning",
     departureStopId: initialTravel?.departureStopId ?? "",
@@ -71,6 +75,7 @@ function initialValues(initialTravel?: Travel): TravelFormValues {
     arrivalTime: arrival.time,
     carrier: initialTravel?.carrier ?? "",
     referenceNumber: initialTravel?.referenceNumber ?? "",
+    vehicleDescription: initialTravel?.vehicleDescription ?? "",
     confirmationNumber: initialTravel?.confirmationNumber ?? "",
     bookingUrl: initialTravel?.bookingUrl ?? "",
     notes: initialTravel?.notes ?? "",
@@ -110,6 +115,7 @@ function TravelForm({ initialTravel, onCancel, onSubmit, stops, submitLabel }: T
     }
 
     const parsed = createTravelInputSchema.safeParse({
+      kind: values.kind,
       type: values.type,
       status: values.status,
       departureStopId: values.departureStopId || null,
@@ -126,6 +132,7 @@ function TravelForm({ initialTravel, onCancel, onSubmit, stops, submitLabel }: T
           : null,
       carrier: values.carrier || null,
       referenceNumber: values.referenceNumber || null,
+      vehicleDescription: values.vehicleDescription || null,
       confirmationNumber: values.confirmationNumber || null,
       bookingUrl: values.bookingUrl || null,
       notes: values.notes || null,
@@ -158,24 +165,37 @@ function TravelForm({ initialTravel, onCancel, onSubmit, stops, submitLabel }: T
     }
   }
 
+  const isRental = values.kind === "rental";
+  const transportationType = `${values.kind}:${values.type}`;
+
+  function setTransportationType(value: string) {
+    const [kind, type] = value.split(":") as [TransportationKind, TravelType];
+    setValues((current) => ({
+      ...current,
+      kind,
+      type,
+      referenceNumber: kind === "rental" ? "" : current.referenceNumber,
+      vehicleDescription: kind === "journey" ? "" : current.vehicleDescription,
+    }));
+    setFieldErrors((current) => ({ ...current, kind: [], type: [], arrivalAt: [] }));
+  }
+
   return (
     <form className="grid gap-5" onSubmit={handleSubmit}>
       <div className="grid gap-4 sm:grid-cols-2">
-        <FormField id="travel-type" label="Travel type">
-          <Select
-            value={values.type}
-            onValueChange={(value) => setValue("type", value as TravelType)}
-          >
+        <FormField id="travel-type" label="Transportation type">
+          <Select value={transportationType} onValueChange={setTransportationType}>
             <SelectTrigger id="travel-type">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="flight">Flight</SelectItem>
-              <SelectItem value="train">Train</SelectItem>
-              <SelectItem value="bus">Bus</SelectItem>
-              <SelectItem value="drive">Drive</SelectItem>
-              <SelectItem value="ferry">Ferry</SelectItem>
-              <SelectItem value="other">Other</SelectItem>
+              <SelectItem value="journey:flight">Flight</SelectItem>
+              <SelectItem value="journey:train">Train</SelectItem>
+              <SelectItem value="journey:bus">Bus</SelectItem>
+              <SelectItem value="journey:ferry">Ferry</SelectItem>
+              <SelectItem value="journey:drive">Drive or transfer</SelectItem>
+              <SelectItem value="rental:car">Rental car</SelectItem>
+              <SelectItem value="journey:other">Other journey</SelectItem>
             </SelectContent>
           </Select>
         </FormField>
@@ -198,7 +218,7 @@ function TravelForm({ initialTravel, onCancel, onSubmit, stops, submitLabel }: T
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField
           id="departure-stop"
-          label="Leaving destination (optional)"
+          label={`${isRental ? "Pickup" : "Leaving"} destination (optional)`}
           error={fieldErrors.departureStopId?.[0]}
         >
           <Select
@@ -220,7 +240,7 @@ function TravelForm({ initialTravel, onCancel, onSubmit, stops, submitLabel }: T
         </FormField>
         <FormField
           id="arrival-stop"
-          label="Arriving destination (optional)"
+          label={`${isRental ? "Return" : "Arriving"} destination (optional)`}
           error={fieldErrors.arrivalStopId?.[0]}
         >
           <Select
@@ -245,24 +265,24 @@ function TravelForm({ initialTravel, onCancel, onSubmit, stops, submitLabel }: T
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField
           id="departure-location"
-          label="Leaving from"
+          label={isRental ? "Pickup location" : "Leaving from"}
           error={fieldErrors.departureLocation?.[0]}
         >
           <Input
             id="departure-location"
-            placeholder="ORD · Chicago"
+            placeholder={isRental ? "Bari Airport rental center" : "ORD · Chicago"}
             value={values.departureLocation}
             onChange={(event) => setValue("departureLocation", event.target.value)}
           />
         </FormField>
         <FormField
           id="arrival-location"
-          label="Arriving at"
+          label={isRental ? "Return location" : "Arriving at"}
           error={fieldErrors.arrivalLocation?.[0]}
         >
           <Input
             id="arrival-location"
-            placeholder="LIS · Lisbon"
+            placeholder={isRental ? "Olbia Airport rental return" : "LIS · Lisbon"}
             value={values.arrivalLocation}
             onChange={(event) => setValue("arrivalLocation", event.target.value)}
           />
@@ -270,7 +290,7 @@ function TravelForm({ initialTravel, onCancel, onSubmit, stops, submitLabel }: T
       </div>
 
       <DateTimeFields
-        label="Departure"
+        label={isRental ? "Pickup" : "Departure"}
         prefix="departure"
         date={values.departureDate}
         time={values.departureTime}
@@ -279,33 +299,48 @@ function TravelForm({ initialTravel, onCancel, onSubmit, stops, submitLabel }: T
         onTimeChange={(value) => setValue("departureTime", value)}
       />
       <DateTimeFields
-        label="Arrival"
+        label={isRental ? "Return" : "Arrival"}
         prefix="arrival"
         date={values.arrivalDate}
         time={values.arrivalTime}
         error={fieldErrors.arrivalAt?.[0]}
-        optional
+        optional={!isRental}
         onDateChange={(value) => setValue("arrivalDate", value)}
         onTimeChange={(value) => setValue("arrivalTime", value)}
       />
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <FormField id="travel-carrier" label="Carrier">
+        <FormField id="travel-carrier" label={isRental ? "Rental company" : "Carrier"}>
           <Input
             id="travel-carrier"
-            placeholder="United Airlines"
+            placeholder={isRental ? "Hertz" : "United Airlines"}
             value={values.carrier}
             onChange={(event) => setValue("carrier", event.target.value)}
           />
         </FormField>
-        <FormField id="travel-reference" label="Flight, train, or route number">
-          <Input
-            id="travel-reference"
-            placeholder="UA 942"
-            value={values.referenceNumber}
-            onChange={(event) => setValue("referenceNumber", event.target.value)}
-          />
-        </FormField>
+        {isRental ? (
+          <FormField
+            id="travel-vehicle"
+            label="Vehicle or class"
+            error={fieldErrors.vehicleDescription?.[0]}
+          >
+            <Input
+              id="travel-vehicle"
+              placeholder="Compact SUV · automatic"
+              value={values.vehicleDescription}
+              onChange={(event) => setValue("vehicleDescription", event.target.value)}
+            />
+          </FormField>
+        ) : (
+          <FormField id="travel-reference" label="Flight, train, or route number">
+            <Input
+              id="travel-reference"
+              placeholder="UA 942"
+              value={values.referenceNumber}
+              onChange={(event) => setValue("referenceNumber", event.target.value)}
+            />
+          </FormField>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -335,7 +370,11 @@ function TravelForm({ initialTravel, onCancel, onSubmit, stops, submitLabel }: T
       <FormField id="travel-notes" label="Notes" error={fieldErrors.notes?.[0]}>
         <Textarea
           id="travel-notes"
-          placeholder="Terminal details, baggage notes, or pickup instructions"
+          placeholder={
+            isRental
+              ? "Pickup instructions, counter details, or fuel policy"
+              : "Terminal details, baggage notes, or transfer instructions"
+          }
           value={values.notes}
           onChange={(event) => setValue("notes", event.target.value)}
         />
@@ -348,7 +387,9 @@ function TravelForm({ initialTravel, onCancel, onSubmit, stops, submitLabel }: T
         </Button>
         <Button type="submit" disabled={isPending}>
           {isPending ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : null}
-          {isPending ? "Saving…" : (submitLabel ?? (initialTravel ? "Save changes" : "Add travel"))}
+          {isPending
+            ? "Saving…"
+            : (submitLabel ?? (initialTravel ? "Save changes" : "Add transportation"))}
         </Button>
       </DialogFooter>
     </form>

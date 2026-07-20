@@ -2,7 +2,9 @@ import type { Stay, Travel, Trip, TripPlan, TripStop } from "@voyage/contracts";
 import { format, parse } from "date-fns";
 import {
   BedDouble,
+  BusFront,
   CalendarDays,
+  CarFront,
   ExternalLink,
   Landmark,
   Lightbulb,
@@ -11,8 +13,11 @@ import {
   Pencil,
   Plane,
   Plus,
+  Route,
+  Ship,
   Sparkles,
   Ticket,
+  TrainFront,
   Trash2,
   Utensils,
 } from "lucide-react";
@@ -49,6 +54,16 @@ const categoryIcons: Record<TripPlan["category"], ComponentType<{ className?: st
   other: MapPin,
 };
 
+const transportationIcons: Record<Travel["type"], ComponentType<{ className?: string }>> = {
+  flight: Plane,
+  train: TrainFront,
+  bus: BusFront,
+  drive: CarFront,
+  ferry: Ship,
+  car: CarFront,
+  other: Route,
+};
+
 function titleCase(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
@@ -80,11 +95,40 @@ function buildTimelineEntries(
     const arrivalDate = item.arrivalAt?.slice(0, 10);
     const arrivalTime = item.arrivalAt?.slice(11);
 
+    if (item.kind === "rental") {
+      const rentalTitle = [item.carrier ?? "Rental car", item.vehicleDescription]
+        .filter(Boolean)
+        .join(" · ");
+      entries.push({
+        id: `rental-pickup-${item.id}`,
+        date: departureDate,
+        time: departureTime,
+        icon: CarFront,
+        eyebrow: "Rental car pickup",
+        title: rentalTitle,
+        detail: item.departureLocation,
+        href: `/trips/${trip.id}/travel`,
+      });
+      if (arrivalDate && arrivalTime) {
+        entries.push({
+          id: `rental-return-${item.id}`,
+          date: arrivalDate,
+          time: arrivalTime,
+          icon: CarFront,
+          eyebrow: "Rental car return",
+          title: rentalTitle,
+          detail: item.arrivalLocation,
+          href: `/trips/${trip.id}/travel`,
+        });
+      }
+      continue;
+    }
+
     entries.push({
       id: `travel-departure-${item.id}`,
       date: departureDate,
       time: departureTime,
-      icon: Plane,
+      icon: transportationIcons[item.type],
       eyebrow: `${titleCase(item.type)} departure`,
       title: `${item.departureLocation} → ${item.arrivalLocation}`,
       detail: item.departureStopId ? stopNames.get(item.departureStopId) : undefined,
@@ -96,7 +140,7 @@ function buildTimelineEntries(
         id: `travel-arrival-${item.id}`,
         date: arrivalDate,
         time: arrivalTime,
-        icon: Plane,
+        icon: transportationIcons[item.type],
         eyebrow: `${titleCase(item.type)} arrival`,
         title: item.arrivalLocation,
         detail: item.arrivalStopId ? stopNames.get(item.arrivalStopId) : undefined,

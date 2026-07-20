@@ -58,9 +58,9 @@ function TravelDialog({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="max-h-[calc(100svh-2rem)] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{travel ? "Edit travel" : "Add travel"}</DialogTitle>
+          <DialogTitle>{travel ? "Edit transportation" : "Add transportation"}</DialogTitle>
           <DialogDescription>
-            Keep the route and booking details where every traveler can find them.
+            Add a journey or vehicle rental and keep its booking details with the trip.
           </DialogDescription>
         </DialogHeader>
         {open ? (

@@ -28,6 +28,26 @@ async function duplicateItem(
   candidate: GmailImportCandidate,
 ) {
   if (candidate.kind === "travel") {
+    if (candidate.input.kind === "rental") {
+      return database
+        .prepare(
+          `SELECT id FROM travel_segments
+           WHERE trip_id = ? AND kind = 'rental' AND (
+             (? IS NOT NULL AND confirmation_number = ?)
+             OR (departure_at = ? AND departure_location = ? AND COALESCE(carrier, '') = COALESCE(?, ''))
+           )
+           LIMIT 1`,
+        )
+        .bind(
+          tripId,
+          candidate.input.confirmationNumber,
+          candidate.input.confirmationNumber,
+          candidate.input.departureAt,
+          candidate.input.departureLocation,
+          candidate.input.carrier,
+        )
+        .first<{ id: string }>();
+    }
     return database
       .prepare(
         `SELECT id FROM travel_segments
@@ -130,15 +150,16 @@ export async function importGmailCandidate(
       database
         .prepare(
           `INSERT INTO travel_segments (
-            id, trip_id, type, status, departure_stop_id, arrival_stop_id,
+            id, trip_id, kind, type, status, departure_stop_id, arrival_stop_id,
             departure_location, arrival_location,
-            departure_at, arrival_at, carrier, reference_number, confirmation_number,
+            departure_at, arrival_at, carrier, reference_number, vehicle_description, confirmation_number,
             booking_url, notes, created_by_user_id, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           itemId,
           tripId,
+          candidate.input.kind,
           candidate.input.type,
           candidate.input.status,
           candidate.input.departureStopId,
@@ -149,6 +170,7 @@ export async function importGmailCandidate(
           candidate.input.arrivalAt,
           candidate.input.carrier,
           candidate.input.referenceNumber,
+          candidate.input.vehicleDescription,
           candidate.input.confirmationNumber,
           candidate.input.bookingUrl,
           candidate.input.notes,
