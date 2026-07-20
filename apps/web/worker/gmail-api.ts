@@ -21,6 +21,7 @@ export type GmailMessage = {
 type GmailMessageList = {
   messages?: { id: string; threadId: string }[];
   nextPageToken?: string;
+  resultSizeEstimate?: number;
 };
 
 type GmailAttachment = {
@@ -28,48 +29,28 @@ type GmailAttachment = {
 };
 
 const SEARCH_WINDOW_MONTHS = 3;
-const MESSAGE_READ_BUDGET = 200;
-const SEARCH_PAGE_SIZE = 5;
+const MESSAGE_READ_BUDGET = 100;
+const SEARCH_PAGE_SIZE = 25;
 
-const searchFamilies = [
-  [
-    "subject:itinerary",
-    'subject:"flight confirmation"',
-    'subject:"flight details"',
-    'subject:"e-ticket"',
-    '"record locator"',
-    '"airline confirmation"',
-  ],
-  [
-    "subject:hotel",
-    "subject:reservation",
-    'subject:"stay confirmed"',
-    'subject:"booking confirmed"',
-    '"check-in"',
-    '"check out"',
-  ],
-  [
-    'subject:"car rental"',
-    "subject:train",
-    "subject:rail",
-    "subject:ferry",
-    "subject:cruise",
-    '"rental confirmation"',
-  ],
-  [
-    '"confirmation number"',
-    '"booking reference"',
-    '"reservation code"',
-    '"confirmation code"',
-    "subject:itinerary",
-    "subject:booking",
-  ],
-] as const;
+export type GmailSearchQuery = {
+  id: string;
+  expression: string;
+  weight: number;
+  scope: "windowed" | "range";
+};
+
+export type GmailMessageMatch = {
+  id: string;
+  threadId: string;
+  score: number;
+  reasons: string[];
+  firstSeen: number;
+};
 
 type SearchWindow = { start: Date; end: Date };
 
-export type GmailSearchResult = {
-  messages: GmailMessage[];
+export type GmailDiscoveryResult = {
+  matches: GmailMessageMatch[];
   rangeStart: string;
   rangeEnd: string;
   windowsSearched: number;
@@ -77,11 +58,19 @@ export type GmailSearchResult = {
   limitReached: boolean;
 };
 
-type ListTripMessagesOptions = {
-  maximum?: number;
+export type GmailSearchResult = GmailDiscoveryResult & {
+  messages: GmailMessage[];
+};
+
+type GmailSearchOptions = {
   now?: Date;
   pageSize?: number;
   windowMonths?: number;
+};
+
+type ListTripMessagesOptions = GmailSearchOptions & {
+  maximum?: number;
+  queries?: GmailSearchQuery[];
 };
 
 function utcDate(value: string) {
@@ -141,11 +130,101 @@ export function gmailSearchWindows(
   return windows;
 }
 
-function travelSearchQuery(window: SearchWindow, terms: readonly string[]) {
+function normalizedSearchTerms(trip: Trip) {
+  const values = [trip.name, ...trip.stops.map((stop) => stop.name)];
+  const terms = new Set<string>();
+  for (const value of values) {
+    const cleaned = value
+      .replace(/[{}()]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (cleaned.length >= 4) terms.add(cleaned);
+    for (const token of cleaned.split(/[^A-Za-zÀ-ž0-9]+/)) {
+      if (token.length >= 4 && !/^(trip|travel|vacation)$/i.test(token)) terms.add(token);
+    }
+  }
+  return [...terms].slice(0, 8);
+}
+
+function quoted(value: string) {
+  return `"${value.replaceAll('"', "")}"`;
+}
+
+export function baseGmailSearchQueries(trip: Trip): GmailSearchQuery[] {
+  const queries: GmailSearchQuery[] = [
+    {
+      id: "flight-booking",
+      expression:
+        '{subject:flight subject:itinerary subject:"e-ticket" "record locator" "airline confirmation" "booking reference"}',
+      weight: 24,
+      scope: "windowed",
+    },
+    {
+      id: "stay-booking",
+      expression:
+        '{subject:hotel subject:reservation subject:"stay confirmed" subject:"booking confirmed" "check-in" "check out"}',
+      weight: 20,
+      scope: "windowed",
+    },
+    {
+      id: "booking-update",
+      expression:
+        '{subject:"time change" subject:"schedule change" subject:rescheduled subject:cancelled "flight time change" "booking no."}',
+      weight: 28,
+      scope: "windowed",
+    },
+    {
+      id: "provider-booking",
+      expression: "from:booking.com {subject:booking subject:reservation subject:flight}",
+      weight: 64,
+      scope: "windowed",
+    },
+    {
+      id: "provider-airbnb",
+      expression: 'from:airbnb.com {subject:reservation subject:"Reservation confirmed"}',
+      weight: 80,
+      scope: "windowed",
+    },
+    {
+      id: "provider-voi",
+      expression:
+        "{from:voihotels.com from:voihotels.it subject:VOIhotels} {subject:booking subject:reservation subject:confirmed}",
+      weight: 80,
+      scope: "windowed",
+    },
+    {
+      id: "provider-flight",
+      expression:
+        "{from:chasetravel.com from:flightsonbooking.gotogate.support} {subject:flight subject:schedule subject:trip}",
+      weight: 64,
+      scope: "windowed",
+    },
+    {
+      id: "generic-confirmation",
+      expression:
+        '{"confirmation number" "booking reference" "reservation code" "confirmation code" subject:booking subject:itinerary}',
+      weight: 12,
+      scope: "windowed",
+    },
+  ];
+
+  const context = normalizedSearchTerms(trip);
+  if (context.length) {
+    queries.push({
+      id: "trip-context",
+      expression: `{${context.map(quoted).join(" ")}} {subject:flight subject:booking subject:reservation subject:itinerary "booking reference"}`,
+      weight: 22,
+      scope: "windowed",
+    });
+  }
+  return queries;
+}
+
+function travelSearchQuery(window: SearchWindow, expression: string) {
   return [
     `after:${gmailDate(addUtcDays(window.start, -1))}`,
     `before:${gmailDate(window.end)}`,
-    `{${terms.join(" ")}}`,
+    expression,
     "-category:promotions",
   ].join(" ");
 }
@@ -153,6 +232,74 @@ function travelSearchQuery(window: SearchWindow, terms: readonly string[]) {
 async function gmailJson<T>(response: Response, action: string): Promise<T> {
   if (!response.ok) throw new Error(`Gmail ${action} failed with status ${response.status}.`);
   return response.json<T>();
+}
+
+export async function discoverTripMessageIds(
+  fetcher: Fetcher,
+  accessToken: string,
+  trip: Trip,
+  queries: GmailSearchQuery[],
+  options: GmailSearchOptions = {},
+): Promise<GmailDiscoveryResult> {
+  const windows = gmailSearchWindows(trip, options.now, options.windowMonths);
+  const range = {
+    start: windows[0]?.start ?? addUtcYears(startOfUtcDay(options.now ?? new Date()), -2),
+    end: windows.at(-1)?.end ?? addUtcDays(startOfUtcDay(options.now ?? new Date()), 1),
+  };
+  const matches = new Map<string, GmailMessageMatch>();
+  let queriesRun = 0;
+  let limitReached = false;
+  let firstSeen = 0;
+
+  for (const query of queries) {
+    const queryWindows = query.scope === "range" ? [range] : windows;
+    for (const window of queryWindows) {
+      const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+      listUrl.search = new URLSearchParams({
+        q: travelSearchQuery(window, query.expression),
+        maxResults: String(options.pageSize ?? SEARCH_PAGE_SIZE),
+      }).toString();
+      const list = await gmailJson<GmailMessageList>(
+        await fetcher(listUrl, { headers: { Authorization: `Bearer ${accessToken}` } }),
+        "message search",
+      );
+      queriesRun += 1;
+      if (list.nextPageToken || (list.resultSizeEstimate ?? 0) > (list.messages?.length ?? 0)) {
+        limitReached = true;
+      }
+
+      for (const message of list.messages ?? []) {
+        const existing = matches.get(message.id);
+        if (existing) {
+          if (!existing.reasons.includes(query.id)) {
+            existing.reasons.push(query.id);
+            existing.score += query.weight;
+          }
+        } else {
+          matches.set(message.id, {
+            ...message,
+            score: query.weight,
+            reasons: [query.id],
+            firstSeen: firstSeen++,
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    matches: [...matches.values()].sort(
+      (left, right) =>
+        right.score - left.score ||
+        right.reasons.length - left.reasons.length ||
+        left.firstSeen - right.firstSeen,
+    ),
+    rangeStart: isoDate(range.start),
+    rangeEnd: isoDate(range.end),
+    windowsSearched: windows.length,
+    queriesRun,
+    limitReached,
+  };
 }
 
 async function hydrateTextAttachments(
@@ -183,68 +330,15 @@ async function hydrateTextAttachments(
   );
 }
 
-export async function listTripMessages(
+export async function readGmailMessages(
   fetcher: Fetcher,
   accessToken: string,
-  trip: Pick<Trip, "startDate" | "endDate">,
-  options: ListTripMessagesOptions = {},
-): Promise<GmailSearchResult> {
-  const maximum = options.maximum ?? MESSAGE_READ_BUDGET;
-  const pageSize = options.pageSize ?? SEARCH_PAGE_SIZE;
-  const windows = gmailSearchWindows(trip, options.now, options.windowMonths);
-  const ids = new Map<string, { id: string; threadId: string }>();
-  let queriesRun = 0;
-  let limitReached = false;
-
-  for (const [windowIndex, window] of windows.entries()) {
-    const baseBudget = Math.floor(maximum / windows.length);
-    const windowBudget = baseBudget + (windowIndex < maximum % windows.length ? 1 : 0);
-    const windowIds = new Map<string, { id: string; threadId: string }>();
-    const states = searchFamilies.map((terms) => ({
-      terms,
-      nextPageToken: undefined as string | undefined,
-      firstPage: true,
-      complete: false,
-    }));
-
-    while (windowIds.size < windowBudget && states.some((state) => !state.complete)) {
-      for (const state of states) {
-        if (state.complete || windowIds.size >= windowBudget) continue;
-        const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-        const parameters = new URLSearchParams({
-          q: travelSearchQuery(window, state.terms),
-          maxResults: String(Math.min(pageSize, windowBudget - windowIds.size)),
-        });
-        if (!state.firstPage && state.nextPageToken) {
-          parameters.set("pageToken", state.nextPageToken);
-        }
-        listUrl.search = parameters.toString();
-        const list = await gmailJson<GmailMessageList>(
-          await fetcher(listUrl, { headers: { Authorization: `Bearer ${accessToken}` } }),
-          "message search",
-        );
-        queriesRun += 1;
-        state.firstPage = false;
-        state.nextPageToken = list.nextPageToken;
-        state.complete = !list.nextPageToken;
-        for (const message of list.messages ?? []) {
-          windowIds.set(message.id, message);
-          if (windowIds.size >= windowBudget) break;
-        }
-      }
-    }
-
-    if (windowIds.size >= windowBudget && states.some((state) => !state.complete)) {
-      limitReached = true;
-    }
-    for (const message of windowIds.values()) ids.set(message.id, message);
-  }
-
-  const messages: GmailMessage[] = [];
-  const selectedIds = [...ids.values()].slice(0, maximum);
-  for (let index = 0; index < selectedIds.length; index += 5) {
-    const batch = selectedIds.slice(index, index + 5);
-    messages.push(
+  messages: Pick<GmailMessageMatch, "id" | "threadId">[],
+) {
+  const hydrated: GmailMessage[] = [];
+  for (let index = 0; index < messages.length; index += 5) {
+    const batch = messages.slice(index, index + 5);
+    hydrated.push(
       ...(await Promise.all(
         batch.map(async ({ id }) => {
           const url = new URL(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}`);
@@ -259,17 +353,25 @@ export async function listTripMessages(
       )),
     );
   }
+  return hydrated;
+}
 
+export async function listTripMessages(
+  fetcher: Fetcher,
+  accessToken: string,
+  trip: Trip,
+  options: ListTripMessagesOptions = {},
+): Promise<GmailSearchResult> {
+  const discovery = await discoverTripMessageIds(
+    fetcher,
+    accessToken,
+    trip,
+    options.queries ?? baseGmailSearchQueries(trip),
+    options,
+  );
+  const selected = discovery.matches.slice(0, options.maximum ?? MESSAGE_READ_BUDGET);
   return {
-    messages,
-    rangeStart: isoDate(
-      windows[0]?.start ?? addUtcYears(startOfUtcDay(options.now ?? new Date()), -2),
-    ),
-    rangeEnd: isoDate(
-      windows.at(-1)?.end ?? addUtcDays(startOfUtcDay(options.now ?? new Date()), 1),
-    ),
-    windowsSearched: windows.length,
-    queriesRun,
-    limitReached,
+    ...discovery,
+    messages: await readGmailMessages(fetcher, accessToken, selected),
   };
 }

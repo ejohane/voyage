@@ -437,6 +437,7 @@ const gmailCandidateBaseSchema = z.object({
   source: gmailCandidateSourceSchema,
   sources: z.array(gmailCandidateSourceSchema).min(1).max(20).optional(),
   confidence: z.enum(["high", "medium"]),
+  eventType: z.enum(["confirmation", "schedule_change"]).optional(),
 });
 
 export const gmailTravelCandidateSchema = gmailCandidateBaseSchema.extend({
@@ -463,8 +464,19 @@ export const gmailScanResponseSchema = z.object({
     rangeEnd: dateOnlySchema,
     windowsSearched: z.number().int().positive(),
     queriesRun: z.number().int().nonnegative(),
+    followUpQueriesRun: z.number().int().nonnegative(),
+    messagesDiscovered: z.number().int().nonnegative(),
+    messagesFetched: z.number().int().nonnegative(),
+    messagesReused: z.number().int().nonnegative(),
+    gapsSearched: z.number().int().nonnegative(),
+    rejections: z.record(z.string(), z.number().int().nonnegative()),
     limitReached: z.boolean(),
+    stoppedReason: z.enum(["complete", "ranked_limit"]),
   }),
+});
+
+export const gmailScanInputSchema = z.object({
+  mode: z.enum(["standard", "deep"]).default("standard"),
 });
 
 export const gmailImportInputSchema = z.object({
@@ -542,6 +554,7 @@ export type GmailCandidateSource = z.infer<typeof gmailCandidateSourceSchema>;
 export type GmailTravelCandidate = z.infer<typeof gmailTravelCandidateSchema>;
 export type GmailStayCandidate = z.infer<typeof gmailStayCandidateSchema>;
 export type GmailImportCandidate = z.infer<typeof gmailImportCandidateSchema>;
+export type GmailScanInput = z.infer<typeof gmailScanInputSchema>;
 export type GmailScanResponse = z.infer<typeof gmailScanResponseSchema>;
 export type GmailImportInput = z.infer<typeof gmailImportInputSchema>;
 export type GmailImportResponse = z.infer<typeof gmailImportResponseSchema>;
