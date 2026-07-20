@@ -7,6 +7,7 @@ export type Bindings = {
   GOOGLE_OAUTH_CLIENT_SECRET: string;
   GMAIL_TOKEN_ENCRYPTION_KEY: string;
   GOOGLE_MAPS_API_KEY: string;
+  GOOGLE_STATIC_MAPS_API_KEY: string;
 };
 
 export type Variables = {

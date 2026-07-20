@@ -52,6 +52,7 @@ describe("Google Places client", () => {
       "address",
     ]);
     expect(suggestions[1]).toMatchObject({
+      label: "Rome, Metropolitan City of Rome Capital, Italy",
       primaryText: "Rome",
       secondaryText: "Metropolitan City of Rome Capital, Italy",
     });

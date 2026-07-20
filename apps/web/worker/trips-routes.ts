@@ -5,6 +5,11 @@ import {
 } from "@voyage/contracts";
 import { Hono } from "hono";
 import { type AuthenticateRequest, createAuthMiddleware } from "./auth";
+import {
+  createGoogleStaticMapsClient,
+  type StaticMapsClient,
+  StaticMapsServiceError,
+} from "./google-static-maps";
 import { createTrip, getTrip, listTrips, updateTrip } from "./trips-repository";
 import type { WorkerEnvironment } from "./types";
 
@@ -30,7 +35,14 @@ async function readJson(request: Request): Promise<unknown | null> {
   }
 }
 
-export function createTripsRoutes(authenticateRequest: AuthenticateRequest) {
+type TripsRoutesDependencies = {
+  staticMapsClient?: StaticMapsClient;
+};
+
+export function createTripsRoutes(
+  authenticateRequest: AuthenticateRequest,
+  dependencies: TripsRoutesDependencies = {},
+) {
   const routes = new Hono<WorkerEnvironment>();
 
   routes.use("*", createAuthMiddleware(authenticateRequest));
@@ -68,6 +80,48 @@ export function createTripsRoutes(authenticateRequest: AuthenticateRequest) {
     }
 
     return context.json({ trip }, 200, { "Cache-Control": "no-store" });
+  });
+
+  routes.get("/:tripId/map", async (context) => {
+    const trip = await getTrip(context.env.DB, context.var.authUserId, context.req.param("tripId"));
+
+    if (!trip) {
+      return context.json(
+        { error: { code: "not_found" as const, message: "Trip not found." } },
+        404,
+      );
+    }
+
+    if (!dependencies.staticMapsClient && !context.env.GOOGLE_STATIC_MAPS_API_KEY) {
+      return context.json(
+        { error: { code: "service_unavailable" as const, message: "Trip map unavailable." } },
+        503,
+      );
+    }
+
+    try {
+      const maps =
+        dependencies.staticMapsClient ??
+        createGoogleStaticMapsClient(context.env.GOOGLE_STATIC_MAPS_API_KEY);
+      const map = await maps.render(trip);
+
+      return new Response(map.body, {
+        status: 200,
+        headers: {
+          "Content-Type": map.headers.get("Content-Type") ?? "image/png",
+          "Cache-Control": "private, no-store",
+        },
+      });
+    } catch (error) {
+      if (error instanceof StaticMapsServiceError) {
+        return context.json(
+          { error: { code: "service_unavailable" as const, message: "Trip map unavailable." } },
+          503,
+        );
+      }
+
+      throw error;
+    }
   });
 
   routes.patch("/:tripId", async (context) => {
