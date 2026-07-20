@@ -10,6 +10,10 @@ function normalized(value: string | null | undefined) {
   return value?.trim().toLocaleLowerCase() ?? "";
 }
 
+function normalizedRouteLocation(value: string) {
+  return normalized(value.split("·").at(-1));
+}
+
 function shiftedTripDate(value: string, days: number) {
   const date = new Date(`${value}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + days);
@@ -50,13 +54,21 @@ function tripRelevance(candidate: GmailImportCandidate, trip: Trip) {
 function groupKey(candidate: GmailImportCandidate) {
   const confirmation = normalized(candidate.input.confirmationNumber);
   if (candidate.kind === "travel") {
+    if (confirmation) {
+      return [
+        candidate.kind,
+        `confirmation:${confirmation}`,
+        candidate.input.departureAt.slice(0, 10),
+        normalizedRouteLocation(candidate.input.departureLocation),
+        normalizedRouteLocation(candidate.input.arrivalLocation),
+      ].join(":");
+    }
     return [
       candidate.kind,
-      confirmation ? `confirmation:${confirmation}` : "",
       normalized(candidate.input.departureLocation),
       normalized(candidate.input.arrivalLocation),
       candidate.input.departureAt.slice(0, 10),
-      confirmation ? "" : normalized(candidate.input.referenceNumber),
+      normalized(candidate.input.referenceNumber),
     ].join(":");
   }
 
@@ -190,16 +202,46 @@ function consolidateStays(candidates: GmailStayCandidate[]): GmailStayCandidate 
 }
 
 function consolidateTravel(candidates: GmailTravelCandidate[]): GmailTravelCandidate {
-  const representative = [...candidates].sort(candidateOrder)[0];
+  const scheduleChange = candidates
+    .filter((candidate) => candidate.eventType === "schedule_change")
+    .sort((left, right) => right.source.receivedAt.localeCompare(left.source.receivedAt))[0];
+  const representative = scheduleChange ?? [...candidates].sort(candidateOrder)[0];
   const booking = bestValue(
     candidates,
     (candidate) => candidate.input.bookingUrl,
     specificBookingUrl,
   );
+  const departure = bestValue(
+    candidates,
+    (candidate) => candidate.input.departureLocation,
+    (value) => (/\b[A-Z]{3}\b/.test(value) ? 5 : 0) + Math.min(value.length, 80) / 80,
+  );
+  const arrival = bestValue(
+    candidates,
+    (candidate) => candidate.input.arrivalLocation,
+    (value) => (/\b[A-Z]{3}\b/.test(value) ? 5 : 0) + Math.min(value.length, 80) / 80,
+  );
+  const carrier = bestValue(
+    candidates,
+    (candidate) => candidate.input.carrier,
+    (value) => (value && !/booking\.com|gotogate|chase travel/i.test(value) ? 3 : value ? 1 : 0),
+  );
+  const reference = bestValue(
+    candidates,
+    (candidate) => candidate.input.referenceNumber,
+    (value) => (value ? 1 : 0),
+  );
   return {
     ...representative,
     sources: uniqueSources(candidates),
-    input: { ...representative.input, bookingUrl: booking.input.bookingUrl },
+    input: {
+      ...representative.input,
+      departureLocation: departure.input.departureLocation,
+      arrivalLocation: arrival.input.arrivalLocation,
+      carrier: carrier.input.carrier,
+      referenceNumber: reference.input.referenceNumber,
+      bookingUrl: booking.input.bookingUrl,
+    },
   };
 }
 

@@ -1,25 +1,22 @@
 import {
   gmailImportInputSchema,
   gmailImportResponseSchema,
+  gmailScanInputSchema,
   gmailScanResponseSchema,
 } from "@voyage/contracts";
 import { Hono } from "hono";
 import { type AuthenticateRequest, createAuthMiddleware } from "./auth";
-import { listTripMessages } from "./gmail-api";
-import {
-  consolidateGmailCandidates,
-  gmailCandidateSources,
-  relevantGmailCandidates,
-} from "./gmail-candidates";
+import { gmailCandidateSources } from "./gmail-candidates";
 import { decryptSecret, encryptSecret } from "./gmail-crypto";
-import { extractGmailCandidates } from "./gmail-extractor";
 import { importGmailCandidate } from "./gmail-import-repository";
+import { scanGmailBookings } from "./gmail-ingestion";
 import {
   getGmailConnection,
   listImportedSourceKeys,
   saveGmailConnection,
 } from "./gmail-repository";
 import { refreshGoogleAccessToken } from "./google-oauth";
+import { listTravel } from "./planning-repository";
 import { getTrip } from "./trips-repository";
 import type { WorkerEnvironment } from "./types";
 
@@ -58,6 +55,19 @@ export function createGmailImportRoutes(
       );
     }
 
+    const scanInput = gmailScanInputSchema.safeParse((await readJson(context.req.raw)) ?? {});
+    if (!scanInput.success) {
+      return context.json(
+        {
+          error: {
+            code: "validation_error" as const,
+            message: "Choose a supported Gmail scan mode.",
+          },
+        },
+        422,
+      );
+    }
+
     const connection = await getGmailConnection(context.env.DB, context.var.authUserId);
     if (!connection) {
       return context.json(
@@ -91,32 +101,31 @@ export function createGmailImportRoutes(
       });
     }
 
-    const search = await listTripMessages(fetcher, tokens.access_token, trip);
-    const extracted = search.messages.flatMap((message) =>
-      extractGmailCandidates(message, trip, connection.email),
-    );
+    const scan = await scanGmailBookings({
+      database: context.env.DB,
+      userId: context.var.authUserId,
+      fetcher,
+      accessToken: tokens.access_token,
+      trip,
+      accountEmail: connection.email,
+      existingTravel: await listTravel(context.env.DB, trip.id),
+      mode: scanInput.data.mode,
+    });
     const importedKeys = await listImportedSourceKeys(
       context.env.DB,
       context.var.authUserId,
       trip.id,
     );
-    const consolidated = consolidateGmailCandidates(relevantGmailCandidates(extracted, trip));
-    const candidates = consolidated.filter((candidate) =>
+    const candidates = scan.candidates.filter((candidate) =>
       gmailCandidateSources(candidate).some((source) => !importedKeys.has(source.key)),
     );
 
     return context.json(
       gmailScanResponseSchema.parse({
         candidates,
-        alreadyImported: consolidated.length - candidates.length,
-        messagesScanned: search.messages.length,
-        search: {
-          rangeStart: search.rangeStart,
-          rangeEnd: search.rangeEnd,
-          windowsSearched: search.windowsSearched,
-          queriesRun: search.queriesRun,
-          limitReached: search.limitReached,
-        },
+        alreadyImported: scan.candidates.length - candidates.length,
+        messagesScanned: scan.messagesScanned,
+        search: scan.search,
       }),
       200,
       { "Cache-Control": "no-store" },

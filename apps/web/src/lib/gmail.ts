@@ -49,7 +49,11 @@ function useDisconnectGmail() {
 function useScanGmail(tripId: string) {
   const request = useApiRequest();
   return useMutation({
-    mutationFn: () => request<GmailScanResponse>(tripGmailScanEndpoint(tripId), { method: "POST" }),
+    mutationFn: (mode: "standard" | "deep" = "standard") =>
+      request<GmailScanResponse>(tripGmailScanEndpoint(tripId), {
+        method: "POST",
+        body: JSON.stringify({ mode }),
+      }),
   });
 }
 

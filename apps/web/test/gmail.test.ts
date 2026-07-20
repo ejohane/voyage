@@ -24,6 +24,7 @@ import { type GmailMessage, gmailSearchWindows, listTripMessages } from "../work
 import { consolidateGmailCandidates, relevantGmailCandidates } from "../worker/gmail-candidates";
 import { extractGmailCandidates } from "../worker/gmail-extractor";
 import { importGmailCandidate } from "../worker/gmail-import-repository";
+import { findItineraryGaps, followUpGmailSearchQueries } from "../worker/gmail-query-planner";
 
 function encodeBody(value: string) {
   const bytes = new TextEncoder().encode(value);
@@ -161,6 +162,58 @@ const chaseFlightMarkup = `
     <p>77 N. Water Street</p>
     <p>Norwalk, CT 06853</p>
     <a href="https://secure.chase.com/travel/TRIP_DETAILS/1012650428">See trip</a>
+  </body></html>`;
+
+const bookingFlightMarkup = `
+  <html><body>
+    <h1>Your Olbia flight booking</h1>
+    <p>Here is the essential information about your upcoming Bari – Olbia flights.</p>
+    <h2>Flight to Olbia</h2>
+    <div>Bari (BRI) to Olbia (OLB)</div>
+    <div>Sat, Sep 5 · 4:05 PM - Sat, Sep 5 · 5:30 PM</div>
+    <div>Direct · 1h 25m · Economy</div>
+    <div>Volotea · V71608</div>
+    <div>Booking reference: P6IIWV</div>
+    <a href="https://flights.booking.com/booking-details/P6IIWV">Manage booking</a>
+  </body></html>`;
+
+const flightScheduleChangeMarkup = `
+  <html><body>
+    <h1>Important! Kathryn, your upcoming flight has a time change.</h1>
+    <h2>Booking no. P6IIWV</h2>
+    <p>Due to operational reasons, we have been forced to reschedule your flight.</p>
+    <h2>05 Sep, 2026:</h2>
+    <div>New time</div>
+    <div><strong>12.50h</strong> <span style="text-decoration: line-through">16.05h</span></div>
+    <div><strong>Bari</strong> Departure</div>
+    <div>V71608</div>
+    <div><span style="text-decoration: line-through">17.30h</span> <strong>14.15h</strong></div>
+    <div><strong>Olbia</strong> Arrival</div>
+    <a href="https://flights.booking.com/booking-details/P6IIWV">Manage your booking</a>
+    <p>©2026 Volotea</p>
+  </body></html>`;
+
+const airbnbStayMarkup = `
+  <html><body>
+    <h1>Reservation for trullo lantane by Pugliadamre, Sep 1 – 5</h1>
+    <p>For your protection and safety, always communicate through Airbnb.</p>
+    <p>Booking confirmation trullo lantane by Pugliadamre</p>
+    <p>trullo lantane by Pugliadamre</p>
+    <p>Trullo - Entire home/apt hosted by Elisa</p>
+    <p>Check-in Tuesday September 1, 2026 4:00 PM</p>
+    <p>Checkout Saturday September 5, 2026 10:00 AM</p>
+    <a href="https://www.airbnb.com/rooms/988917946509447401">View listing</a>
+    <p>Airbnb, Inc., 888 Brannan St., San Francisco, CA 94103, USA</p>
+  </body></html>`;
+
+const voiStayMarkup = `
+  <html><body>
+    <h1>Your reservation at VOI Colonna Village is confirmed!</h1>
+    <p>VOIhotels - 20351OJ17435</p>
+    <p>Check-in: Saturday, September 05, 2026</p>
+    <p>Check-out: Friday, September 11, 2026</p>
+    <p>Transfer available for a fee from/to Olbia, Golfo Aranci, and Porto Cervo.</p>
+    <a href="https://booking.voihotels.com/reservation/20351OJ17435">Manage reservation</a>
   </body></html>`;
 
 const googleCalls: string[] = [];
@@ -452,7 +505,7 @@ describe("Gmail import", () => {
     expect(extractGmailCandidates(message, trip)).toEqual([]);
   });
 
-  it("paginates quarterly searches so a year-old booking survives newer matches", async () => {
+  it("ranks targeted booking matches ahead of a crowded generic search", async () => {
     const trip = {
       id: "trip-deep-search",
       name: "Autumn in Lisbon",
@@ -474,7 +527,6 @@ describe("Gmail import", () => {
       received: "2025-06-01",
     };
     const mailbox = [...newer, oldBooking];
-    const pageTokens: string[] = [];
     const searchQueries: string[] = [];
 
     const pagedFetch: typeof fetch = async (input, init) => {
@@ -483,7 +535,6 @@ describe("Gmail import", () => {
       if (url.pathname.endsWith("/messages")) {
         const query = url.searchParams.get("q") ?? "";
         searchQueries.push(query);
-        if (!query.includes('"confirmation number"')) return Response.json({ messages: [] });
         const after =
           query
             .match(/after:(\d{4})\/(\d{2})\/(\d{2})/)
@@ -497,14 +548,20 @@ describe("Gmail import", () => {
         const matches = mailbox.filter(
           (message) => message.received > after && message.received < before,
         );
-        const offset = Number(url.searchParams.get("pageToken") ?? 0);
-        if (offset) pageTokens.push(String(offset));
         const pageSize = Number(url.searchParams.get("maxResults") ?? 5);
-        const page = matches.slice(offset, offset + pageSize);
-        const nextOffset = offset + page.length;
+        if (query.includes("subject:flight")) {
+          const targeted = matches.filter((message) => message.id === oldBooking.id);
+          return Response.json({
+            messages: targeted.map(({ id, threadId }) => ({ id, threadId })),
+            resultSizeEstimate: targeted.length,
+          });
+        }
+        if (!query.includes('"confirmation number"')) return Response.json({ messages: [] });
+        const page = matches.slice(0, pageSize);
         return Response.json({
           messages: page.map(({ id, threadId }) => ({ id, threadId })),
-          nextPageToken: nextOffset < matches.length ? String(nextOffset) : undefined,
+          nextPageToken: page.length < matches.length ? "more" : undefined,
+          resultSizeEstimate: matches.length,
         });
       }
 
@@ -544,7 +601,6 @@ describe("Gmail import", () => {
     );
     expect(searchQueries[0]).toContain("after:2024/10/03");
     expect(searchQueries.every((query) => !query.includes("newer_than"))).toBe(true);
-    expect(pageTokens.length).toBeGreaterThan(0);
     expect(result).toMatchObject({
       rangeStart: "2024-10-04",
       rangeEnd: "2026-07-19",
@@ -725,6 +781,174 @@ describe("Gmail import", () => {
     ]);
   });
 
+  it("finds the Bari to Olbia gap and merges its Booking.com schedule update", () => {
+    const trip = {
+      id: "trip-olbia-test",
+      name: "Italy",
+      stops: oneStop("Italy", "2026-08-30", "2026-09-11"),
+      startDate: "2026-08-30",
+      endDate: "2026-09-11",
+      accessLevel: "owner",
+      createdAt: "2026-07-19T00:00:00.000Z",
+      updatedAt: "2026-07-19T00:00:00.000Z",
+    } satisfies Trip;
+    const chaseMessage: GmailMessage = {
+      id: "message-chase-italy",
+      threadId: "thread-chase-italy",
+      internalDate: String(Date.UTC(2026, 1, 12)),
+      payload: {
+        mimeType: "text/html",
+        headers: [
+          { name: "Subject", value: "Travel Reservation Center Trip ID # 1012650428" },
+          { name: "From", value: "Chase Travel <donotreply@chasetravel.com>" },
+        ],
+        body: { data: encodeBody(chaseFlightMarkup) },
+      },
+    };
+    const confirmationMessage: GmailMessage = {
+      id: "message-olbia-confirmation",
+      threadId: "thread-olbia-confirmation",
+      internalDate: String(Date.UTC(2026, 2, 14)),
+      payload: {
+        mimeType: "text/html",
+        headers: [
+          { name: "Subject", value: "Olbia flight booking details" },
+          { name: "From", value: "Booking.com <noreply@booking.com>" },
+        ],
+        body: { data: encodeBody(bookingFlightMarkup) },
+      },
+    };
+    const changeMessage: GmailMessage = {
+      id: "message-olbia-change",
+      threadId: "thread-olbia-change",
+      internalDate: String(Date.UTC(2026, 2, 26)),
+      payload: {
+        mimeType: "text/html",
+        headers: [
+          {
+            name: "Subject",
+            value: "Important! Kathryn, there has been a change to your flights - P6IIWV",
+          },
+          {
+            name: "From",
+            value:
+              "Gotogate in partnership with Booking.com <no-reply@flightsonbooking.gotogate.support>",
+          },
+        ],
+        body: { data: encodeBody(flightScheduleChangeMarkup) },
+      },
+    };
+
+    const chase = extractGmailCandidates(chaseMessage, trip, "kkoch92@gmail.com");
+    const initialGaps = findItineraryGaps(chase);
+    const olbia = consolidateGmailCandidates([
+      ...extractGmailCandidates(confirmationMessage, trip, "kkoch92@gmail.com"),
+      ...extractGmailCandidates(changeMessage, trip, "kkoch92@gmail.com"),
+    ]);
+    const followUps = followUpGmailSearchQueries([...chase, ...olbia], initialGaps);
+
+    expect(initialGaps).toEqual([{ from: "BRI · Bari", to: "OLB · Olbia" }]);
+    expect(followUps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "reference:p6iiwv", expression: '"P6IIWV"' }),
+        expect.objectContaining({ id: "route-gap:0" }),
+      ]),
+    );
+    expect(olbia).toHaveLength(1);
+    expect(olbia[0]).toMatchObject({
+      kind: "travel",
+      confidence: "high",
+      eventType: "schedule_change",
+      input: {
+        departureLocation: "BRI · Bari",
+        arrivalLocation: "OLB · Olbia",
+        departureAt: "2026-09-05T12:50",
+        arrivalAt: "2026-09-05T14:15",
+        carrier: "Volotea",
+        referenceNumber: "V71608",
+        confirmationNumber: "P6IIWV",
+      },
+      sources: expect.arrayContaining([
+        expect.objectContaining({ messageId: "message-olbia-confirmation" }),
+        expect.objectContaining({ messageId: "message-olbia-change" }),
+      ]),
+    });
+    expect(findItineraryGaps([...chase, ...olbia])).toEqual([]);
+  });
+
+  it("extracts Airbnb and VOI stays from provider confirmations without relying on labels", () => {
+    const trip = {
+      id: "trip-provider-stays",
+      name: "Italy",
+      stops: oneStop("Italy", "2026-08-30", "2026-09-11"),
+      startDate: "2026-08-30",
+      endDate: "2026-09-11",
+      accessLevel: "owner",
+      createdAt: "2026-07-19T00:00:00.000Z",
+      updatedAt: "2026-07-19T00:00:00.000Z",
+    } satisfies Trip;
+    const airbnb: GmailMessage = {
+      id: "message-airbnb",
+      threadId: "thread-airbnb",
+      internalDate: String(Date.UTC(2026, 4, 12)),
+      payload: {
+        mimeType: "text/html",
+        headers: [
+          {
+            name: "Subject",
+            value: "RE: Reservation for trullo lantane by Pugliadamre, Sep 1 – 5",
+          },
+          { name: "From", value: "Airbnb <automated@airbnb.com>" },
+        ],
+        body: { data: encodeBody(airbnbStayMarkup) },
+      },
+    };
+    const voi: GmailMessage = {
+      id: "message-voi",
+      threadId: "thread-voi",
+      internalDate: String(Date.UTC(2026, 4, 20)),
+      payload: {
+        mimeType: "text/html",
+        headers: [
+          {
+            name: "Subject",
+            value:
+              "Booking VOIhotels Website - Your reservation at VOI Colonna Village is confirmed!",
+          },
+          { name: "From", value: "VOIhotels <booking@voihotels.com>" },
+        ],
+        body: { data: encodeBody(voiStayMarkup) },
+      },
+    };
+
+    expect(extractGmailCandidates(airbnb, trip, "kkoch92@gmail.com")).toMatchObject([
+      {
+        kind: "stay",
+        confidence: "medium",
+        input: {
+          propertyName: "trullo lantane",
+          address: "Italy",
+          checkInDate: "2026-09-01",
+          checkOutDate: "2026-09-05",
+          confirmationNumber: null,
+        },
+      },
+    ]);
+    expect(extractGmailCandidates(voi, trip, "kkoch92@gmail.com")).toMatchObject([
+      {
+        kind: "stay",
+        confidence: "high",
+        input: {
+          propertyName: "VOI Colonna Village",
+          address: "Golfo Aranci, Sardinia, Italy",
+          checkInDate: "2026-09-05",
+          checkOutDate: "2026-09-11",
+          confirmationNumber: "20351OJ17435",
+        },
+      },
+    ]);
+  });
+
   it("imports both flight legs when a round trip shares one confirmation number", async () => {
     const { trip } = await createTrip();
     const source = {
@@ -850,6 +1074,14 @@ describe("Gmail import", () => {
     const stays = await (
       await request(tripStaysEndpoint(trip.id), "user_owner")
     ).json<StayListResponse>();
+    await env.DB.prepare(
+      `INSERT INTO gmail_message_processing (
+        user_id, trip_id, gmail_message_id, gmail_thread_id, extraction_version,
+        candidate_json, rejection_reason, processed_at
+      ) VALUES (?, ?, ?, ?, 0, NULL, 'legacy', ?)`,
+    )
+      .bind("user_owner", trip.id, "legacy-message", "legacy-thread", new Date().toISOString())
+      .run();
     const repeatScan = await (
       await request(tripGmailScanEndpoint(trip.id), "user_owner", { method: "POST" })
     ).json<GmailScanResponse>();
@@ -860,6 +1092,11 @@ describe("Gmail import", () => {
         body: JSON.stringify({ candidates: scan.candidates }),
       })
     ).json<GmailImportResponse>();
+    const cachedBeforeDisconnect = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM gmail_message_processing WHERE trip_id = ?",
+    )
+      .bind(trip.id)
+      .first<{ count: number }>();
     const disconnectResponse = await request(gmailIntegrationEndpoint, "user_owner", {
       method: "DELETE",
     });
@@ -869,6 +1106,7 @@ describe("Gmail import", () => {
 
     expect(scanResponse.status).toBe(200);
     expect(scan.messagesScanned).toBe(3);
+    expect(scan.search).toMatchObject({ messagesFetched: 3, messagesReused: 0 });
     expect(scan.candidates.map((candidate) => candidate.kind).sort()).toEqual(["stay", "travel"]);
     expect(scan.candidates.find((candidate) => candidate.kind === "stay")?.sources).toHaveLength(2);
     expect(imported.imported).toHaveLength(2);
@@ -889,7 +1127,12 @@ describe("Gmail import", () => {
           .first<{ count: number }>()
       )?.count,
     ).toBe(3);
-    expect(repeatScan).toMatchObject({ candidates: [], alreadyImported: 2 });
+    expect(repeatScan).toMatchObject({
+      candidates: [],
+      alreadyImported: 2,
+      search: { messagesFetched: 0, messagesReused: 3 },
+    });
+    expect(cachedBeforeDisconnect?.count).toBe(3);
     expect(repeatImport.imported).toHaveLength(0);
     expect(repeatImport.skipped).toEqual(
       expect.arrayContaining([
@@ -899,6 +1142,15 @@ describe("Gmail import", () => {
     );
     expect(disconnectResponse.status).toBe(204);
     expect(disconnected).toEqual({ connected: false });
+    expect(
+      (
+        await env.DB.prepare(
+          "SELECT COUNT(*) AS count FROM gmail_message_processing WHERE trip_id = ?",
+        )
+          .bind(trip.id)
+          .first<{ count: number }>()
+      )?.count,
+    ).toBe(0);
     expect(googleCalls).toContain("POST /revoke");
   });
 

@@ -96,6 +96,15 @@ function htmlToText(html: string) {
     .trim();
 }
 
+function removeObsoleteHtml(html: string) {
+  return html
+    .replace(/<(?:s|del)\b[^>]*>[\s\S]*?<\/(?:s|del)>/gi, " ")
+    .replace(
+      /<([a-z][a-z0-9]*)\b[^>]*style=["'][^"']*text-decoration[^"']*line-through[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi,
+      " ",
+    );
+}
+
 function senderName(value: string) {
   const name = value
     .replace(/<[^>]+>/g, "")
@@ -236,7 +245,7 @@ function confirmationNumber(value: string) {
   if (urlValue) return urlValue.toUpperCase();
 
   for (const match of value.matchAll(
-    /(?:confirmation|record locator|booking reference|reservation code|confirmation code|PNR)(?:\s+(?:number|no\.?))?\s*[:#-]?\s*([A-Z0-9]{5,14})/gi,
+    /(?:confirmation|record locator|booking(?:\s+(?:reference|number|no\.?))|reservation code|confirmation code|PNR)(?:\s+(?:number|no\.?))?\s*[:#-]?\s*([A-Z0-9]{5,14})/gi,
   )) {
     const candidate = match[1].toUpperCase();
     if (candidate !== "HTTP" && candidate !== "HTTPS") return candidate;
@@ -286,6 +295,47 @@ function namedDates(value: string, fallbackYear?: string) {
     if (year) {
       found.push(`${year}-${monthNumbers[match[1].toLowerCase()]}-${match[2].padStart(2, "0")}`);
     }
+  }
+  return [...new Set(found)];
+}
+
+function dayMonthDates(value: string, fallbackYear?: string) {
+  const found: string[] = [];
+  const pattern = new RegExp(
+    `\\b(\\d{1,2})(?:st|nd|rd|th)?[ \\t]+(${Object.keys(monthNumbers).join("|")})(?:,?[ \\t]+(\\d{4}))?`,
+    "gi",
+  );
+  for (const match of value.matchAll(pattern)) {
+    const year = match[3] ?? fallbackYear;
+    if (year) {
+      found.push(`${year}-${monthNumbers[match[2].toLowerCase()]}-${match[1].padStart(2, "0")}`);
+    }
+  }
+  return [...new Set(found)];
+}
+
+function shortDateRanges(value: string, fallbackYear?: string) {
+  const found: [string, string][] = [];
+  const pattern = new RegExp(
+    `\\b(${Object.keys(monthNumbers).join("|")})[ \\t]+(\\d{1,2})(?:st|nd|rd|th)?[ \\t]*(?:–|—|-|to)[ \\t]*(\\d{1,2})(?:st|nd|rd|th)?(?:,?[ \\t]+(\\d{4}))?`,
+    "gi",
+  );
+  for (const match of value.matchAll(pattern)) {
+    const year = match[4] ?? fallbackYear;
+    if (!year) continue;
+    const month = monthNumbers[match[1].toLowerCase()];
+    found.push([
+      `${year}-${month}-${match[2].padStart(2, "0")}`,
+      `${year}-${month}-${match[3].padStart(2, "0")}`,
+    ]);
+  }
+  return found;
+}
+
+function numericDates(value: string) {
+  const found: string[] = [];
+  for (const match of value.matchAll(/\b(\d{1,2})[/.](\d{1,2})[/.](20\d{2})\b/g)) {
+    found.push(`${match[3]}-${match[2].padStart(2, "0")}-${match[1].padStart(2, "0")}`);
   }
   return [...new Set(found)];
 }
@@ -450,12 +500,205 @@ function extractChaseTravel(
       candidates.push({
         kind: "travel",
         confidence: "high",
+        eventType: "confirmation",
         source: sourceFor(message, subject, sender, `travel:chase:${index}`, accountEmail),
         input: input.data,
       });
     }
   }
   return candidates;
+}
+
+function extractBookingDotComFlight(
+  message: GmailMessage,
+  trip: Trip,
+  subject: string,
+  sender: string,
+  visibleText: string,
+  links: string[],
+  accountEmail?: string,
+) {
+  if (!isBookingDotCom(subject, sender) || !/\bflight\b/i.test(`${subject}\n${visibleText}`)) {
+    return [];
+  }
+  const route = visibleText.match(
+    /([A-Za-zÀ-ž][A-Za-zÀ-ž .'-]{1,80})\s*\(([A-Z]{3})\)\s*(?:to|[–—-])\s*([A-Za-zÀ-ž][A-Za-zÀ-ž .'-]{1,80})\s*\(([A-Z]{3})\)/i,
+  );
+  const confirmation = confirmationNumber(`${subject}\n${visibleText}`);
+  const dateTimes = namedDateTimes(visibleText, trip.startDate?.slice(0, 4)).filter((value) =>
+    isWithinTrip(value, trip),
+  );
+  const flight = visibleText.match(
+    /(?:^|\n)\s*([A-Za-zÀ-ž][A-Za-zÀ-ž .'-]{2,80})\s*[·•]\s*([A-Z][A-Z0-9]\s?\d{1,4})\b/im,
+  );
+  if (!route || !confirmation || dateTimes.length < 2) return [];
+  const input = createTravelInputSchema.safeParse({
+    type: "flight",
+    status: "booked",
+    departureStopId: null,
+    arrivalStopId: null,
+    departureLocation: `${route[2].toUpperCase()} · ${route[1].trim()}`,
+    arrivalLocation: `${route[4].toUpperCase()} · ${route[3].trim()}`,
+    departureAt: dateTimes[0],
+    arrivalAt: dateTimes[1],
+    carrier: flight?.[1]?.trim() ?? "Booking.com Flights",
+    referenceNumber: flight?.[2]?.replace(/\s+/g, "") ?? null,
+    confirmationNumber: confirmation,
+    bookingUrl: bookingLink(links),
+    notes: null,
+  });
+  if (!input.success) return [];
+  return [
+    {
+      kind: "travel" as const,
+      confidence: "high" as const,
+      eventType: "confirmation" as const,
+      source: sourceFor(message, subject, sender, "travel:booking-flight", accountEmail),
+      input: input.data,
+    },
+  ];
+}
+
+function extractFlightScheduleChange(
+  message: GmailMessage,
+  trip: Trip,
+  html: string,
+  subject: string,
+  sender: string,
+  links: string[],
+  accountEmail?: string,
+) {
+  const originalText = htmlToText(html);
+  const combined = `${subject}\n${originalText}`;
+  if (!/\b(?:time change|schedule change|reschedul(?:e|ed|ing))\b/i.test(combined)) return [];
+  const confirmation = confirmationNumber(combined);
+  if (!confirmation) return [];
+  const currentText = htmlToText(removeObsoleteHtml(html));
+  const fallbackYear = trip.startDate?.slice(0, 4);
+  const date = [
+    ...dayMonthDates(currentText, fallbackYear),
+    ...namedDates(currentText, fallbackYear),
+  ].find((value) => isWithinTrip(`${value}T00:00`, trip));
+  const times = [...currentText.matchAll(/\b(\d{1,2})[.:](\d{2})h?\b/g)].map((match) =>
+    normalizedTime(match[1], match[2]),
+  );
+  const departure = currentText.match(/(?:^|\s)([A-Z][A-Za-zÀ-ž .'-]{1,40})\s+Departure\b/)?.[1];
+  const arrival = currentText.match(/(?:^|\s)([A-Z][A-Za-zÀ-ž .'-]{1,40})\s+Arrival\b/)?.[1];
+  const flightNumber = currentText.match(/\b([A-Z][A-Z0-9]\s?\d{1,4})\b/)?.[1];
+  if (!date || times.length < 2 || !departure || !arrival) return [];
+  const input = createTravelInputSchema.safeParse({
+    type: "flight",
+    status: "booked",
+    departureStopId: null,
+    arrivalStopId: null,
+    departureLocation: departure.trim(),
+    arrivalLocation: arrival.trim(),
+    departureAt: `${date}T${times[0]}`,
+    arrivalAt: `${date}T${times[1]}`,
+    carrier: /\bVolotea\b/i.test(currentText) ? "Volotea" : senderName(sender),
+    referenceNumber: flightNumber?.replace(/\s+/g, "") ?? null,
+    confirmationNumber: confirmation,
+    bookingUrl: bookingLink(links),
+    notes: null,
+  });
+  if (!input.success) return [];
+  return [
+    {
+      kind: "travel" as const,
+      confidence: "high" as const,
+      eventType: "schedule_change" as const,
+      source: sourceFor(message, subject, sender, "travel:schedule-change", accountEmail),
+      input: input.data,
+    },
+  ];
+}
+
+function extractProviderStay(
+  message: GmailMessage,
+  trip: Trip,
+  subject: string,
+  sender: string,
+  visibleText: string,
+  links: string[],
+  accountEmail?: string,
+) {
+  const combined = `${subject}\n${visibleText}`;
+  const isAirbnb =
+    /airbnb/i.test(`${subject}\n${sender}`) &&
+    /(?:reservation|booking|check[ -]?in)/i.test(combined);
+  const isVoi =
+    /voihotels|voi colonna|voi hotels/i.test(`${subject}\n${sender}`) &&
+    /(?:reservation|booking|confirmed|check[ -]?in)/i.test(combined);
+  if (!isAirbnb && !isVoi) return [];
+
+  const fallbackYear =
+    trip.startDate?.slice(0, 4) ??
+    (message.internalDate
+      ? new Date(Number(message.internalDate)).getUTCFullYear().toString()
+      : undefined);
+  const range = shortDateRanges(combined, fallbackYear).find(
+    ([start, end]) => isWithinTrip(`${start}T00:00`, trip) || isWithinTrip(`${end}T00:00`, trip),
+  );
+  const dates = [
+    ...numericDates(combined),
+    ...dayMonthDates(combined, fallbackYear),
+    ...namedDates(combined, fallbackYear),
+  ].filter((value) => isWithinTrip(`${value}T00:00`, trip));
+  const checkInDate = range?.[0] ?? dates[0];
+  const checkOutDate = range?.[1] ?? dates.find((date) => date > (checkInDate ?? ""));
+  if (!checkInDate || !checkOutDate) return [];
+
+  const property = (
+    isAirbnb
+      ? subject.match(
+          /(?:reservation|booking)\s+for\s+(.+?)(?:\s+by\s+[^,]+)?\s*,\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i,
+        )?.[1]
+      : subject.match(/reservation\s+at\s+(.+?)\s+is\s+confirmed/i)?.[1]
+  )?.trim();
+  const bodyProperty = visibleText.match(
+    /(?:Property|Hotel|Accommodation)\s*[:\n]+\s*([^\n]{3,120})/i,
+  )?.[1];
+  const providerAddress =
+    (isVoi && /\bGolfo Aranci\b/i.test(visibleText)
+      ? "Golfo Aranci, Sardinia, Italy"
+      : bookingAddress(visibleText)) ??
+    visibleText.match(
+      /\b\d{1,6}\s+[A-Za-zÀ-ž0-9 .'-]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Via|Viale|Località|Loc\.)\b[^\n]*/i,
+    )?.[0];
+  const address =
+    providerAddress && !/888\s+Brannan|San Francisco,?\s+CA\s+94103/i.test(providerAddress)
+      ? providerAddress
+      : tripDestination(trip);
+  const confirmation =
+    (isVoi ? visibleText.match(/VOIhotels\s*-\s*([A-Z0-9]{8,20})/i)?.[1]?.toUpperCase() : null) ??
+    (isAirbnb ? null : confirmationNumber(combined));
+  const input = createStayInputSchema.safeParse({
+    status: "booked",
+    tripStopId: stayStopId(trip, `${property ?? bodyProperty ?? ""} ${address}`, checkInDate),
+    propertyName: property ?? bodyProperty ?? senderName(sender),
+    address,
+    checkInDate,
+    checkOutDate,
+    confirmationNumber: confirmation,
+    bookingUrl: bookingLink(links),
+    notes: null,
+  });
+  if (!input.success) return [];
+  return [
+    {
+      kind: "stay" as const,
+      confidence: confirmation ? ("high" as const) : ("medium" as const),
+      eventType: "confirmation" as const,
+      source: sourceFor(
+        message,
+        subject,
+        sender,
+        isAirbnb ? "stay:airbnb" : "stay:voi",
+        accountEmail,
+      ),
+      input: input.data,
+    },
+  ];
 }
 
 function extractStructured(
@@ -492,6 +735,7 @@ function extractStructured(
         candidates.push({
           kind: "travel",
           confidence: "high",
+          eventType: "confirmation",
           source: sourceFor(message, subject, sender, `travel:${index++}`, accountEmail),
           input: input.data,
         });
@@ -523,6 +767,7 @@ function extractStructured(
         candidates.push({
           kind: "stay",
           confidence: "high",
+          eventType: "confirmation",
           source: sourceFor(message, subject, sender, `stay:${index++}`, accountEmail),
           input: input.data,
         });
@@ -591,6 +836,7 @@ function extractHeuristic(
       candidates.push({
         kind: "travel",
         confidence: "medium",
+        eventType: "confirmation",
         source: sourceFor(message, subject, sender, "travel:heuristic", accountEmail),
         input: input.data,
       });
@@ -629,6 +875,7 @@ function extractHeuristic(
       candidates.push({
         kind: "stay",
         confidence: "medium",
+        eventType: "confirmation",
         source: sourceFor(message, subject, sender, "stay:heuristic", accountEmail),
         input: input.data,
       });
@@ -647,6 +894,26 @@ export function extractGmailCandidates(message: GmailMessage, trip: Trip, accoun
   const sender = header(message.payload?.headers, "from");
   const links = linksFromHtml(html);
   const visibleText = `${plain}\n${htmlToText(html)}`;
+  const scheduleChange = extractFlightScheduleChange(
+    message,
+    trip,
+    html,
+    subject,
+    sender,
+    links,
+    accountEmail,
+  );
+  if (scheduleChange.length > 0) return scheduleChange;
+  const providerStay = extractProviderStay(
+    message,
+    trip,
+    subject,
+    sender,
+    visibleText,
+    links,
+    accountEmail,
+  );
+  if (providerStay.length > 0) return providerStay;
   const chaseTravel = extractChaseTravel(
     message,
     trip,
@@ -657,6 +924,16 @@ export function extractGmailCandidates(message: GmailMessage, trip: Trip, accoun
     accountEmail,
   );
   if (chaseTravel.length > 0) return chaseTravel;
+  const bookingFlight = extractBookingDotComFlight(
+    message,
+    trip,
+    subject,
+    sender,
+    visibleText,
+    links,
+    accountEmail,
+  );
+  if (bookingFlight.length > 0) return bookingFlight;
   const structured = extractStructured(
     message,
     trip,

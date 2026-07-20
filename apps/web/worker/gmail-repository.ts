@@ -90,6 +90,7 @@ export async function saveGmailConnection(database: D1Database, connection: Gmai
 
 export async function deleteGmailConnection(database: D1Database, userId: string) {
   await database.batch([
+    database.prepare("DELETE FROM gmail_message_processing WHERE user_id = ?").bind(userId),
     database.prepare("DELETE FROM gmail_connections WHERE user_id = ?").bind(userId),
     database.prepare("DELETE FROM gmail_oauth_states WHERE user_id = ?").bind(userId),
   ]);

@@ -16,6 +16,7 @@ import {
   ChevronDown,
   CircleCheck,
   ExternalLink,
+  History,
   LoaderCircle,
   Mail,
   MapPin,
@@ -88,16 +89,28 @@ function normalizeGroupValue(value: string | null | undefined) {
   return value?.trim().toLocaleLowerCase() ?? "";
 }
 
+function normalizeRouteLocation(value: string) {
+  return normalizeGroupValue(value.split("·").at(-1));
+}
+
 function candidateGroupKey(candidate: GmailImportCandidate) {
   const confirmationNumber = normalizeGroupValue(candidate.input.confirmationNumber);
   if (candidate.kind === "travel") {
+    if (confirmationNumber) {
+      return [
+        candidate.kind,
+        `confirmation:${confirmationNumber}`,
+        candidate.input.departureAt.slice(0, 10),
+        normalizeRouteLocation(candidate.input.departureLocation),
+        normalizeRouteLocation(candidate.input.arrivalLocation),
+      ].join(":");
+    }
     return [
       candidate.kind,
-      confirmationNumber ? `confirmation:${confirmationNumber}` : "",
       normalizeGroupValue(candidate.input.departureLocation),
       normalizeGroupValue(candidate.input.arrivalLocation),
       candidate.input.departureAt.slice(0, 10),
-      confirmationNumber ? "" : normalizeGroupValue(candidate.input.referenceNumber),
+      normalizeGroupValue(candidate.input.referenceNumber),
     ].join(":");
   }
 
@@ -323,8 +336,8 @@ function GmailImportDialog({ trip }: { trip: Trip }) {
     window.location.assign(response.authorizationUrl);
   }
 
-  async function handleScan() {
-    const result = await scan.mutateAsync();
+  async function handleScan(mode: "standard" | "deep" = "standard") {
+    const result = await scan.mutateAsync(mode);
     setCandidates(result.candidates);
     setSelected(new Set(result.candidates.map((candidate) => candidate.source.key)));
     setScanSummary({
@@ -479,12 +492,18 @@ function GmailImportDialog({ trip }: { trip: Trip }) {
                     <strong className="font-medium text-foreground">{connection.data.email}</strong>
                   </span>
                   <span>
-                    {scanSummary?.messages ?? 0} emails scanned
+                    {scanSummary?.search.messagesFetched ?? 0} likely emails read
+                    {scanSummary?.search.messagesReused
+                      ? ` · ${scanSummary.search.messagesReused} reused from an earlier scan`
+                      : ""}
                     {scanSummary?.imported ? ` · ${scanSummary.imported} previously imported` : ""}
                   </span>
                   {scanSummary ? (
                     <span>
-                      {scanSummary.search.windowsSearched} quarterly batches ·{" "}
+                      {scanSummary.search.messagesDiscovered} possible emails ranked ·{" "}
+                      {scanSummary.search.gapsSearched
+                        ? `${scanSummary.search.gapsSearched} itinerary gap ${scanSummary.search.gapsSearched === 1 ? "searched" : "searches"} · `
+                        : ""}
                       {formatDateOnly(scanSummary.search.rangeStart)} –{" "}
                       {formatDateOnly(scanSummary.search.rangeEnd)}
                     </span>
@@ -493,9 +512,8 @@ function GmailImportDialog({ trip }: { trip: Trip }) {
               </div>
               {scanSummary?.search.limitReached ? (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                  This mailbox had more matching emails than Voyage can safely read in one scan.
-                  Results were balanced across the entire date range so older bookings were still
-                  included.
+                  Voyage prioritized the strongest confirmation and itinerary matches instead of
+                  opening every possible email. Search deeper if something is still missing.
                 </p>
               ) : null}
               {candidates.length === 0 ? (
@@ -557,6 +575,12 @@ function GmailImportDialog({ trip }: { trip: Trip }) {
                                   ? "High confidence"
                                   : "Review suggested"}
                               </span>
+                              {candidate.eventType === "schedule_change" ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
+                                  <History className="size-3" /> Schedule updated{" "}
+                                  {formatDateOnly(candidate.source.receivedAt.slice(0, 10))}
+                                </span>
+                              ) : null}
                             </div>
                             <CandidateSummary candidate={candidate} />
                             <div className="mt-4 flex flex-wrap gap-2">
@@ -594,12 +618,22 @@ function GmailImportDialog({ trip }: { trip: Trip }) {
                 <div className="grid gap-2 sm:flex sm:justify-end">
                   <Button
                     variant="outline"
-                    onClick={() => void handleScan()}
+                    onClick={() => void handleScan("standard")}
                     disabled={scan.isPending}
                   >
                     <RefreshCw className={scan.isPending ? "size-4 animate-spin" : "size-4"} />{" "}
                     Rescan
                   </Button>
+                  {scanSummary?.search.stoppedReason === "ranked_limit" ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => void handleScan("deep")}
+                      disabled={scan.isPending}
+                    >
+                      <RefreshCw className={scan.isPending ? "size-4 animate-spin" : "size-4"} />
+                      Search deeper
+                    </Button>
+                  ) : null}
                   <Button
                     onClick={() => void handleImport()}
                     disabled={!selectedCandidates.length || importCandidates.isPending}
@@ -626,13 +660,12 @@ function GmailImportDialog({ trip }: { trip: Trip }) {
                   <div>
                     <p className="font-medium">Ready to find bookings</p>
                     <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                      Voyage will search likely flight, lodging, rail, rental, ferry, and cruise
-                      confirmations in quarterly batches, going back as far as two years before the
-                      trip.
+                      Voyage ranks likely flight and lodging confirmations, then searches for
+                      updates and missing connections without opening every matching email.
                     </p>
                     {scan.isPending ? (
                       <p className="mt-3 text-sm font-medium text-foreground">
-                        Searching the full date range and checking each matching email…
+                        Ranking likely confirmations and checking itinerary gaps…
                       </p>
                     ) : null}
                     <p className="mt-3 text-xs text-muted-foreground">
@@ -653,7 +686,7 @@ function GmailImportDialog({ trip }: { trip: Trip }) {
                 >
                   <Unplug className="size-4" /> Disconnect Gmail
                 </Button>
-                <Button onClick={() => void handleScan()} disabled={scan.isPending}>
+                <Button onClick={() => void handleScan("standard")} disabled={scan.isPending}>
                   {scan.isPending ? (
                     <LoaderCircle className="size-4 animate-spin" />
                   ) : (
