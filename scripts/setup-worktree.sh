@@ -35,6 +35,21 @@ required_env_files=(
   "apps/web/.dev.vars"
 )
 
+common_git_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+primary_checkout="$(dirname "$common_git_dir")"
+
+if [[ "$repo_root" != "$primary_checkout" ]]; then
+  for env_file in "${required_env_files[@]}"; do
+    primary_env_file="$primary_checkout/$env_file"
+
+    if [[ ! -s "$env_file" && -s "$primary_env_file" ]]; then
+      echo "Copying local environment file from primary checkout: $env_file"
+      mkdir -p "$(dirname "$env_file")"
+      install -m 600 "$primary_env_file" "$env_file"
+    fi
+  done
+fi
+
 missing_env=false
 for env_file in "${required_env_files[@]}"; do
   if [[ ! -s "$env_file" ]]; then
@@ -44,7 +59,7 @@ for env_file in "${required_env_files[@]}"; do
 done
 
 if [[ "$missing_env" == "true" ]]; then
-  echo "Add the files to the primary checkout so Codex can copy them via .worktreeinclude." >&2
+  echo "Add the files to the primary checkout so setup can copy them into new worktrees." >&2
   exit 1
 fi
 

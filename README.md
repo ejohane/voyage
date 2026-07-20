@@ -36,8 +36,10 @@ Local Gmail integration development also requires the development Google OAuth c
 The setup command fetches and fast-forwards to `origin/main`, verifies the local environment,
 installs the locked Bun dependencies, and applies the local D1 migrations. Codex-managed worktrees
 receive `.env.local` and `.dev.vars` from the primary checkout through `.worktreeinclude`, then run
-the same setup command through the checked-in Codex environment. Existing destination files are not
-overwritten, so update the primary checkout whenever local credentials rotate.
+the same setup command through the checked-in Codex environment. If a Codex client does not process
+`.worktreeinclude`, the setup script copies only missing files directly from the primary checkout.
+Existing destination files are not overwritten, so update the primary checkout whenever local
+credentials rotate.
 
 Production deploys expect the same key in the GitHub environment variable
 `VITE_CLERK_PUBLISHABLE_KEY`. GitHub Actions applies D1 migrations before deploying the Worker and
