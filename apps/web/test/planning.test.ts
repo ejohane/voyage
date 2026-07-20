@@ -48,6 +48,7 @@ async function createTrip(userId = "user_owner") {
 }
 
 const travelInput = {
+  kind: "journey",
   type: "flight",
   status: "planning",
   departureStopId: null,
@@ -58,6 +59,7 @@ const travelInput = {
   arrivalAt: "2026-10-05T08:10",
   carrier: "United Airlines",
   referenceNumber: "UA 942",
+  vehicleDescription: null,
   confirmationNumber: "ABC123",
   bookingUrl: "https://example.com/booking",
   notes: "Overnight flight",
@@ -139,6 +141,53 @@ describe("trip planning API", () => {
         count: number;
       }>(),
     ).toEqual({ count: 0 });
+  });
+
+  it("stores vehicle rentals as transportation without treating them as journey segments", async () => {
+    const { trip } = await createTrip();
+    const rental = {
+      kind: "rental",
+      type: "car",
+      status: "booked",
+      departureStopId: trip.stops[0].id,
+      arrivalStopId: trip.stops[0].id,
+      departureLocation: "Lisbon Airport rental center",
+      arrivalLocation: "Lisbon Airport rental return",
+      departureAt: "2026-10-05T09:00",
+      arrivalAt: "2026-10-11T17:00",
+      carrier: "Europcar",
+      referenceNumber: null,
+      vehicleDescription: "Economy car · automatic",
+      confirmationNumber: "CAR123",
+      bookingUrl: "https://example.com/rental/CAR123",
+      notes: null,
+    } as const;
+    const createResponse = await request(tripTravelEndpoint(trip.id), "user_owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(rental),
+    });
+    const created = await createResponse.json<TravelResponse>();
+    const missingReturn = await request(tripTravelEndpoint(trip.id), "user_owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...rental, confirmationNumber: "CAR456", arrivalAt: null }),
+    });
+    const journeyCar = await request(tripTravelEndpoint(trip.id), "user_owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...rental, kind: "journey", confirmationNumber: "CAR789" }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    expect(created.travel).toMatchObject({
+      kind: "rental",
+      type: "car",
+      carrier: "Europcar",
+      vehicleDescription: "Economy car · automatic",
+    });
+    expect(missingReturn.status).toBe(422);
+    expect(journeyCar.status).toBe(422);
   });
 
   it("creates and validates stays", async () => {

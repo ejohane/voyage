@@ -6,6 +6,7 @@ import type {
   PlanStatus,
   ReservationStatus,
   Stay,
+  TransportationKind,
   Travel,
   TravelType,
   TripPlan,
@@ -17,6 +18,7 @@ import type {
 type TravelRow = {
   id: string;
   trip_id: string;
+  kind: TransportationKind;
   type: TravelType;
   status: ReservationStatus;
   departure_stop_id: string | null;
@@ -27,6 +29,7 @@ type TravelRow = {
   arrival_at: string | null;
   carrier: string | null;
   reference_number: string | null;
+  vehicle_description: string | null;
   confirmation_number: string | null;
   booking_url: string | null;
   notes: string | null;
@@ -72,6 +75,7 @@ function mapTravel(row: TravelRow): Travel {
   return {
     id: row.id,
     tripId: row.trip_id,
+    kind: row.kind,
     type: row.type,
     status: row.status,
     departureStopId: row.departure_stop_id,
@@ -82,6 +86,7 @@ function mapTravel(row: TravelRow): Travel {
     arrivalAt: row.arrival_at,
     carrier: row.carrier,
     referenceNumber: row.reference_number,
+    vehicleDescription: row.vehicle_description,
     confirmationNumber: row.confirmation_number,
     bookingUrl: row.booking_url,
     notes: row.notes,
@@ -149,15 +154,16 @@ export async function createTravel(
   await database
     .prepare(
       `INSERT INTO travel_segments (
-        id, trip_id, type, status, departure_stop_id, arrival_stop_id,
+        id, trip_id, kind, type, status, departure_stop_id, arrival_stop_id,
         departure_location, arrival_location, departure_at, arrival_at,
-        carrier, reference_number, confirmation_number, booking_url, notes,
+        carrier, reference_number, vehicle_description, confirmation_number, booking_url, notes,
         created_by_user_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
       tripId,
+      input.kind,
       input.type,
       input.status,
       input.departureStopId,
@@ -168,6 +174,7 @@ export async function createTravel(
       input.arrivalAt,
       input.carrier,
       input.referenceNumber,
+      input.vehicleDescription,
       input.confirmationNumber,
       input.bookingUrl,
       input.notes,
@@ -200,6 +207,7 @@ export async function updateTravel(
   input: UpdateTravelInput,
 ): Promise<Travel | null> {
   const columns: Record<keyof UpdateTravelInput, string> = {
+    kind: "kind",
     type: "type",
     status: "status",
     departureStopId: "departure_stop_id",
@@ -210,6 +218,7 @@ export async function updateTravel(
     arrivalAt: "arrival_at",
     carrier: "carrier",
     referenceNumber: "reference_number",
+    vehicleDescription: "vehicle_description",
     confirmationNumber: "confirmation_number",
     bookingUrl: "booking_url",
     notes: "notes",

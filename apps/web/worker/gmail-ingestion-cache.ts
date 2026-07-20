@@ -1,6 +1,6 @@
 import { type GmailImportCandidate, gmailImportCandidateSchema } from "@voyage/contracts";
 
-export const GMAIL_EXTRACTION_VERSION = 5;
+export const GMAIL_EXTRACTION_VERSION = 7;
 
 type GmailProcessingRow = {
   gmail_message_id: string;

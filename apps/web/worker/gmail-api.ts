@@ -167,6 +167,20 @@ export function baseGmailSearchQueries(trip: Trip): GmailSearchQuery[] {
       scope: "windowed",
     },
     {
+      id: "rental-booking",
+      expression:
+        '{subject:"car rental" subject:"rental car" subject:"vehicle rental" subject:"car hire" "pick-up location" "pickup location" "drop-off location" "return location"}',
+      weight: 52,
+      scope: "windowed",
+    },
+    {
+      id: "rental-confirmation",
+      expression:
+        '{"rental confirmation" "rental agreement" "car reservation" "vehicle reservation"} {"pick-up" pickup collect} {"drop-off" dropoff return}',
+      weight: 68,
+      scope: "windowed",
+    },
+    {
       id: "booking-update",
       expression:
         '{subject:"time change" subject:"schedule change" subject:rescheduled subject:cancelled "flight time change" "booking no."}',
@@ -200,6 +214,13 @@ export function baseGmailSearchQueries(trip: Trip): GmailSearchQuery[] {
       scope: "windowed",
     },
     {
+      id: "provider-rental",
+      expression:
+        "{from:hertz.com from:avis.com from:budget.com from:enterprise.com from:nationalcar.com from:alamo.com from:sixt.com from:europcar.com from:rentalcars.com} {subject:reservation subject:confirmation subject:rental}",
+      weight: 72,
+      scope: "windowed",
+    },
+    {
       id: "generic-confirmation",
       expression:
         '{"confirmation number" "booking reference" "reservation code" "confirmation code" subject:booking subject:itinerary}',
@@ -212,7 +233,7 @@ export function baseGmailSearchQueries(trip: Trip): GmailSearchQuery[] {
   if (context.length) {
     queries.push({
       id: "trip-context",
-      expression: `{${context.map(quoted).join(" ")}} {subject:flight subject:booking subject:reservation subject:itinerary "booking reference"}`,
+      expression: `{${context.map(quoted).join(" ")}} {subject:flight subject:booking subject:reservation subject:itinerary subject:rental "booking reference"}`,
       weight: 22,
       scope: "windowed",
     });
@@ -369,7 +390,29 @@ export async function listTripMessages(
     options.queries ?? baseGmailSearchQueries(trip),
     options,
   );
-  const selected = discovery.matches.slice(0, options.maximum ?? MESSAGE_READ_BUDGET);
+  const maximum = options.maximum ?? MESSAGE_READ_BUDGET;
+  const selectedById = new Map<string, GmailMessageMatch>();
+  const categories = [
+    (match: GmailMessageMatch) => match.reasons.some((reason) => reason.includes("rental")),
+    (match: GmailMessageMatch) =>
+      match.reasons.some((reason) => reason.includes("flight") || reason.startsWith("route-gap")),
+    (match: GmailMessageMatch) =>
+      match.reasons.some(
+        (reason) =>
+          reason.includes("stay") || reason === "provider-airbnb" || reason === "provider-voi",
+      ),
+  ];
+  const categoryReserve = Math.min(15, Math.floor(maximum / categories.length));
+  for (const belongsToCategory of categories) {
+    for (const match of discovery.matches.filter(belongsToCategory).slice(0, categoryReserve)) {
+      selectedById.set(match.id, match);
+    }
+  }
+  for (const match of discovery.matches) {
+    if (selectedById.size >= maximum) break;
+    selectedById.set(match.id, match);
+  }
+  const selected = [...selectedById.values()];
   return {
     ...discovery,
     messages: await readGmailMessages(fetcher, accessToken, selected),

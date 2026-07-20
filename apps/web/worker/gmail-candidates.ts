@@ -25,6 +25,11 @@ function isWithinTrip(candidate: GmailImportCandidate, trip: Trip) {
   const start = shiftedTripDate(trip.startDate, -2);
   const end = shiftedTripDate(trip.endDate, 2);
   if (candidate.kind === "travel") {
+    if (candidate.input.kind === "rental") {
+      const pickupDate = candidate.input.departureAt.slice(0, 10);
+      const returnDate = candidate.input.arrivalAt?.slice(0, 10) ?? pickupDate;
+      return pickupDate <= end && returnDate >= start;
+    }
     const departureDate = candidate.input.departureAt.slice(0, 10);
     return departureDate >= start && departureDate <= end;
   }
@@ -54,6 +59,16 @@ function tripRelevance(candidate: GmailImportCandidate, trip: Trip) {
 function groupKey(candidate: GmailImportCandidate) {
   const confirmation = normalized(candidate.input.confirmationNumber);
   if (candidate.kind === "travel") {
+    if (candidate.input.kind === "rental") {
+      if (confirmation) return `travel:rental:confirmation:${confirmation}`;
+      return [
+        candidate.kind,
+        "rental",
+        normalized(candidate.input.carrier),
+        normalizedRouteLocation(candidate.input.departureLocation),
+        candidate.input.departureAt.slice(0, 10),
+      ].join(":");
+    }
     if (confirmation) {
       return [
         candidate.kind,
@@ -201,7 +216,27 @@ function consolidateStays(candidates: GmailStayCandidate[]): GmailStayCandidate 
   };
 }
 
-function consolidateTravel(candidates: GmailTravelCandidate[]): GmailTravelCandidate {
+function consolidateTravel(candidates: GmailTravelCandidate[]): GmailTravelCandidate | null {
+  const rental = candidates.some((candidate) => candidate.input.kind === "rental");
+  if (rental) {
+    const latest = [...candidates].sort((left, right) =>
+      right.source.receivedAt.localeCompare(left.source.receivedAt),
+    )[0];
+    if (latest.eventType === "cancellation") return null;
+    const booking = bestValue(
+      candidates,
+      (candidate) => candidate.input.bookingUrl,
+      specificBookingUrl,
+    );
+    return {
+      ...latest,
+      sources: uniqueSources(candidates),
+      input: {
+        ...latest.input,
+        bookingUrl: booking.input.bookingUrl,
+      },
+    };
+  }
   const scheduleChange = candidates
     .filter((candidate) => candidate.eventType === "schedule_change")
     .sort((left, right) => right.source.receivedAt.localeCompare(left.source.receivedAt))[0];
@@ -252,12 +287,13 @@ export function consolidateGmailCandidates(candidates: GmailImportCandidate[]) {
     groups.set(key, [...(groups.get(key) ?? []), candidate]);
   }
 
-  return [...groups.values()].map((matches): GmailImportCandidate => {
+  return [...groups.values()].flatMap((matches): GmailImportCandidate[] => {
     const stays = matches.filter(
       (candidate): candidate is GmailStayCandidate => candidate.kind === "stay",
     );
-    if (stays.length) return consolidateStays(stays);
-    return consolidateTravel(matches as GmailTravelCandidate[]);
+    if (stays.length) return [consolidateStays(stays)];
+    const travel = consolidateTravel(matches as GmailTravelCandidate[]);
+    return travel ? [travel] : [];
   });
 }
 

@@ -236,9 +236,19 @@ export const resolvedLocationResponseSchema = z.object({
 });
 
 export const reservationStatusSchema = z.enum(["planning", "booked"]);
-export const travelTypeSchema = z.enum(["flight", "train", "bus", "drive", "ferry", "other"]);
+export const transportationKindSchema = z.enum(["journey", "rental"]);
+export const travelTypeSchema = z.enum([
+  "flight",
+  "train",
+  "bus",
+  "drive",
+  "ferry",
+  "car",
+  "other",
+]);
 
-const travelFieldsSchema = z.object({
+const travelBaseFieldsSchema = z.object({
+  kind: transportationKindSchema,
   type: travelTypeSchema,
   status: reservationStatusSchema,
   departureStopId: z.string().uuid().nullable(),
@@ -257,22 +267,54 @@ const travelFieldsSchema = z.object({
   arrivalAt: localDateTimeSchema.nullable(),
   carrier: nullableText(120, "Keep the carrier under 120 characters."),
   referenceNumber: nullableText(80, "Keep the route or flight number under 80 characters."),
+  vehicleDescription: nullableText(200, "Keep the vehicle description under 200 characters."),
   confirmationNumber: nullableText(120, "Keep the confirmation number under 120 characters."),
   bookingUrl: nullableUrlSchema,
   notes: nullableText(2_000, "Keep notes under 2,000 characters."),
 });
 
+function validateTransportation(
+  value: z.infer<typeof travelBaseFieldsSchema>,
+  context: z.RefinementCtx,
+) {
+  if (value.kind === "rental" && value.type !== "car") {
+    context.addIssue({
+      code: "custom",
+      message: "Vehicle rentals must use a rental vehicle type.",
+      path: ["type"],
+    });
+  }
+  if (value.kind === "journey" && value.type === "car") {
+    context.addIssue({
+      code: "custom",
+      message: "Car rentals must be saved as vehicle rentals.",
+      path: ["kind"],
+    });
+  }
+  if (value.kind === "rental" && !value.arrivalAt) {
+    context.addIssue({
+      code: "custom",
+      message: "Choose a return date and time.",
+      path: ["arrivalAt"],
+    });
+  }
+}
+
+export const travelFieldsSchema = travelBaseFieldsSchema.superRefine(validateTransportation);
+
 export const createTravelInputSchema = travelFieldsSchema;
-export const updateTravelInputSchema = travelFieldsSchema
+export const updateTravelInputSchema = travelBaseFieldsSchema
   .partial()
   .refine((value) => Object.keys(value).length > 0, "Provide at least one field to update.");
 
-export const travelSchema = travelFieldsSchema.extend({
-  id: z.string().uuid(),
-  tripId: z.string().uuid(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
+export const travelSchema = travelBaseFieldsSchema
+  .extend({
+    id: z.string().uuid(),
+    tripId: z.string().uuid(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .superRefine(validateTransportation);
 
 export const travelResponseSchema = z.object({ travel: travelSchema });
 export const travelListResponseSchema = z.object({ travel: z.array(travelSchema) });
@@ -437,7 +479,7 @@ const gmailCandidateBaseSchema = z.object({
   source: gmailCandidateSourceSchema,
   sources: z.array(gmailCandidateSourceSchema).min(1).max(20).optional(),
   confidence: z.enum(["high", "medium"]),
-  eventType: z.enum(["confirmation", "schedule_change"]).optional(),
+  eventType: z.enum(["confirmation", "schedule_change", "modification", "cancellation"]).optional(),
 });
 
 export const gmailTravelCandidateSchema = gmailCandidateBaseSchema.extend({
@@ -529,6 +571,7 @@ export type LocationSuggestionsResponse = z.infer<typeof locationSuggestionsResp
 export type ResolveLocationInput = z.infer<typeof resolveLocationInputSchema>;
 export type ResolvedLocationResponse = z.infer<typeof resolvedLocationResponseSchema>;
 export type ReservationStatus = z.infer<typeof reservationStatusSchema>;
+export type TransportationKind = z.infer<typeof transportationKindSchema>;
 export type TravelType = z.infer<typeof travelTypeSchema>;
 export type CreateTravelInput = z.infer<typeof createTravelInputSchema>;
 export type UpdateTravelInput = z.infer<typeof updateTravelInputSchema>;

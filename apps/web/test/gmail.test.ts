@@ -93,6 +93,99 @@ const stayMarkup = `
     Your stay is confirmed.
   </body></html>`;
 
+const rentalMarkup = `
+  <html><body>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "RentalCarReservation",
+        "reservationNumber": "CAR789",
+        "reservationStatus": "https://schema.org/ReservationConfirmed",
+        "url": "https://rental.example/reservations/CAR789",
+        "reservationFor": {
+          "@type": "RentalCar",
+          "name": "Compact SUV",
+          "model": "Renegade",
+          "brand": { "@type": "Brand", "name": "Jeep" },
+          "description": "Automatic or similar",
+          "rentalCompany": { "@type": "Organization", "name": "Voyage Rent a Car" }
+        },
+        "pickupLocation": {
+          "@type": "Place",
+          "name": "Bari Airport rental center",
+          "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "Viale Enzo Ferrari",
+            "addressLocality": "Bari",
+            "addressCountry": "Italy"
+          }
+        },
+        "pickupTime": "2026-08-31T13:30:00+02:00",
+        "dropoffLocation": {
+          "@type": "Place",
+          "name": "Olbia Airport rental return",
+          "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "Via degli Astronauti",
+            "addressLocality": "Olbia",
+            "addressCountry": "Italy"
+          }
+        },
+        "dropoffTime": "2026-09-05T10:00:00+02:00"
+      }
+    </script>
+    Your car rental is confirmed.
+  </body></html>`;
+
+const rentalMicrodata = `
+  <html><body>
+    <div itemscope itemtype="https://schema.org/RentalCarReservation">
+      <meta itemprop="reservationNumber" content="MICRO123" />
+      <link itemprop="reservationStatus" href="https://schema.org/ReservationConfirmed" />
+      <link itemprop="url" href="https://rental.example/reservations/MICRO123" />
+      <div itemprop="reservationFor" itemscope itemtype="https://schema.org/RentalCar">
+        <meta itemprop="name" content="Economy car" />
+        <meta itemprop="model" content="Panda" />
+        <div itemprop="brand"><meta itemprop="name" content="Fiat" /></div>
+        <div itemprop="rentalCompany"><meta itemprop="name" content="Europcar" /></div>
+      </div>
+      <div itemprop="pickupLocation" itemscope>
+        <meta itemprop="name" content="Bari Airport" />
+        <div itemprop="address">
+          <meta itemprop="streetAddress" content="Viale Enzo Ferrari" />
+          <meta itemprop="addressLocality" content="Bari" />
+          <meta itemprop="addressCountry" content="Italy" />
+        </div>
+      </div>
+      <meta itemprop="pickupTime" content="2026-08-31T09:00:00+02:00" />
+      <div itemprop="dropoffLocation" itemscope>
+        <meta itemprop="name" content="Olbia Airport" />
+        <div itemprop="address">
+          <meta itemprop="streetAddress" content="Via degli Astronauti" />
+          <meta itemprop="addressLocality" content="Olbia" />
+          <meta itemprop="addressCountry" content="Italy" />
+        </div>
+      </div>
+      <meta itemprop="dropoffTime" content="2026-09-05T10:00:00+02:00" />
+    </div>
+  </body></html>`;
+
+const bookingRentalMarkup = `
+  <html><body>
+    <p>Car rental reservation number: 798614563</p>
+    <p>Rental company: Centauro</p>
+    <div>Volkswagen T-Cross or similar Automatic gearbox Air Conditioning Full to Full 5 seats</div>
+    <p>Pick-up location:</p>
+    <p>Olbia Costa Smeralda Airport</p>
+    <p>5 September 2026 14:30</p>
+    <p>Return location:</p>
+    <p>Via Degli Astronomi, Olbia</p>
+    <p>11 September 2026 10:00</p>
+    <div>Car</div><div>Hire Charge</div>
+    <a href="https://www.booking.com/apps.html">Get the app</a>
+    <a href="https://cars.booking.com/my-booking/798614563">Manage booking</a>
+  </body></html>`;
+
 const deltaCheckInMarkup = `
   <html><body>
     <div>Confirmation Number</div>
@@ -254,6 +347,7 @@ const googleFetch: typeof fetch = async (input, init) => {
         { id: "message-flight", threadId: "thread-flight" },
         { id: "message-stay", threadId: "thread-stay" },
         { id: "message-stay-update", threadId: "thread-stay-update" },
+        { id: "message-rental", threadId: "thread-rental" },
       ],
     });
   }
@@ -306,6 +400,28 @@ const googleFetch: typeof fetch = async (input, init) => {
           { name: "From", value: "Memmo Alfama <reservations@example.com>" },
         ],
         body: { data: encodeBody(stayMarkup) },
+      },
+    });
+  }
+
+  if (url.pathname.endsWith("/messages/message-rental")) {
+    return Response.json({
+      id: "message-rental",
+      threadId: "thread-rental",
+      internalDate: String(Date.UTC(2026, 6, 4)),
+      payload: {
+        mimeType: "text/html",
+        headers: [
+          { name: "Subject", value: "Your car rental confirmation" },
+          { name: "From", value: "Voyage Rent a Car <reservations@rental.example>" },
+        ],
+        body: {
+          data: encodeBody(
+            rentalMarkup
+              .replace("2026-08-31T13:30:00+02:00", "2026-10-05T13:30:00+01:00")
+              .replace("2026-09-05T10:00:00+02:00", "2026-10-11T10:00:00+01:00"),
+          ),
+        },
       },
     });
   }
@@ -378,6 +494,7 @@ describe("Gmail import", () => {
   it("rejects incomplete heuristic travel data without throwing", () => {
     expect(() =>
       createTravelInputSchema.safeParse({
+        kind: "journey",
         type: "flight",
         status: "booked",
         departureLocation: "ORD",
@@ -386,6 +503,7 @@ describe("Gmail import", () => {
         arrivalAt: null,
         carrier: null,
         referenceNumber: null,
+        vehicleDescription: null,
         confirmationNumber: null,
         bookingUrl: null,
         notes: null,
@@ -394,6 +512,7 @@ describe("Gmail import", () => {
 
     expect(
       createTravelInputSchema.safeParse({
+        kind: "journey",
         type: "flight",
         status: "booked",
         departureLocation: "ORD",
@@ -402,6 +521,7 @@ describe("Gmail import", () => {
         arrivalAt: null,
         carrier: null,
         referenceNumber: null,
+        vehicleDescription: null,
         confirmationNumber: null,
         bookingUrl: null,
         notes: null,
@@ -501,6 +621,206 @@ describe("Gmail import", () => {
       createdAt: "2026-07-19T00:00:00.000Z",
       updatedAt: "2026-07-19T00:00:00.000Z",
     } satisfies Trip;
+
+    expect(extractGmailCandidates(message, trip)).toEqual([]);
+  });
+
+  it("extracts rental cars from JSON-LD and Gmail microdata", () => {
+    const trip = {
+      id: "trip-rental-structured",
+      name: "Italy",
+      stops: oneStop("Italy", "2026-08-30", "2026-09-11"),
+      startDate: "2026-08-30",
+      endDate: "2026-09-11",
+      accessLevel: "owner",
+      createdAt: "2026-07-19T00:00:00.000Z",
+      updatedAt: "2026-07-19T00:00:00.000Z",
+    } satisfies Trip;
+    const message = (id: string, html: string): GmailMessage => ({
+      id,
+      threadId: `thread-${id}`,
+      internalDate: String(Date.UTC(2026, 6, 1)),
+      payload: {
+        mimeType: "text/html",
+        headers: [
+          { name: "Subject", value: "Your car rental confirmation" },
+          { name: "From", value: "Rental reservations <reservations@rental.example>" },
+        ],
+        body: { data: encodeBody(html) },
+      },
+    });
+
+    expect(extractGmailCandidates(message("json-rental", rentalMarkup), trip)).toMatchObject([
+      {
+        kind: "travel",
+        confidence: "high",
+        eventType: "confirmation",
+        input: {
+          kind: "rental",
+          type: "car",
+          departureLocation: "Bari Airport rental center · Viale Enzo Ferrari, Bari, Italy",
+          arrivalLocation: "Olbia Airport rental return · Via degli Astronauti, Olbia, Italy",
+          departureAt: "2026-08-31T13:30",
+          arrivalAt: "2026-09-05T10:00",
+          carrier: "Voyage Rent a Car",
+          vehicleDescription: "Compact SUV · Jeep Renegade · Automatic or similar",
+          confirmationNumber: "CAR789",
+        },
+      },
+    ]);
+    expect(
+      extractGmailCandidates(message("microdata-rental", rentalMicrodata), trip),
+    ).toMatchObject([
+      {
+        kind: "travel",
+        input: {
+          kind: "rental",
+          type: "car",
+          carrier: "Europcar",
+          vehicleDescription: "Economy car · Fiat Panda",
+          confirmationNumber: "MICRO123",
+          departureAt: "2026-08-31T09:00",
+          arrivalAt: "2026-09-05T10:00",
+        },
+      },
+    ]);
+  });
+
+  it("extracts the vehicle and manage-booking link from Booking.com rental mail", () => {
+    const trip = {
+      id: "trip-booking-rental",
+      name: "Italy",
+      stops: oneStop("Italy", "2026-08-30", "2026-09-11"),
+      startDate: "2026-08-30",
+      endDate: "2026-09-11",
+      accessLevel: "owner",
+      createdAt: "2026-07-19T00:00:00.000Z",
+      updatedAt: "2026-07-19T00:00:00.000Z",
+    } satisfies Trip;
+    const message: GmailMessage = {
+      id: "booking-rental",
+      threadId: "thread-booking-rental",
+      internalDate: String(Date.UTC(2026, 6, 1)),
+      payload: {
+        mimeType: "text/html",
+        headers: [
+          {
+            name: "Subject",
+            value:
+              "Thanks! Your car rental with Centauro at Olbia Costa Smeralda Airport is confirmed",
+          },
+          { name: "From", value: "Booking.com <noreply@booking.com>" },
+        ],
+        body: { data: encodeBody(bookingRentalMarkup) },
+      },
+    };
+
+    expect(extractGmailCandidates(message, trip)).toMatchObject([
+      {
+        kind: "travel",
+        input: {
+          kind: "rental",
+          type: "car",
+          carrier: "Centauro",
+          vehicleDescription: "Volkswagen T-Cross or similar · Automatic gearbox",
+          bookingUrl: "https://cars.booking.com/my-booking/798614563",
+          confirmationNumber: "798614563",
+        },
+      },
+    ]);
+  });
+
+  it("consolidates rental updates and suppresses a later cancellation", () => {
+    const trip = {
+      id: "trip-rental-updates",
+      name: "Italy",
+      stops: oneStop("Italy", "2026-08-30", "2026-09-11"),
+      startDate: "2026-08-30",
+      endDate: "2026-09-11",
+      accessLevel: "owner",
+      createdAt: "2026-07-19T00:00:00.000Z",
+      updatedAt: "2026-07-19T00:00:00.000Z",
+    } satisfies Trip;
+    const html = (pickupTime: string) => `
+      <p>Car rental reservation number: RENT123</p>
+      <p>Rental company: Europcar</p>
+      <p>Vehicle: Economy car or similar</p>
+      <p>Pick-up location: Bari Airport</p>
+      <p>August 31, 2026 ${pickupTime}</p>
+      <p>Return location: Olbia Airport</p>
+      <p>September 5, 2026 10:00 AM</p>
+      <a href="https://rental.example/manage/RENT123">Manage reservation</a>`;
+    const message = (
+      id: string,
+      subject: string,
+      received: number,
+      body: string,
+    ): GmailMessage => ({
+      id,
+      threadId: `thread-${id}`,
+      internalDate: String(Date.UTC(2026, 6, received)),
+      payload: {
+        mimeType: "text/html",
+        headers: [
+          { name: "Subject", value: subject },
+          { name: "From", value: "Europcar <reservations@europcar.example>" },
+        ],
+        body: { data: encodeBody(body) },
+      },
+    });
+    const confirmation = extractGmailCandidates(
+      message("rental-confirmed", "Your car rental is confirmed", 1, html("9:00 AM")),
+      trip,
+    );
+    const modification = extractGmailCandidates(
+      message("rental-updated", "Your car rental reservation was updated", 2, html("11:00 AM")),
+      trip,
+    );
+    const cancellation = extractGmailCandidates(
+      message("rental-cancelled", "Your car rental reservation was cancelled", 3, html("11:00 AM")),
+      trip,
+    );
+
+    expect(consolidateGmailCandidates([...confirmation, ...modification])).toMatchObject([
+      {
+        eventType: "modification",
+        input: { confirmationNumber: "RENT123", departureAt: "2026-08-31T11:00" },
+        sources: [expect.any(Object), expect.any(Object)],
+      },
+    ]);
+    expect(consolidateGmailCandidates([...confirmation, ...modification, ...cancellation])).toEqual(
+      [],
+    );
+  });
+
+  it("ignores promotional rental offers even when they mention pickup and return", () => {
+    const trip = {
+      id: "trip-rental-promotion",
+      name: "Italy",
+      stops: oneStop("Italy", "2026-08-30", "2026-09-11"),
+      startDate: "2026-08-30",
+      endDate: "2026-09-11",
+      accessLevel: "owner",
+      createdAt: "2026-07-19T00:00:00.000Z",
+      updatedAt: "2026-07-19T00:00:00.000Z",
+    } satisfies Trip;
+    const message: GmailMessage = {
+      id: "rental-promotion",
+      threadId: "thread-rental-promotion",
+      internalDate: String(Date.UTC(2026, 6, 1)),
+      payload: {
+        mimeType: "text/plain",
+        headers: [
+          { name: "Subject", value: "Save 30% on your next car rental offer" },
+          { name: "From", value: "Rental deals <deals@rental.example>" },
+        ],
+        body: {
+          data: encodeBody(
+            "Choose any pickup location and return location. Confirmation code SAVE30.",
+          ),
+        },
+      },
+    };
 
     expect(extractGmailCandidates(message, trip)).toEqual([]);
   });
@@ -968,6 +1288,7 @@ describe("Gmail import", () => {
           messageId: "round-trip-outbound",
         },
         input: {
+          kind: "journey",
           type: "flight",
           status: "booked",
           departureStopId: null,
@@ -978,6 +1299,7 @@ describe("Gmail import", () => {
           arrivalAt: "2026-10-05T12:15",
           carrier: "Example Air",
           referenceNumber: "EA 101",
+          vehicleDescription: null,
           confirmationNumber: "SHARED1",
           bookingUrl: null,
           notes: null,
@@ -992,6 +1314,7 @@ describe("Gmail import", () => {
           messageId: "round-trip-return",
         },
         input: {
+          kind: "journey",
           type: "flight",
           status: "booked",
           departureStopId: null,
@@ -1002,6 +1325,7 @@ describe("Gmail import", () => {
           arrivalAt: "2026-10-12T18:15",
           carrier: "Example Air",
           referenceNumber: "EA 202",
+          vehicleDescription: null,
           confirmationNumber: "SHARED1",
           bookingUrl: null,
           notes: null,
@@ -1105,16 +1429,27 @@ describe("Gmail import", () => {
     ).json<GmailConnection>();
 
     expect(scanResponse.status).toBe(200);
-    expect(scan.messagesScanned).toBe(3);
-    expect(scan.search).toMatchObject({ messagesFetched: 3, messagesReused: 0 });
-    expect(scan.candidates.map((candidate) => candidate.kind).sort()).toEqual(["stay", "travel"]);
+    expect(scan.messagesScanned).toBe(4);
+    expect(scan.search).toMatchObject({ messagesFetched: 4, messagesReused: 0 });
+    expect(scan.candidates.map((candidate) => candidate.kind).sort()).toEqual([
+      "stay",
+      "travel",
+      "travel",
+    ]);
     expect(scan.candidates.find((candidate) => candidate.kind === "stay")?.sources).toHaveLength(2);
-    expect(imported.imported).toHaveLength(2);
+    expect(imported.imported).toHaveLength(3);
     expect(imported.skipped).toHaveLength(0);
     expect(travel.travel[0]).toMatchObject({
       departureLocation: "ORD · Chicago O'Hare",
       arrivalLocation: "LIS · Lisbon",
       confirmationNumber: "VOY123",
+    });
+    expect(travel.travel[1]).toMatchObject({
+      kind: "rental",
+      type: "car",
+      carrier: "Voyage Rent a Car",
+      vehicleDescription: "Compact SUV · Jeep Renegade · Automatic or similar",
+      confirmationNumber: "CAR789",
     });
     expect(stays.stays[0]).toMatchObject({
       propertyName: "Memmo Alfama",
@@ -1126,13 +1461,13 @@ describe("Gmail import", () => {
           .bind(trip.id)
           .first<{ count: number }>()
       )?.count,
-    ).toBe(3);
+    ).toBe(4);
     expect(repeatScan).toMatchObject({
       candidates: [],
-      alreadyImported: 2,
-      search: { messagesFetched: 0, messagesReused: 3 },
+      alreadyImported: 3,
+      search: { messagesFetched: 0, messagesReused: 4 },
     });
-    expect(cachedBeforeDisconnect?.count).toBe(3);
+    expect(cachedBeforeDisconnect?.count).toBe(4);
     expect(repeatImport.imported).toHaveLength(0);
     expect(repeatImport.skipped).toEqual(
       expect.arrayContaining([

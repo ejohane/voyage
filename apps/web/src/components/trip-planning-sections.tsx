@@ -35,6 +35,7 @@ const travelIcons: Record<Travel["type"], ComponentType<{ className?: string }>>
   bus: BusFront,
   drive: CarFront,
   ferry: Ship,
+  car: CarFront,
   other: Route,
 };
 
@@ -48,6 +49,10 @@ function formatDateOnly(value: string) {
 
 function titleCase(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function transportationLabel(item: Travel) {
+  return item.kind === "rental" ? "Rental car" : titleCase(item.type);
 }
 
 function StatusBadge({ status }: { status: "planning" | "booked" }) {
@@ -75,9 +80,15 @@ function OverviewSection({ trip }: SectionProps) {
       id: `travel-${item.id}`,
       start: item.departureAt,
       icon: travelIcons[item.type],
-      eyebrow: `${titleCase(item.type)} · ${titleCase(item.status)}`,
-      title: `${item.departureLocation} → ${item.arrivalLocation}`,
-      detail: formatLocalDateTime(item.departureAt),
+      eyebrow: `${transportationLabel(item)} · ${titleCase(item.status)}`,
+      title:
+        item.kind === "rental"
+          ? [item.carrier ?? "Rental car", item.vehicleDescription].filter(Boolean).join(" · ")
+          : `${item.departureLocation} → ${item.arrivalLocation}`,
+      detail:
+        item.kind === "rental"
+          ? `Pick up ${formatLocalDateTime(item.departureAt)} · Return ${formatLocalDateTime(item.arrivalAt ?? item.departureAt)}`
+          : formatLocalDateTime(item.departureAt),
     })),
     ...(stays.data ?? []).map((item) => ({
       id: `stay-${item.id}`,
@@ -155,7 +166,9 @@ function OverviewSection({ trip }: SectionProps) {
         <Card>
           <CardHeader>
             <CardTitle>Trip timeline</CardTitle>
-            <CardDescription>Travel, stays, and plans in chronological order.</CardDescription>
+            <CardDescription>
+              Transportation, stays, and plans in chronological order.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -187,7 +200,7 @@ function OverviewSection({ trip }: SectionProps) {
               <EmptyMessage
                 icon={CalendarCheck}
                 title="Your timeline is ready"
-                description="Add travel, stays, or a plan to see the trip come together."
+                description="Add transportation, stays, or a plan to see the trip come together."
               />
             )}
           </CardContent>
@@ -219,7 +232,7 @@ function OverviewSection({ trip }: SectionProps) {
           />
           <SummaryCard
             icon={Route}
-            label="Travel"
+            label="Transportation"
             value={
               travel.data?.length ? `${travelBooked} of ${travel.data.length} booked` : "Not added"
             }
@@ -279,8 +292,8 @@ function TravelSection({ trip }: SectionProps) {
   return (
     <section>
       <SectionHeading
-        title="Travel"
-        description="Flights, trains, drives, and every leg in between."
+        title="Transportation"
+        description="Flights, trains, ferries, transfers, and vehicle rentals in one place."
         action={
           canEdit ? (
             <TravelDialog
@@ -291,7 +304,7 @@ function TravelSection({ trip }: SectionProps) {
               trigger={
                 <Button>
                   <Plus className="size-4" />
-                  Add travel
+                  Add transportation
                 </Button>
               }
             />
@@ -307,8 +320,8 @@ function TravelSection({ trip }: SectionProps) {
           <CardContent>
             <EmptyMessage
               icon={Plane}
-              title="No travel added yet"
-              description="Add your first flight, train, drive, or transfer."
+              title="No transportation added yet"
+              description="Add your first flight, train, ferry, transfer, or rental car."
             />
           </CardContent>
         </Card>
@@ -335,6 +348,7 @@ function TravelCard({
   const [editOpen, setEditOpen] = useState(false);
   const remove = useDeleteTravel(item.tripId, item.id);
   const Icon = travelIcons[item.type];
+  const isRental = item.kind === "rental";
   const departureStop = stops.find((stop) => stop.id === item.departureStopId);
   const arrivalStop = stops.find((stop) => stop.id === item.arrivalStopId);
 
@@ -347,22 +361,42 @@ function TravelCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="font-semibold">
-              {item.departureLocation} <span className="text-muted-foreground">→</span>{" "}
-              {item.arrivalLocation}
+              {isRental ? (
+                [item.carrier ?? "Rental car", item.vehicleDescription].filter(Boolean).join(" · ")
+              ) : (
+                <>
+                  {item.departureLocation} <span className="text-muted-foreground">→</span>{" "}
+                  {item.arrivalLocation}
+                </>
+              )}
             </p>
             <StatusBadge status={item.status} />
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {formatLocalDateTime(item.departureAt)}
-            {item.arrivalAt ? ` – ${formatLocalDateTime(item.arrivalAt)}` : ""}
-          </p>
+          {isRental ? (
+            <>
+              <p className="mt-1 text-sm">
+                <span className="font-medium">Pick up:</span> {item.departureLocation}
+                <span className="mx-2 text-muted-foreground">→</span>
+                <span className="font-medium">Return:</span> {item.arrivalLocation}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {formatLocalDateTime(item.departureAt)} –{" "}
+                {formatLocalDateTime(item.arrivalAt ?? item.departureAt)}
+              </p>
+            </>
+          ) : (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {formatLocalDateTime(item.departureAt)}
+              {item.arrivalAt ? ` – ${formatLocalDateTime(item.arrivalAt)}` : ""}
+            </p>
+          )}
           {departureStop || arrivalStop ? (
             <p className="mt-2 text-xs font-medium text-muted-foreground">
               {departureStop?.name ?? "Outside this trip"} →{" "}
               {arrivalStop?.name ?? "Outside this trip"}
             </p>
           ) : null}
-          {item.carrier || item.referenceNumber ? (
+          {!isRental && (item.carrier || item.referenceNumber) ? (
             <p className="mt-3 text-sm">
               {[item.carrier, item.referenceNumber].filter(Boolean).join(" · ")}
             </p>
@@ -398,17 +432,17 @@ function TravelCard({
               open={editOpen}
               onOpenChange={setEditOpen}
               trigger={
-                <Button size="icon" variant="outline" aria-label="Edit travel">
+                <Button size="icon" variant="outline" aria-label="Edit transportation">
                   <Pencil className="size-4" />
                 </Button>
               }
             />
             <ConfirmDeleteDialog
-              title="Remove this travel item?"
-              description="This permanently removes the route and its booking details from the trip."
+              title="Remove this transportation item?"
+              description="This permanently removes the journey or rental and its booking details from the trip."
               onDelete={() => remove.mutateAsync()}
               trigger={
-                <Button size="icon" variant="ghost" aria-label="Remove travel">
+                <Button size="icon" variant="ghost" aria-label="Remove transportation">
                   <Trash2 className="size-4 text-muted-foreground" />
                 </Button>
               }

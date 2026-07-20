@@ -63,7 +63,7 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
   const sections: { label: string; value: TripSection; to: string }[] = [
     { label: "Overview", value: "overview", to: `/trips/${trip.data.id}` },
     { label: "Itinerary", value: "itinerary", to: `/trips/${trip.data.id}/itinerary` },
-    { label: "Travel", value: "travel", to: `/trips/${trip.data.id}/travel` },
+    { label: "Transportation", value: "travel", to: `/trips/${trip.data.id}/travel` },
     { label: "Stays", value: "stays", to: `/trips/${trip.data.id}/stays` },
   ];
 
