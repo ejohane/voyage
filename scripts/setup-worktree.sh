@@ -52,6 +52,6 @@ echo "Installing Bun dependencies..."
 bun install --frozen-lockfile
 
 echo "Applying local D1 migrations..."
-bun run --cwd apps/web db:migrate:local
+CI=1 bun run --cwd apps/web db:migrate:local
 
 echo "Voyage worktree is ready."
