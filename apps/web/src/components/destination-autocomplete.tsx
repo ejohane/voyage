@@ -136,7 +136,7 @@ function DestinationAutocomplete({
         method: "POST",
         body: JSON.stringify({ placeId: suggestion.placeId, sessionToken }),
       });
-      onChange(query.trim(), response.location);
+      onChange(suggestion.label, response.location);
       setOpen(false);
     } catch {
       setSearchError("We couldn’t verify that destination. Try again or use a custom destination.");

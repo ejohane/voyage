@@ -1,12 +1,13 @@
 import type { Trip } from "@voyage/contracts";
-import { ArrowRight, CalendarDays, MapPinned, PlaneTakeoff } from "lucide-react";
+import { CalendarDays, Clock3, MapPin, MapPinned } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { CreateTripDialog } from "@/components/create-trip-dialog";
+import { TripMapHeader } from "@/components/trip-map-header";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatTripDates, formatTripDestinations } from "@/lib/format-trip";
+import { formatTripDates, formatTripDestinations, formatTripDurationDays } from "@/lib/format-trip";
 import { useTrips } from "@/lib/trips";
 import { cn } from "@/lib/utils";
 
@@ -71,7 +72,7 @@ function TripsPage() {
       ) : null}
 
       {trips.data?.length ? (
-        <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Trips">
+        <section className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" aria-label="Trips">
           {trips.data.map((trip) => (
             <TripCard key={trip.id} trip={trip} />
           ))}
@@ -84,29 +85,28 @@ function TripsPage() {
 function TripCard({ trip }: { trip: Trip }) {
   return (
     <Link
-      className="group rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="group rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       to={`/trips/${trip.id}`}
     >
-      <Card className="h-full gap-5 transition-colors group-hover:border-foreground/20">
-        <CardContent>
-          <div className="flex items-start justify-between gap-4">
-            <span className="grid size-10 place-items-center rounded-lg border bg-muted/40">
-              <PlaneTakeoff className="size-4 text-muted-foreground" aria-hidden="true" />
-            </span>
-            <ArrowRight
-              className="mt-2 size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5"
-              aria-hidden="true"
-            />
-          </div>
-          <h2 className="mt-5 font-medium tracking-tight">{trip.name}</h2>
-          <p className="mt-1 truncate text-sm text-muted-foreground">
-            {formatTripDestinations(trip, 2)}
-          </p>
-          <p className="mt-5 flex items-center gap-2 text-xs text-muted-foreground">
-            <CalendarDays className="size-3.5" aria-hidden="true" />
-            {formatTripDates(trip)}
+      <Card className="h-full gap-0 overflow-hidden rounded-2xl py-0 shadow-sm transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-foreground/20 group-hover:shadow-lg">
+        <TripMapHeader trip={trip} />
+        <CardContent className="border-t px-5 py-5">
+          <h2 className="text-lg font-semibold leading-6 tracking-tight">{trip.name}</h2>
+          <p className="mt-2 flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+            <MapPin className="size-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">{formatTripDestinations(trip, 2)}</span>
           </p>
         </CardContent>
+        <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-3 border-t bg-[#fafaf8] px-5 py-4 text-xs text-muted-foreground">
+          <p className="flex min-w-0 items-center gap-2">
+            <CalendarDays className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">{formatTripDates(trip)}</span>
+          </p>
+          <p className="flex items-center gap-2 whitespace-nowrap">
+            <Clock3 className="size-3.5" aria-hidden="true" />
+            {formatTripDurationDays(trip)}
+          </p>
+        </div>
       </Card>
     </Link>
   );
@@ -115,18 +115,20 @@ function TripCard({ trip }: { trip: Trip }) {
 function TripsSkeleton() {
   return (
     <div
-      className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+      className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
       aria-label="Loading trips"
       role="status"
     >
       {[0, 1, 2].map((item) => (
-        <Card className="gap-5" key={item}>
-          <CardContent>
-            <Skeleton className="size-10" />
-            <Skeleton className="mt-5 h-4 w-1/2" />
-            <Skeleton className="mt-3 h-3 w-2/3" />
-            <Skeleton className="mt-6 h-3 w-3/4" />
+        <Card className="gap-0 overflow-hidden rounded-2xl py-0" key={item}>
+          <Skeleton className="aspect-[2/1] w-full rounded-none" />
+          <CardContent className="px-5 py-5">
+            <Skeleton className="h-5 w-1/2" />
           </CardContent>
+          <div className="border-t px-5 py-4">
+            <Skeleton className="h-3 w-2/3" />
+            <Skeleton className="mt-4 h-3 w-4/5" />
+          </div>
         </Card>
       ))}
     </div>

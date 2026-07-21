@@ -24,6 +24,10 @@ export function tripEndpoint(tripId: string) {
   return `${tripsEndpoint}/${tripId}` as const;
 }
 
+export function tripMapEndpoint(tripId: string) {
+  return `${tripEndpoint(tripId)}/map` as const;
+}
+
 export function tripTravelEndpoint(tripId: string) {
   return `${tripEndpoint(tripId)}/travel` as const;
 }
@@ -549,6 +553,7 @@ export const apiErrorSchema = z.object({
       "not_found",
       "validation_error",
       "gmail_not_connected",
+      "service_unavailable",
       "internal_error",
     ]),
     message: z.string(),

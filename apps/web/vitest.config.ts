@@ -14,6 +14,8 @@ export default defineConfig({
           GOOGLE_OAUTH_CLIENT_SECRET: "test-client-secret",
           GMAIL_TOKEN_ENCRYPTION_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
           CLERK_AUTHORIZED_PARTIES: "https://voyage.test",
+          GOOGLE_MAPS_API_KEY: "",
+          GOOGLE_STATIC_MAPS_API_KEY: "",
         },
       },
     }),

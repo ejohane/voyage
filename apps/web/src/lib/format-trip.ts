@@ -35,4 +35,19 @@ function formatTripDestinations(trip: Pick<Trip, "stops">, limit = Number.POSITI
   return `${names.slice(0, limit).join(" → ")} +${names.length - limit}`;
 }
 
-export { formatTripDates, formatTripDestinations };
+function formatTripDuration(trip: Pick<Trip, "startDate" | "endDate">) {
+  if (!trip.startDate || !trip.endDate) return "Flexible";
+
+  const start = new Date(`${trip.startDate}T00:00:00Z`);
+  const end = new Date(`${trip.endDate}T00:00:00Z`);
+  const days = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+
+  return `${days} ${days === 1 ? "day" : "days"}`;
+}
+
+function formatTripDurationDays(trip: Pick<Trip, "startDate" | "endDate">) {
+  if (!trip.startDate || !trip.endDate) return "Days not set";
+  return formatTripDuration(trip);
+}
+
+export { formatTripDates, formatTripDestinations, formatTripDuration, formatTripDurationDays };

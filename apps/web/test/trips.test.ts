@@ -2,6 +2,14 @@ import { env } from "cloudflare:test";
 import { type TripListResponse, type TripResponse, tripsEndpoint } from "@voyage/contracts";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../worker";
+import type { StaticMapsClient } from "../worker/google-static-maps";
+
+const staticMapsClient: StaticMapsClient = {
+  render: async () =>
+    new Response(new Uint8Array([137, 80, 78, 71]), {
+      headers: { "Content-Type": "image/png" },
+    }),
+};
 
 const testApp = createApp({
   authenticateRequest: async (request) => request.headers.get("x-test-user"),
@@ -132,6 +140,39 @@ describe("trip API", () => {
     expect(list.trips).toHaveLength(1);
     expect(list.trips[0]?.id).toBe(trip.id);
     expect(hiddenResponse.status).toBe(404);
+  });
+
+  it("returns a private map image only to trip members", async () => {
+    const { trip } = await createTrip();
+    const appWithMaps = createApp({
+      authenticateRequest: async (request) => request.headers.get("x-test-user"),
+      staticMapsClient,
+    });
+    const ownerResponse = await appWithMaps.request(
+      `https://voyage.test${tripsEndpoint}/${trip.id}/map`,
+      { headers: { "x-test-user": "user_owner" } },
+      env,
+    );
+    const otherResponse = await appWithMaps.request(
+      `https://voyage.test${tripsEndpoint}/${trip.id}/map`,
+      { headers: { "x-test-user": "user_other" } },
+      env,
+    );
+
+    expect(ownerResponse.status).toBe(200);
+    expect(ownerResponse.headers.get("Content-Type")).toBe("image/png");
+    expect(ownerResponse.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(otherResponse.status).toBe(404);
+  });
+
+  it("returns a graceful unavailable response when Static Maps is not configured", async () => {
+    const { trip } = await createTrip();
+    const response = await request(`${tripsEndpoint}/${trip.id}/map`, "user_owner");
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: { code: "service_unavailable", message: "Trip map unavailable." },
+    });
   });
 
   it("derives trip dates from destinations and preserves them on name updates", async () => {

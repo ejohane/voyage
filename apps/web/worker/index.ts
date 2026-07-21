@@ -9,6 +9,7 @@ import { type AuthenticateRequest, authenticateClerkRequest } from "./auth";
 import { createGmailImportRoutes } from "./gmail-import-routes";
 import { createGmailIntegrationRoutes } from "./gmail-integration-routes";
 import type { PlacesClient } from "./google-places";
+import type { StaticMapsClient } from "./google-static-maps";
 import { createLocationRoutes } from "./location-routes";
 import { createPlanningRoutes } from "./planning-routes";
 import { createTripsRoutes } from "./trips-routes";
@@ -18,6 +19,7 @@ type AppDependencies = {
   authenticateRequest?: AuthenticateRequest;
   gmailFetch?: typeof fetch;
   placesClient?: PlacesClient;
+  staticMapsClient?: StaticMapsClient;
 };
 
 export function createApp(dependencies: AppDependencies = {}) {
@@ -37,7 +39,10 @@ export function createApp(dependencies: AppDependencies = {}) {
     });
   });
 
-  app.route(tripsEndpoint, createTripsRoutes(authenticateRequest));
+  app.route(
+    tripsEndpoint,
+    createTripsRoutes(authenticateRequest, { staticMapsClient: dependencies.staticMapsClient }),
+  );
   app.route(tripsEndpoint, createPlanningRoutes(authenticateRequest));
   app.route(
     "/api/integrations/gmail",
