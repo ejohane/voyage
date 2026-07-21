@@ -11,7 +11,7 @@ import {
 import { useState } from "react";
 import { Link, NavLink, useParams } from "react-router-dom";
 import { EditTripDialog } from "@/components/edit-trip-dialog";
-import { GmailImportDialog } from "@/components/gmail-import-dialog";
+import { GmailImportExperience } from "@/components/gmail-import-experience";
 import { ItinerarySection } from "@/components/trip-itinerary-section";
 import { TripMapHeader } from "@/components/trip-map-header";
 import { OverviewSection, StaysSection, TravelSection } from "@/components/trip-planning-sections";
@@ -125,7 +125,6 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
               </span>
             ) : (
               <div className="hidden gap-2 sm:flex [&>button]:border-foreground/10 [&>button]:bg-background/75 [&>button]:shadow-none [&>button]:backdrop-blur-md [&>button]:hover:bg-background">
-                <GmailImportDialog trip={trip.data} />
                 <EditTripDialog trip={trip.data} open={editOpen} onOpenChange={setEditOpen} />
               </div>
             )}
@@ -157,7 +156,6 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
                 </span>
               ) : (
                 <div className="flex flex-wrap gap-2 [&>button]:border-foreground/10 [&>button]:bg-background/75 [&>button]:shadow-none [&>button]:backdrop-blur-md [&>button]:hover:bg-background">
-                  <GmailImportDialog trip={trip.data} />
                   <EditTripDialog trip={trip.data} open={editOpen} onOpenChange={setEditOpen} />
                 </div>
               )}
@@ -192,7 +190,18 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
         })}
       </nav>
 
-      <div className="mx-auto mt-9 w-full max-w-7xl px-5 sm:mt-12 sm:px-8">
+      {trip.data.accessLevel !== "viewer" ? (
+        <div className="mx-auto mt-9 w-full max-w-7xl px-5 sm:px-8">
+          <GmailImportExperience trip={trip.data} />
+        </div>
+      ) : null}
+
+      <div
+        className={cn(
+          "mx-auto w-full max-w-7xl px-5 sm:px-8",
+          trip.data.accessLevel === "viewer" ? "mt-9 sm:mt-12" : "mt-8 sm:mt-10",
+        )}
+      >
         <div>
           {section === "overview" ? <OverviewSection trip={trip.data} /> : null}
           {section === "itinerary" ? <ItinerarySection trip={trip.data} /> : null}
