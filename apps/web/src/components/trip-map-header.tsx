@@ -4,14 +4,23 @@ import { tripMapEndpoint } from "@voyage/contracts";
 import { MapPinned } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { formatTripDestinations } from "@/lib/format-trip";
+import { cn } from "@/lib/utils";
 
-function TripMapHeader({ trip }: { trip: Trip }) {
+type TripMapHeaderProps = {
+  trip: Trip;
+  className?: string;
+  eager?: boolean;
+};
+
+function TripMapHeader({ trip, className, eager = false }: TripMapHeaderProps) {
   const { getToken } = useAuth();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [shouldLoad, setShouldLoad] = useState(false);
+  const [shouldLoad, setShouldLoad] = useState(eager);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    if (eager) return;
+
     const element = containerRef.current;
     if (!element) return;
 
@@ -31,7 +40,7 @@ function TripMapHeader({ trip }: { trip: Trip }) {
     observer.observe(element);
 
     return () => observer.disconnect();
-  }, []);
+  }, [eager]);
 
   useEffect(() => {
     if (!shouldLoad) return;
@@ -64,7 +73,10 @@ function TripMapHeader({ trip }: { trip: Trip }) {
   }, [getToken, shouldLoad, trip.id]);
 
   return (
-    <div ref={containerRef} className="relative aspect-[2/1] overflow-hidden bg-[#e9e8e1]">
+    <div
+      ref={containerRef}
+      className={cn("relative aspect-[2/1] overflow-hidden bg-[#e9e8e1]", className)}
+    >
       <div
         className="absolute inset-0 opacity-70"
         style={{
@@ -80,6 +92,7 @@ function TripMapHeader({ trip }: { trip: Trip }) {
           alt={`Map showing ${formatTripDestinations(trip)}`}
           className="absolute inset-0 size-full object-cover transition-transform duration-500 group-hover:scale-[1.015]"
           decoding="async"
+          loading={eager ? "eager" : "lazy"}
           src={imageUrl}
         />
       ) : null}
