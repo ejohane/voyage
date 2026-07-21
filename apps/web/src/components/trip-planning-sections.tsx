@@ -22,7 +22,7 @@ import { Link } from "react-router-dom";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { StayDialog, TravelDialog } from "@/components/planning-dialogs";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDeleteStay, useDeleteTravel, usePlans, useStays, useTravel } from "@/lib/planning";
 import { cn } from "@/lib/utils";
@@ -133,44 +133,56 @@ function OverviewSection({ trip }: SectionProps) {
   }
 
   return (
-    <div className="grid gap-5">
-      <Card>
-        <CardHeader>
-          <CardTitle>Destinations</CardTitle>
-          <CardDescription>Your itinerary in travel order.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {trip.stops.map((stop, index) => (
-              <li className="flex gap-3 rounded-lg border bg-muted/20 p-3" key={stop.id}>
-                <span className="grid size-7 shrink-0 place-items-center rounded-full border bg-background text-xs font-medium">
-                  {index + 1}
-                </span>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{stop.name}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {stop.arrivalDate
-                      ? `${formatDateOnly(stop.arrivalDate)}${
-                          stop.departureDate ? ` – ${formatDateOnly(stop.departureDate)}` : ""
-                        }`
-                      : "Dates flexible"}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </CardContent>
-      </Card>
+    <div className="divide-y divide-border/70">
+      <section className="pb-9">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full bg-muted/70">
+            <MapPin className="size-4 text-muted-foreground" aria-hidden="true" />
+          </span>
+          <div>
+            <h2 className="text-lg font-semibold tracking-[-0.02em]">Destinations</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Your itinerary in travel order.</p>
+          </div>
+        </div>
+        <ol className="mt-5 grid overflow-hidden rounded-xl border border-border/70 bg-muted/15 sm:grid-cols-2 sm:divide-x lg:grid-cols-3">
+          {trip.stops.map((stop, index) => (
+            <li
+              className="flex min-h-20 gap-3 border-b border-border/70 p-4 last:border-b-0 sm:border-b-0"
+              key={stop.id}
+            >
+              <span className="grid size-7 shrink-0 place-items-center rounded-full border border-border/80 bg-background text-xs font-medium">
+                {index + 1}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{stop.name}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {stop.arrivalDate
+                    ? `${formatDateOnly(stop.arrivalDate)}${
+                        stop.departureDate ? ` – ${formatDateOnly(stop.departureDate)}` : ""
+                      }`
+                    : "Dates flexible"}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </section>
 
-      <div className="grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Trip timeline</CardTitle>
-            <CardDescription>
-              Transportation, stays, and plans in chronological order.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+      <section className="grid gap-10 py-9 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-0">
+        <div className="lg:pr-10">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full bg-muted/70">
+              <CalendarCheck className="size-4 text-muted-foreground" aria-hidden="true" />
+            </span>
+            <div>
+              <h2 className="text-lg font-semibold tracking-[-0.02em]">Trip timeline</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Transportation, stays, and plans in chronological order.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 min-h-64 rounded-2xl bg-muted/25 p-5 sm:p-6">
             {loading ? (
               <div className="space-y-4">
                 <Skeleton className="h-16" />
@@ -203,23 +215,24 @@ function OverviewSection({ trip }: SectionProps) {
                 description="Add transportation, stays, or a plan to see the trip come together."
               />
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <div className="grid content-start gap-5">
-          <Card>
-            <CardContent className="flex items-center gap-4">
-              <span className="grid size-10 place-items-center rounded-lg border bg-background">
-                <CalendarCheck className="size-4 text-muted-foreground" />
-              </span>
-              <div className="min-w-0">
-                <p className="font-medium">Next up</p>
-                <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                  {loading ? "Loading…" : (nextItem?.title ?? "No upcoming reservations")}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+        <aside className="border-t border-border/70 pt-7 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            At a glance
+          </p>
+          <div className="flex items-center gap-4 border-b border-border/70 py-5">
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-muted/70">
+              <CalendarCheck className="size-4 text-muted-foreground" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <p className="font-medium">Next up</p>
+              <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                {loading ? "Loading…" : (nextItem?.title ?? "No upcoming reservations")}
+              </p>
+            </div>
+          </div>
           <SummaryCard
             icon={CalendarCheck}
             label="Itinerary"
@@ -246,8 +259,8 @@ function OverviewSection({ trip }: SectionProps) {
             }
             href={`/trips/${trip.id}/stays`}
           />
-        </div>
-      </div>
+        </aside>
+      </section>
     </div>
   );
 }
@@ -266,20 +279,16 @@ function SummaryCard({
   return (
     <Link
       to={href}
-      className="group rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group flex items-center gap-4 border-b border-border/70 py-5 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <Card className="transition-colors group-hover:bg-muted/30">
-        <CardContent className="flex items-center gap-4">
-          <span className="grid size-10 place-items-center rounded-lg border bg-background">
-            <Icon className="size-4 text-muted-foreground" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">{label}</p>
-            <p className="mt-0.5 text-sm text-muted-foreground">{value}</p>
-          </div>
-          <ArrowRight className="size-4 text-muted-foreground" />
-        </CardContent>
-      </Card>
+      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-muted/70">
+        <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-medium">{label}</p>
+        <p className="mt-0.5 text-sm text-muted-foreground">{value}</p>
+      </div>
+      <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
     </Link>
   );
 }

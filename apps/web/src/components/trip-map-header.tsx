@@ -9,10 +9,11 @@ import { cn } from "@/lib/utils";
 type TripMapHeaderProps = {
   trip: Trip;
   className?: string;
+  imageClassName?: string;
   eager?: boolean;
 };
 
-function TripMapHeader({ trip, className, eager = false }: TripMapHeaderProps) {
+function TripMapHeader({ trip, className, imageClassName, eager = false }: TripMapHeaderProps) {
   const { getToken } = useAuth();
   const containerRef = useRef<HTMLDivElement>(null);
   const [shouldLoad, setShouldLoad] = useState(eager);
@@ -90,7 +91,10 @@ function TripMapHeader({ trip, className, eager = false }: TripMapHeaderProps) {
       {imageUrl ? (
         <img
           alt={`Map showing ${formatTripDestinations(trip)}`}
-          className="absolute inset-0 size-full object-cover transition-transform duration-500 group-hover:scale-[1.015]"
+          className={cn(
+            "absolute inset-0 size-full object-cover transition-transform duration-500 group-hover:scale-[1.015]",
+            imageClassName,
+          )}
           decoding="async"
           loading={eager ? "eager" : "lazy"}
           src={imageUrl}
