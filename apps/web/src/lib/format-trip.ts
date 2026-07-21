@@ -45,4 +45,9 @@ function formatTripDuration(trip: Pick<Trip, "startDate" | "endDate">) {
   return `${days} ${days === 1 ? "day" : "days"}`;
 }
 
-export { formatTripDates, formatTripDestinations, formatTripDuration };
+function formatTripDurationDays(trip: Pick<Trip, "startDate" | "endDate">) {
+  if (!trip.startDate || !trip.endDate) return "Days not set";
+  return formatTripDuration(trip);
+}
+
+export { formatTripDates, formatTripDestinations, formatTripDuration, formatTripDurationDays };

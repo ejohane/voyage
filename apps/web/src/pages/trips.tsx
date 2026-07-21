@@ -1,5 +1,5 @@
 import type { Trip } from "@voyage/contracts";
-import { ArrowUpRight, CalendarDays, Clock3, MapPin, MapPinned } from "lucide-react";
+import { CalendarDays, Clock3, MapPin, MapPinned } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { CreateTripDialog } from "@/components/create-trip-dialog";
@@ -7,7 +7,7 @@ import { TripMapHeader } from "@/components/trip-map-header";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatTripDates, formatTripDestinations, formatTripDuration } from "@/lib/format-trip";
+import { formatTripDates, formatTripDestinations, formatTripDurationDays } from "@/lib/format-trip";
 import { useTrips } from "@/lib/trips";
 import { cn } from "@/lib/utils";
 
@@ -90,27 +90,21 @@ function TripCard({ trip }: { trip: Trip }) {
     >
       <Card className="h-full gap-0 overflow-hidden rounded-2xl py-0 shadow-sm transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-foreground/20 group-hover:shadow-lg">
         <TripMapHeader trip={trip} />
-        <CardContent className="px-5 py-5">
-          <div className="flex items-start justify-between gap-4">
-            <h2 className="text-lg font-semibold leading-6 tracking-tight">{trip.name}</h2>
-            <ArrowUpRight
-              className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
-              aria-hidden="true"
-            />
-          </div>
-        </CardContent>
-        <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-3 border-t bg-[#fafaf8] px-5 py-4 text-xs text-muted-foreground">
-          <p className="col-span-2 flex min-w-0 items-center gap-2">
-            <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
+        <CardContent className="border-t px-5 py-5">
+          <h2 className="text-lg font-semibold leading-6 tracking-tight">{trip.name}</h2>
+          <p className="mt-2 flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+            <MapPin className="size-4 shrink-0" aria-hidden="true" />
             <span className="truncate">{formatTripDestinations(trip, 2)}</span>
           </p>
+        </CardContent>
+        <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-3 border-t bg-[#fafaf8] px-5 py-4 text-xs text-muted-foreground">
           <p className="flex min-w-0 items-center gap-2">
             <CalendarDays className="size-3.5 shrink-0" aria-hidden="true" />
             <span className="truncate">{formatTripDates(trip)}</span>
           </p>
           <p className="flex items-center gap-2 whitespace-nowrap">
             <Clock3 className="size-3.5" aria-hidden="true" />
-            {formatTripDuration(trip)}
+            {formatTripDurationDays(trip)}
           </p>
         </div>
       </Card>
