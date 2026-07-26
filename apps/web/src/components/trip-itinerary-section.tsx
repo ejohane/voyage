@@ -40,12 +40,14 @@ import { useCreatePlan, useDeletePlan, usePlans, useStays, useTravel } from "@/l
 import { cn } from "@/lib/utils";
 
 type ItineraryView = "schedule" | "ideas";
+type TimelineAccent = "flight" | "ground" | "stay" | "plan";
 
 type TimelineEntry = {
   id: string;
   date: string;
   time: string | null;
   endTime?: string | null;
+  accent: TimelineAccent;
   icon: ComponentType<{ className?: string }>;
   eyebrow: string;
   title: string;
@@ -74,6 +76,36 @@ const transportationIcons: Record<Travel["type"], ComponentType<{ className?: st
   ferry: Ship,
   car: CarFront,
   other: Route,
+};
+
+const timelineAccents: Record<
+  TimelineAccent,
+  { cardBorder: string; icon: string; marker: string; markerDot: string }
+> = {
+  flight: {
+    cardBorder: "border-l-sky-300",
+    icon: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200/70",
+    marker: "border-sky-300 bg-sky-50",
+    markerDot: "bg-sky-500/75",
+  },
+  ground: {
+    cardBorder: "border-l-teal-300",
+    icon: "bg-teal-50 text-teal-700 ring-1 ring-inset ring-teal-200/70",
+    marker: "border-teal-300 bg-teal-50",
+    markerDot: "bg-teal-500/75",
+  },
+  stay: {
+    cardBorder: "border-l-violet-300",
+    icon: "bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200/70",
+    marker: "border-violet-300 bg-violet-50",
+    markerDot: "bg-violet-500/75",
+  },
+  plan: {
+    cardBorder: "border-l-emerald-300",
+    icon: "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200/70",
+    marker: "border-emerald-300 bg-emerald-50",
+    markerDot: "bg-emerald-500/75",
+  },
 };
 
 function titleCase(value: string) {
@@ -115,6 +147,7 @@ function buildTimelineEntries(
         id: `rental-pickup-${item.id}`,
         date: departureDate,
         time: departureTime,
+        accent: "ground",
         icon: CarFront,
         eyebrow: "Rental car pickup",
         title: rentalTitle,
@@ -130,6 +163,7 @@ function buildTimelineEntries(
           id: `rental-return-${item.id}`,
           date: arrivalDate,
           time: arrivalTime,
+          accent: "ground",
           icon: CarFront,
           eyebrow: "Rental car return",
           title: rentalTitle,
@@ -148,6 +182,7 @@ function buildTimelineEntries(
       id: `travel-departure-${item.id}`,
       date: departureDate,
       time: departureTime,
+      accent: item.type === "flight" ? "flight" : "ground",
       icon: transportationIcons[item.type],
       eyebrow: `${titleCase(item.type)} departure`,
       title: `${item.departureLocation} → ${item.arrivalLocation}`,
@@ -164,6 +199,7 @@ function buildTimelineEntries(
         id: `travel-arrival-${item.id}`,
         date: arrivalDate,
         time: arrivalTime,
+        accent: item.type === "flight" ? "flight" : "ground",
         icon: transportationIcons[item.type],
         eyebrow: `${titleCase(item.type)} arrival`,
         title: item.arrivalLocation,
@@ -183,6 +219,7 @@ function buildTimelineEntries(
       id: `stay-check-in-${stay.id}`,
       date: stay.checkInDate,
       time: null,
+      accent: "stay",
       icon: BedDouble,
       eyebrow: "Stay check-in",
       title: stay.propertyName,
@@ -197,6 +234,7 @@ function buildTimelineEntries(
       id: `stay-checkout-${stay.id}`,
       date: stay.checkOutDate,
       time: null,
+      accent: "stay",
       icon: BedDouble,
       eyebrow: "Stay checkout",
       title: stay.propertyName,
@@ -216,6 +254,7 @@ function buildTimelineEntries(
       date: plan.scheduledDate,
       time: plan.startTime,
       endTime: plan.endTime,
+      accent: "plan",
       icon: categoryIcons[plan.category],
       eyebrow: `${titleCase(plan.category)} · ${titleCase(plan.status)}`,
       title: plan.title,
@@ -517,44 +556,50 @@ function TimelineCard({
   trip: Trip;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const remove = useDeletePlan(trip.id, entry.plan?.id ?? "");
   const Icon = entry.icon;
+  const accent = timelineAccents[entry.accent];
 
   return (
     <div className="grid grid-cols-[3rem_minmax(0,1fr)] items-start gap-x-3">
-      <span className="relative z-10 mt-5 grid size-5 place-self-center rounded-full border bg-background">
-        <span className="m-auto size-1.5 rounded-full bg-muted-foreground/60" />
+      <span
+        className={cn(
+          "relative z-10 mt-5 grid size-5 place-self-center rounded-full border",
+          accent.marker,
+        )}
+      >
+        <span className={cn("m-auto size-1.5 rounded-full", accent.markerDot)} />
       </span>
-      <article className="overflow-hidden rounded-xl border bg-card shadow-sm transition-shadow hover:shadow-md">
+      <article
+        className={cn(
+          "overflow-hidden rounded-xl border border-l-2 bg-card shadow-sm transition-shadow hover:shadow-md",
+          accent.cardBorder,
+        )}
+        data-itinerary-accent={entry.accent}
+      >
         <button
           type="button"
           className="flex w-full items-start gap-3 px-4 py-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5"
           aria-expanded={expanded}
           onClick={() => setExpanded((current) => !current)}
         >
-          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted/60">
-            <Icon className="size-4 text-muted-foreground" />
+          <span className={cn("grid size-9 shrink-0 place-items-center rounded-lg", accent.icon)}>
+            <Icon className="size-4" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {entry.time ? (
-                <span className="inline-flex items-center gap-1 normal-case tracking-normal">
-                  <Clock3 className="size-3" />
-                  {formatTimeRange(entry.time, entry.endTime)}
-                </span>
-              ) : (
-                <span className="normal-case tracking-normal">Anytime</span>
-              )}
-              <span aria-hidden="true">·</span>
-              <span>{entry.eyebrow}</span>
-            </span>
-            <span className="mt-1 block font-medium">{entry.title}</span>
+            <span className="block text-[0.95rem] font-semibold leading-5">{entry.title}</span>
             {entry.detail ? (
-              <span className="mt-0.5 block truncate text-sm text-muted-foreground">
+              <span className="mt-1 block truncate text-sm text-muted-foreground">
                 {entry.detail}
               </span>
             ) : null}
+            <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1 font-medium text-foreground/70">
+                <Clock3 className="size-3" />
+                {entry.time ? formatTimeRange(entry.time, entry.endTime) : "Anytime"}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span>{entry.eyebrow}</span>
+            </span>
           </span>
           <ChevronDown
             className={cn(
@@ -598,39 +643,46 @@ function TimelineCard({
                   {entry.hrefLabel ?? "Open details"}
                 </Link>
               ) : null}
-              {entry.plan && canEdit ? (
-                <>
-                  <PlanDialog
-                    tripId={trip.id}
-                    stops={trip.stops}
-                    plan={entry.plan}
-                    open={editOpen}
-                    onOpenChange={setEditOpen}
-                    trigger={
-                      <Button size="sm" variant="outline">
-                        <Pencil className="size-3.5" />
-                        Edit plan
-                      </Button>
-                    }
-                  />
-                  <ConfirmDeleteDialog
-                    title="Remove this plan?"
-                    description="This permanently removes the plan from the trip."
-                    onDelete={() => remove.mutateAsync()}
-                    trigger={
-                      <Button size="sm" variant="ghost">
-                        <Trash2 className="size-3.5 text-muted-foreground" />
-                        Remove
-                      </Button>
-                    }
-                  />
-                </>
-              ) : null}
+              {entry.plan && canEdit ? <TimelinePlanActions plan={entry.plan} trip={trip} /> : null}
             </div>
           </div>
         ) : null}
       </article>
     </div>
+  );
+}
+
+function TimelinePlanActions({ plan, trip }: { plan: TripPlan; trip: Trip }) {
+  const [editOpen, setEditOpen] = useState(false);
+  const remove = useDeletePlan(trip.id, plan.id);
+
+  return (
+    <>
+      <PlanDialog
+        tripId={trip.id}
+        stops={trip.stops}
+        plan={plan}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        trigger={
+          <Button size="sm" variant="outline">
+            <Pencil className="size-3.5" />
+            Edit plan
+          </Button>
+        }
+      />
+      <ConfirmDeleteDialog
+        title="Remove this plan?"
+        description="This permanently removes the plan from the trip."
+        onDelete={() => remove.mutateAsync()}
+        trigger={
+          <Button size="sm" variant="ghost">
+            <Trash2 className="size-3.5 text-muted-foreground" />
+            Remove
+          </Button>
+        }
+      />
+    </>
   );
 }
 
