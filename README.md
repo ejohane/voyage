@@ -30,6 +30,10 @@ application before starting the web app. The authentication flow is available at
 
 The Worker validates Clerk session tokens with the development instance JWT public key in
 `.dev.vars`. D1 data is local during development and is created by the committed migrations.
+Invitation acceptance also uses `CLERK_SECRET_KEY` to resolve the authenticated user's verified
+email without trusting browser input. `RESEND_API_KEY`, `INVITATION_FROM_EMAIL`, and `APP_URL`
+enable delivery of trip invitation emails. Without Resend configuration, requests served from a
+loopback development host return a local invitation preview link instead of sending externally.
 Local Gmail integration development also requires the development Google OAuth client values in
 `.dev.vars`; see the [Gmail OAuth infrastructure guide](docs/GMAIL_OAUTH.md).
 
@@ -44,6 +48,10 @@ credentials rotate.
 Production deploys expect the same key in the GitHub environment variable
 `VITE_CLERK_PUBLISHABLE_KEY`. GitHub Actions applies D1 migrations before deploying the Worker and
 frontend after changes reach `main`.
+
+Before enabling invitations in production, configure `CLERK_SECRET_KEY` and `RESEND_API_KEY` as
+Cloudflare Worker secrets and verify the `INVITATION_FROM_EMAIL` sender domain with Resend. The
+committed production app URL and sender address live in `wrangler.jsonc`.
 
 The local app is available at the URL printed by Vite. The frontend calls `/api/health` through the
 same Workers runtime used by production.

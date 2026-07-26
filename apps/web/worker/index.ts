@@ -10,16 +10,22 @@ import { createGmailImportRoutes } from "./gmail-import-routes";
 import { createGmailIntegrationRoutes } from "./gmail-integration-routes";
 import type { PlacesClient } from "./google-places";
 import type { StaticMapsClient } from "./google-static-maps";
+import type { InvitationEmailSender } from "./invitation-email";
+import { createInvitationRoutes } from "./invitations-routes";
 import { createLocationRoutes } from "./location-routes";
 import { createPlanningRoutes } from "./planning-routes";
 import { createTripsRoutes } from "./trips-routes";
 import type { WorkerEnvironment } from "./types";
+import type { UserDirectory } from "./user-directory";
 
 type AppDependencies = {
   authenticateRequest?: AuthenticateRequest;
   gmailFetch?: typeof fetch;
   placesClient?: PlacesClient;
   staticMapsClient?: StaticMapsClient;
+  invitationEmailSender?: InvitationEmailSender;
+  userDirectory?: UserDirectory;
+  now?: () => Date;
 };
 
 export function createApp(dependencies: AppDependencies = {}) {
@@ -42,6 +48,14 @@ export function createApp(dependencies: AppDependencies = {}) {
   app.route(
     tripsEndpoint,
     createTripsRoutes(authenticateRequest, { staticMapsClient: dependencies.staticMapsClient }),
+  );
+  app.route(
+    "/",
+    createInvitationRoutes(authenticateRequest, {
+      emailSender: dependencies.invitationEmailSender,
+      userDirectory: dependencies.userDirectory,
+      now: dependencies.now,
+    }),
   );
   app.route(tripsEndpoint, createPlanningRoutes(authenticateRequest));
   app.route(

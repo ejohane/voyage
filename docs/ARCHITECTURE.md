@@ -30,7 +30,9 @@ docs/                 Product and technical decisions
 - Static application routes are served as Cloudflare assets.
 - `/api/*` routes run through the Worker first.
 - Clerk session tokens authenticate protected API routes. The Worker verifies their signatures with
-  the production Clerk JWT public key and scopes trip access through D1 membership records.
+  the production Clerk JWT public key and scopes trip access through D1 membership records. The
+  Clerk Backend API is used only to resolve verified account emails and member presentation data;
+  Clerk Organizations are not a membership source of truth.
 - D1 stores trips, ordered trip stops, memberships, travel segments, and stays. A trip has one or
   more stable stop records with optional arrival and departure dates. The trip start and end dates
   are derived from the earliest arrival and latest departure so sorting stays efficient without a
@@ -41,12 +43,15 @@ docs/                 Product and technical decisions
   the day-by-day itinerary without duplicating records. Travel and plan times are stored as local
   values so details are not shifted across time zones. SQL migrations under `apps/web/migrations/`
   are applied locally for development and by GitHub Actions before production deployment.
+- D1 owns trip invitations and their lifecycle. Invitations are email-bound, expire after seven
+  days, and create `viewer` memberships after explicit acceptance. Random invitation tokens are
+  SHA-256 hashed before storage; resend issues a new token and revokes earlier links after the email
+  provider accepts the message. Resend delivers the transactional email from the Worker.
 - `wrangler.jsonc` is the source of Cloudflare deployment configuration.
 - GitHub Actions validates every pull request and push to `main`.
 - A successful validation on `main` deploys the frontend and Worker together.
 
 ## Deferred intentionally
 
-File storage, maps, background jobs, invitations, expense splitting, live travel status, and product
-analytics are not part of the current slice. They will be introduced when a product feature
-requires them.
+File storage, background jobs, expense splitting, live travel status, and product analytics are not
+part of the current slice. They will be introduced when a product feature requires them.

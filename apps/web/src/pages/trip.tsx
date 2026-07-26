@@ -7,6 +7,7 @@ import {
   ListChecks,
   MapPin,
   Route,
+  Users,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink, useParams } from "react-router-dom";
@@ -14,6 +15,7 @@ import { EditTripDialog } from "@/components/edit-trip-dialog";
 import { GmailImportExperience } from "@/components/gmail-import-experience";
 import { ItinerarySection } from "@/components/trip-itinerary-section";
 import { TripMapHeader } from "@/components/trip-map-header";
+import { TripPeopleSection } from "@/components/trip-people-section";
 import { OverviewSection, StaysSection, TravelSection } from "@/components/trip-planning-sections";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,7 +25,7 @@ import { formatTripDates, formatTripDestinations, formatTripDuration } from "@/l
 import { useTrip } from "@/lib/trips";
 import { cn } from "@/lib/utils";
 
-type TripSection = "overview" | "itinerary" | "travel" | "stays";
+type TripSection = "overview" | "itinerary" | "travel" | "stays" | "people";
 
 function TripPage({ section = "overview" }: { section?: TripSection }) {
   const { tripId = "" } = useParams();
@@ -95,6 +97,12 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
       value: "stays",
       to: `/trips/${trip.data.id}/stays`,
     },
+    {
+      icon: Users,
+      label: "People",
+      value: "people",
+      to: `/trips/${trip.data.id}/people`,
+    },
   ];
 
   return (
@@ -165,7 +173,7 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
       </section>
 
       <nav
-        className="relative z-10 mx-4 -mt-7 flex max-w-3xl gap-1 overflow-x-auto rounded-2xl border border-foreground/10 bg-background/95 p-1.5 shadow-[0_12px_36px_rgba(25,28,25,0.08)] backdrop-blur-xl sm:mx-auto sm:rounded-full"
+        className="relative z-10 mx-4 -mt-7 flex max-w-4xl gap-1 overflow-x-auto rounded-2xl border border-foreground/10 bg-background/95 p-1.5 shadow-[0_12px_36px_rgba(25,28,25,0.08)] backdrop-blur-xl sm:mx-auto sm:rounded-full"
         aria-label="Trip workspace"
       >
         {sections.map((item) => {
@@ -190,7 +198,7 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
         })}
       </nav>
 
-      {trip.data.accessLevel !== "viewer" ? (
+      {trip.data.accessLevel !== "viewer" && section !== "people" ? (
         <div className="mx-auto mt-9 w-full max-w-7xl px-5 sm:px-8">
           <GmailImportExperience trip={trip.data} />
         </div>
@@ -207,6 +215,7 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
           {section === "itinerary" ? <ItinerarySection trip={trip.data} /> : null}
           {section === "travel" ? <TravelSection trip={trip.data} /> : null}
           {section === "stays" ? <StaysSection trip={trip.data} /> : null}
+          {section === "people" ? <TripPeopleSection trip={trip.data} /> : null}
         </div>
       </div>
     </main>

@@ -9,6 +9,7 @@ const PrivacyPage = lazy(() => import("@/pages/privacy"));
 const SignInPage = lazy(() => import("@/pages/sign-in"));
 const SignUpPage = lazy(() => import("@/pages/sign-up"));
 const TermsPage = lazy(() => import("@/pages/terms"));
+const InvitationPage = lazy(() => import("@/pages/invitation"));
 const TripPage = lazy(() => import("@/pages/trip"));
 const TripsPage = lazy(() => import("@/pages/trips"));
 
@@ -64,6 +65,7 @@ function App() {
         <Route path="/sign-in/*" element={<SignInPage />} />
         <Route path="/sign-up/*" element={<SignUpPage />} />
         <Route path="/terms" element={<TermsPage />} />
+        <Route path="/invitations/:token" element={<InvitationPage />} />
         <Route element={<RequireAuth />}>
           <Route element={<SignedInLayout />}>
             <Route path="/trips" element={<TripsPage />} />
@@ -71,6 +73,7 @@ function App() {
             <Route path="/trips/:tripId/itinerary" element={<TripPage section="itinerary" />} />
             <Route path="/trips/:tripId/travel" element={<TripPage section="travel" />} />
             <Route path="/trips/:tripId/stays" element={<TripPage section="stays" />} />
+            <Route path="/trips/:tripId/people" element={<TripPage section="people" />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate replace to="/" />} />
