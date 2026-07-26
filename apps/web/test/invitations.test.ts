@@ -90,7 +90,18 @@ async function createTrip() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: "Summer in Japan",
-      stops: [{ name: "Tokyo, Japan", arrivalDate: null, departureDate: null }],
+      stops: [
+        {
+          name: "Tokyo, Japan",
+          arrivalDate: "2026-08-10",
+          departureDate: "2026-08-14",
+        },
+        {
+          name: "Kyoto, Japan",
+          arrivalDate: "2026-08-14",
+          departureDate: "2026-08-18",
+        },
+      ],
     }),
   });
   expect(response.status).toBe(201);
@@ -156,7 +167,17 @@ describe("trip invitations", () => {
     expect(sentEmails[0]).toMatchObject({
       recipientEmail: "traveler@example.com",
       tripName: "Summer in Japan",
+      destinations: ["Tokyo, Japan", "Kyoto, Japan"],
+      startDate: "2026-08-10",
+      endDate: "2026-08-18",
+      invitedByName: "Olivia Owner",
     });
+    const storedInvitation = await env.DB.prepare(
+      "SELECT inviter_display_name FROM trip_invitations WHERE id = ?",
+    )
+      .bind(body.invitation.id)
+      .first<{ inviter_display_name: string }>();
+    expect(storedInvitation?.inviter_display_name).toBe("Olivia Owner");
     expect(token).toHaveLength(43);
     expect(storedToken?.token_hash).toMatch(/^[a-f0-9]{64}$/);
     expect(storedToken?.token_hash).not.toContain(token);
@@ -189,6 +210,10 @@ describe("trip invitations", () => {
     expect(summaryResponse.status).toBe(200);
     expect(summary.invitation).toMatchObject({
       tripName: "Summer in Japan",
+      destinations: ["Tokyo, Japan", "Kyoto, Japan"],
+      startDate: "2026-08-10",
+      endDate: "2026-08-18",
+      invitedByName: "Olivia Owner",
       invitedEmail: "tr••••••@example.com",
       role: "Traveler",
       status: "pending",
@@ -214,6 +239,8 @@ describe("trip invitations", () => {
     });
     const travelerPeople = await request(tripPeopleEndpoint(trip.id), "user_traveler");
     const travelerBody = await travelerPeople.json<TripPeopleResponse>();
+    const ownerPeople = await request(tripPeopleEndpoint(trip.id), "user_owner");
+    const ownerBody = await ownerPeople.json<TripPeopleResponse>();
     const forbiddenInvite = await request(tripInvitationsEndpoint(trip.id), "user_traveler", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -224,6 +251,11 @@ describe("trip invitations", () => {
     expect(travelerBody.canManage).toBe(false);
     expect(travelerBody.invitations).toEqual([]);
     expect(travelerBody.members.map((member) => member.role)).toEqual(["Organizer", "Traveler"]);
+    expect(travelerBody.members.map((member) => member.email)).toEqual([null, null]);
+    expect(ownerBody.members.map((member) => member.email)).toEqual([
+      "owner@example.com",
+      "traveler@example.com",
+    ]);
     expect(forbiddenInvite.status).toBe(403);
   });
 

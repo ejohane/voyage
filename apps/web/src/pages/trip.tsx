@@ -2,19 +2,22 @@ import {
   ArrowLeft,
   BedDouble,
   CalendarDays,
+  CheckCircle2,
   Clock3,
   LayoutDashboard,
   ListChecks,
   MapPin,
   Route,
   Users,
+  X,
 } from "lucide-react";
 import { useState } from "react";
-import { Link, NavLink, useParams } from "react-router-dom";
+import { Link, NavLink, useLocation, useParams } from "react-router-dom";
 import { EditTripDialog } from "@/components/edit-trip-dialog";
 import { GmailImportExperience } from "@/components/gmail-import-experience";
 import { ItinerarySection } from "@/components/trip-itinerary-section";
 import { TripMapHeader } from "@/components/trip-map-header";
+import { TripPartyPresence } from "@/components/trip-party-presence";
 import { TripPeopleSection } from "@/components/trip-people-section";
 import { OverviewSection, StaysSection, TravelSection } from "@/components/trip-planning-sections";
 import { buttonVariants } from "@/components/ui/button";
@@ -30,7 +33,10 @@ type TripSection = "overview" | "itinerary" | "travel" | "stays" | "people";
 function TripPage({ section = "overview" }: { section?: TripSection }) {
   const { tripId = "" } = useParams();
   const trip = useTrip(tripId);
+  const location = useLocation();
+  const joinedState = location.state as { joinedTrip?: boolean; invitedByName?: string } | null;
   const [editOpen, setEditOpen] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(Boolean(joinedState?.joinedTrip));
 
   if (trip.isPending) return <TripPageSkeleton />;
 
@@ -127,15 +133,16 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
               Your trips
             </Link>
 
-            {trip.data.accessLevel === "viewer" ? (
-              <span className="hidden rounded-full border border-foreground/10 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground backdrop-blur-md sm:inline-flex">
-                View only
-              </span>
-            ) : (
-              <div className="hidden gap-2 sm:flex [&>button]:border-foreground/10 [&>button]:bg-background/75 [&>button]:shadow-none [&>button]:backdrop-blur-md [&>button]:hover:bg-background">
+            <div className="hidden items-center gap-2 sm:flex [&>button]:border-foreground/10 [&>button]:bg-background/75 [&>button]:shadow-none [&>button]:backdrop-blur-md [&>button]:hover:bg-background">
+              <TripPartyPresence tripId={trip.data.id} />
+              {trip.data.accessLevel === "viewer" ? (
+                <span className="inline-flex rounded-full border border-foreground/10 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground backdrop-blur-md">
+                  Traveler · View only
+                </span>
+              ) : (
                 <EditTripDialog trip={trip.data} open={editOpen} onOpenChange={setEditOpen} />
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           <div className="mt-auto max-w-xl pb-14 sm:pb-16">
@@ -157,15 +164,14 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
               </span>
             </div>
 
-            <div className="mt-6 sm:hidden">
+            <div className="mt-6 flex flex-wrap gap-2 sm:hidden [&>button]:border-foreground/10 [&>button]:bg-background/75 [&>button]:shadow-none [&>button]:backdrop-blur-md [&>button]:hover:bg-background">
+              <TripPartyPresence tripId={trip.data.id} />
               {trip.data.accessLevel === "viewer" ? (
                 <span className="inline-flex rounded-full border border-foreground/10 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground backdrop-blur-md">
-                  View only
+                  Traveler · View only
                 </span>
               ) : (
-                <div className="flex flex-wrap gap-2 [&>button]:border-foreground/10 [&>button]:bg-background/75 [&>button]:shadow-none [&>button]:backdrop-blur-md [&>button]:hover:bg-background">
-                  <EditTripDialog trip={trip.data} open={editOpen} onOpenChange={setEditOpen} />
-                </div>
+                <EditTripDialog trip={trip.data} open={editOpen} onOpenChange={setEditOpen} />
               )}
             </div>
           </div>
@@ -197,6 +203,32 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
           );
         })}
       </nav>
+
+      {welcomeOpen && section === "overview" ? (
+        <div className="mx-auto mt-8 w-full max-w-7xl px-5 sm:px-8">
+          <div
+            className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-emerald-950 sm:px-5"
+            role="status"
+          >
+            <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-700" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">Welcome to {trip.data.name}</p>
+              <p className="mt-1 text-sm leading-6 text-emerald-900/75">
+                {joinedState?.invitedByName ? `${joinedState.invitedByName} invited you. ` : ""}
+                You can see the complete, current trip without managing the plan.
+              </p>
+            </div>
+            <button
+              aria-label="Dismiss welcome"
+              className="rounded-md p-1 text-emerald-900/60 hover:bg-emerald-100 hover:text-emerald-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+              onClick={() => setWelcomeOpen(false)}
+              type="button"
+            >
+              <X className="size-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {trip.data.accessLevel !== "viewer" && section !== "people" ? (
         <div className="mx-auto mt-9 w-full max-w-7xl px-5 sm:px-8">

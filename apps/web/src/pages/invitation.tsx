@@ -1,14 +1,17 @@
 import { UserButton, useAuth } from "@clerk/react";
+import type { InvitationSummary } from "@voyage/contracts";
 import {
   ArrowRight,
+  CalendarDays,
   Check,
   LoaderCircle,
   Mail,
+  MapPin,
   ShieldCheck,
   UserRoundCheck,
   X,
 } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { Brand } from "@/components/brand";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,7 +26,6 @@ function InvitationPage() {
   const invitation = useInvitation(token);
   const accept = useAcceptInvitation(token);
   const decline = useDeclineInvitation(token);
-  const navigate = useNavigate();
   const returnTo = `/invitations/${encodeURIComponent(token)}`;
   const signInUrl = `/sign-in?redirect_url=${encodeURIComponent(returnTo)}`;
   const signUpUrl = `/sign-up?redirect_url=${encodeURIComponent(returnTo)}`;
@@ -31,8 +33,7 @@ function InvitationPage() {
 
   async function acceptInvitation() {
     try {
-      const result = await accept.mutateAsync();
-      navigate(`/trips/${result.tripId}`, { replace: true });
+      await accept.mutateAsync();
     } catch {
       // The mutation state renders the trusted API error inline.
     }
@@ -63,91 +64,168 @@ function InvitationPage() {
               <span className="grid size-12 place-items-center rounded-full border bg-background shadow-sm">
                 <Mail className="size-5" aria-hidden="true" />
               </span>
-              <p className="mt-6 text-sm font-medium text-muted-foreground">You’re invited</p>
+              <p className="mt-6 text-sm font-medium text-muted-foreground">
+                {invitation.data.invitedByName} invited you
+              </p>
               <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">
                 {invitation.data.tripName}
               </h1>
               <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                Join as a Traveler to see the shared itinerary, transportation, stays, and current
-                plan.
+                Join as a Traveler to see the complete, current trip without managing the plan.
               </p>
             </div>
             <CardContent className="px-7 py-7 sm:px-10 sm:py-9">
-              <div className="space-y-3 text-sm">
-                <p className="flex items-center gap-3">
-                  <UserRoundCheck className="size-4 text-muted-foreground" aria-hidden="true" />
-                  <span>
-                    <strong>Traveler</strong> · view-only access
-                  </span>
-                </p>
-                <p className="flex items-center gap-3">
-                  <ShieldCheck className="size-4 text-muted-foreground" aria-hidden="true" />
-                  <span>For the verified account matching {invitation.data.invitedEmail}</span>
-                </p>
-              </div>
-
-              {invitation.data.status === "pending" ? (
-                <div className="mt-7">
-                  {!isSignedIn ? (
-                    <>
-                      <Link className={cn(buttonVariants({ size: "lg" }), "w-full")} to={signInUrl}>
-                        Sign in to continue <ArrowRight className="size-4" />
-                      </Link>
-                      <p className="mt-3 text-center text-sm text-muted-foreground">
-                        New to Voyage?{" "}
-                        <Link
-                          className="font-medium text-foreground underline underline-offset-4"
-                          to={signUpUrl}
-                        >
-                          Create an account
-                        </Link>
-                      </p>
-                    </>
-                  ) : (
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <Button
-                        className="flex-1"
-                        size="lg"
-                        disabled={accept.isPending || decline.isPending}
-                        onClick={() => void acceptInvitation()}
-                      >
-                        {accept.isPending ? (
-                          <LoaderCircle className="size-4 animate-spin" />
-                        ) : (
-                          <Check className="size-4" />
-                        )}{" "}
-                        Join trip
-                      </Button>
-                      <Button
-                        size="lg"
-                        variant="outline"
-                        disabled={accept.isPending || decline.isPending}
-                        onClick={() => void declineInvitation()}
-                      >
-                        {decline.isPending ? (
-                          <LoaderCircle className="size-4 animate-spin" />
-                        ) : (
-                          <X className="size-4" />
-                        )}{" "}
-                        Decline
-                      </Button>
-                    </div>
-                  )}
-                </div>
+              {accept.isSuccess ? (
+                <AcceptedHandoff invitation={invitation.data} tripId={accept.data.tripId} />
               ) : (
-                <InvitationState status={invitation.data.status} />
-              )}
+                <>
+                  <div className="space-y-3 text-sm">
+                    <p className="flex items-start gap-3">
+                      <MapPin
+                        className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                      <span>{invitation.data.destinations.join(" → ")}</span>
+                    </p>
+                    <p className="flex items-start gap-3">
+                      <CalendarDays
+                        className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                      <span>{formatInvitationDates(invitation.data)}</span>
+                    </p>
+                    <p className="flex items-center gap-3">
+                      <UserRoundCheck className="size-4 text-muted-foreground" aria-hidden="true" />
+                      <span>
+                        <strong>Traveler</strong> · see the trip without managing it
+                      </span>
+                    </p>
+                    <p className="flex items-center gap-3">
+                      <ShieldCheck className="size-4 text-muted-foreground" aria-hidden="true" />
+                      <span>For the verified account matching {invitation.data.invitedEmail}</span>
+                    </p>
+                  </div>
 
-              {decline.isSuccess ? (
-                <p className="mt-6 rounded-md border bg-muted/40 px-3 py-3 text-sm" role="status">
-                  Invitation declined. Nothing was added to your trips.
-                </p>
-              ) : null}
-              {actionError ? <ActionError error={actionError} /> : null}
+                  {invitation.data.status === "pending" ? (
+                    <div className="mt-7">
+                      {!isSignedIn ? (
+                        <>
+                          <Link
+                            className={cn(buttonVariants({ size: "lg" }), "w-full")}
+                            to={signInUrl}
+                          >
+                            Sign in to continue <ArrowRight className="size-4" />
+                          </Link>
+                          <p className="mt-3 text-center text-sm text-muted-foreground">
+                            New to Voyage?{" "}
+                            <Link
+                              className="font-medium text-foreground underline underline-offset-4"
+                              to={signUpUrl}
+                            >
+                              Create an account
+                            </Link>
+                          </p>
+                        </>
+                      ) : (
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <Button
+                            className="flex-1"
+                            size="lg"
+                            disabled={accept.isPending || decline.isPending}
+                            onClick={() => void acceptInvitation()}
+                          >
+                            {accept.isPending ? (
+                              <LoaderCircle className="size-4 animate-spin" />
+                            ) : (
+                              <Check className="size-4" />
+                            )}{" "}
+                            Join trip
+                          </Button>
+                          <Button
+                            size="lg"
+                            variant="outline"
+                            disabled={accept.isPending || decline.isPending}
+                            onClick={() => void declineInvitation()}
+                          >
+                            {decline.isPending ? (
+                              <LoaderCircle className="size-4 animate-spin" />
+                            ) : (
+                              <X className="size-4" />
+                            )}{" "}
+                            Decline
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <InvitationState status={invitation.data.status} />
+                  )}
+
+                  {decline.isSuccess ? (
+                    <p
+                      className="mt-6 rounded-md border bg-muted/40 px-3 py-3 text-sm"
+                      role="status"
+                    >
+                      Invitation declined. Nothing was added to your trips.
+                    </p>
+                  ) : null}
+                  {actionError ? <ActionError error={actionError} /> : null}
+                </>
+              )}
             </CardContent>
           </Card>
         ) : null}
       </main>
+    </div>
+  );
+}
+
+function formatInvitationDates(invitation: Pick<InvitationSummary, "startDate" | "endDate">) {
+  const formatter = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  const format = (value: string) => formatter.format(new Date(`${value}T00:00:00Z`));
+
+  if (!invitation.startDate) return "Dates are still flexible";
+  if (!invitation.endDate) return `${format(invitation.startDate)} – flexible`;
+  if (invitation.startDate === invitation.endDate) return format(invitation.startDate);
+  return `${format(invitation.startDate)} – ${format(invitation.endDate)}`;
+}
+
+function AcceptedHandoff({
+  invitation,
+  tripId,
+}: {
+  invitation: InvitationSummary;
+  tripId: string;
+}) {
+  return (
+    <div role="status">
+      <span className="grid size-11 place-items-center rounded-full bg-emerald-100 text-emerald-800">
+        <Check className="size-5" aria-hidden="true" />
+      </span>
+      <p className="mt-5 text-sm font-medium text-emerald-800">You’re in</p>
+      <h2 className="mt-1 text-2xl font-semibold tracking-[-0.025em]">
+        Welcome to {invitation.tripName}
+      </h2>
+      <p className="mt-3 text-sm leading-6 text-muted-foreground">
+        You’re traveling with {invitation.invitedByName}. Voyage will keep the shared itinerary,
+        transportation, and stays together here.
+      </p>
+      <div className="mt-5 rounded-lg border bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
+        <p>{invitation.destinations.join(" → ")}</p>
+        <p className="mt-1">{formatInvitationDates(invitation)}</p>
+      </div>
+      <Link
+        className={cn(buttonVariants({ size: "lg" }), "mt-6 w-full")}
+        state={{ joinedTrip: true, invitedByName: invitation.invitedByName }}
+        to={`/trips/${tripId}`}
+      >
+        Open shared trip <ArrowRight className="size-4" />
+      </Link>
     </div>
   );
 }

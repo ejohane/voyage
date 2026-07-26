@@ -307,6 +307,10 @@ export const invitationLinkResponseSchema = z.object({ invitationUrl: z.string()
 
 export const invitationSummarySchema = z.object({
   tripName: z.string(),
+  destinations: z.array(z.string().min(1)).min(1),
+  startDate: dateOnlySchema.nullable(),
+  endDate: dateOnlySchema.nullable(),
+  invitedByName: z.string().min(1),
   invitedEmail: z.string(),
   role: z.literal("Traveler"),
   status: invitationStatusSchema,

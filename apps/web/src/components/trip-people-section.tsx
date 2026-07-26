@@ -115,6 +115,15 @@ function TripPeopleSection({ trip }: { trip: Trip }) {
   const openInvitations = people.data.invitations.filter((invitation) =>
     ["pending", "expired"].includes(invitation.status),
   );
+  const recentlyJoined = people.data.canManage
+    ? people.data.members
+        .filter(
+          (member) =>
+            member.accessLevel !== "owner" &&
+            Date.now() - Date.parse(member.joinedAt) < 7 * 24 * 60 * 60 * 1_000,
+        )
+        .sort((left, right) => right.joinedAt.localeCompare(left.joinedAt))[0]
+    : null;
 
   return (
     <section aria-labelledby="people-heading" className="mx-auto max-w-4xl">
@@ -127,11 +136,23 @@ function TripPeopleSection({ trip }: { trip: Trip }) {
             People
           </h2>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            Everyone here shares the same current trip. Travelers can view the plan without managing
-            it.
+            Everyone here shares the same current trip. Travelers can see the complete plan without
+            managing it.
           </p>
         </div>
       </div>
+
+      {recentlyJoined ? (
+        <div
+          className="mt-6 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+          role="status"
+        >
+          <Check className="size-4 shrink-0 text-emerald-700" aria-hidden="true" />
+          <span>
+            {recentlyJoined.displayName || recentlyJoined.email || "A traveler"} joined the trip.
+          </span>
+        </div>
+      ) : null}
 
       {people.data.canManage ? (
         <Card className="mt-7 shadow-none">
@@ -139,7 +160,7 @@ function TripPeopleSection({ trip }: { trip: Trip }) {
             <CardTitle>Invite a traveler</CardTitle>
             <p className="text-sm leading-6 text-muted-foreground">
               We’ll email a private, seven-day invitation. They must sign in with this verified
-              address.
+              address, and they’ll join as a Traveler who can see the trip without managing it.
             </p>
           </CardHeader>
           <CardContent>
@@ -246,7 +267,7 @@ function TripPeopleSection({ trip }: { trip: Trip }) {
                 onCopy={() =>
                   void runAction(
                     () => copyInvitation.mutateAsync(invitation.id),
-                    "Private invitation link copied.",
+                    `Private link for ${invitation.email} copied. It only works for that invited email.`,
                   )
                 }
                 onRevoke={() =>
@@ -291,9 +312,11 @@ function MemberRow({
         <p className="truncate text-sm font-medium">
           {member.displayName || member.email || member.role}
         </p>
-        {member.displayName && member.email ? (
-          <p className="truncate text-xs text-muted-foreground">{member.email}</p>
-        ) : null}
+        <p className="truncate text-xs text-muted-foreground">
+          {[member.displayName ? member.email : null, `Joined ${readableDate(member.joinedAt)}`]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
       </div>
       <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
         {member.role}
@@ -348,8 +371,14 @@ function InvitationRow({
             {invitation.status === "expired" ? "Send again" : "Resend"}
           </Button>
           {invitation.status === "pending" ? (
-            <Button size="sm" variant="ghost" disabled={busy} onClick={onCopy}>
-              <Clipboard className="size-3.5" /> Copy link
+            <Button
+              aria-label={`Copy private link for ${invitation.email}`}
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              onClick={onCopy}
+            >
+              <Clipboard className="size-3.5" /> Copy private link
             </Button>
           ) : null}
           <Button size="sm" variant="ghost" disabled={busy} onClick={onRevoke}>
