@@ -20,6 +20,10 @@ describe("invitation email", () => {
       invitationId: "8b644637-fbf8-4bc6-8ddf-a61ca75fcf3a",
       recipientEmail: "traveler@example.com",
       tripName: "Japan <script>alert(1)</script>\r\nBcc: bad@example.com",
+      destinations: ["Tokyo <script>", "Kyoto"],
+      startDate: "2026-08-10",
+      endDate: "2026-08-18",
+      invitedByName: "Olivia <script>\r\nBcc: bad@example.com",
       invitationUrl: "https://voyage.test/invitations/private-token",
       expiresAt: "2026-08-08T12:00:00.000Z",
     });
@@ -39,8 +43,12 @@ describe("invitation email", () => {
     );
     expect(payload.to).toEqual(["traveler@example.com"]);
     expect(payload.subject).not.toContain("\n");
+    expect(payload.subject).toContain("Olivia <script>");
+    expect(payload.text).toContain("Tokyo <script> → Kyoto · Aug 10, 2026 – Aug 18, 2026");
     expect(payload.text).toContain("https://voyage.test/invitations/private-token");
     expect(payload.html).toContain("Japan &lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(payload.html).toContain("Olivia &lt;script&gt;");
+    expect(payload.html).toContain("Tokyo &lt;script&gt; → Kyoto");
     expect(payload.html).not.toContain("<script>");
   });
 
@@ -63,6 +71,10 @@ describe("invitation email", () => {
         invitationId: crypto.randomUUID(),
         recipientEmail: "traveler@example.com",
         tripName: "Japan",
+        destinations: ["Tokyo"],
+        startDate: null,
+        endDate: null,
+        invitedByName: "Olivia Owner",
         invitationUrl: "https://voyage.test/invitations/token",
         expiresAt: "2026-08-08T12:00:00.000Z",
       }),
@@ -72,6 +84,10 @@ describe("invitation email", () => {
         invitationId: crypto.randomUUID(),
         recipientEmail: "traveler@example.com",
         tripName: "Japan",
+        destinations: ["Tokyo"],
+        startDate: null,
+        endDate: null,
+        invitedByName: "Olivia Owner",
         invitationUrl: "https://voyage.test/invitations/token",
         expiresAt: "2026-08-08T12:00:00.000Z",
       }),

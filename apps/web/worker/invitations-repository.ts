@@ -24,6 +24,10 @@ export type InvitationRow = {
   email: string;
   access_level: "viewer";
   invited_by_user_id: string;
+  inviter_display_name: string | null;
+  trip_start_date: string | null;
+  trip_end_date: string | null;
+  trip_destinations_json: string;
   expires_at: string;
   accepted_by_user_id: string | null;
   accepted_at: string | null;
@@ -119,10 +123,14 @@ export async function listMemberships(database: D1Database, tripId: string) {
   return result.results;
 }
 
-export function mapMembership(row: MembershipRow, identity?: UserIdentity): TripMember {
+export function mapMembership(
+  row: MembershipRow,
+  identity?: UserIdentity,
+  includeEmail = true,
+): TripMember {
   return {
     userId: row.user_id,
-    email: identity?.primaryEmail ?? row.email,
+    email: includeEmail ? (identity?.primaryEmail ?? row.email) : null,
     displayName: identity?.displayName ?? row.display_name,
     imageUrl: identity?.imageUrl ?? row.image_url,
     role: roleForAccess(row.access_level),
@@ -132,7 +140,18 @@ export function mapMembership(row: MembershipRow, identity?: UserIdentity): Trip
 }
 
 const invitationSelect = `
-  SELECT trip_invitations.*, trips.name AS trip_name
+  SELECT trip_invitations.*, trips.name AS trip_name,
+         trips.start_date AS trip_start_date,
+         trips.end_date AS trip_end_date,
+         (
+           SELECT json_group_array(name)
+           FROM (
+             SELECT name
+             FROM trip_stops
+             WHERE trip_id = trips.id
+             ORDER BY position
+           )
+         ) AS trip_destinations_json
   FROM trip_invitations
   INNER JOIN trips ON trips.id = trip_invitations.trip_id
 `;
@@ -160,6 +179,17 @@ export async function getInvitationByToken(database: D1Database, tokenHash: stri
   return database
     .prepare(
       `SELECT trip_invitations.*, trips.name AS trip_name,
+              trips.start_date AS trip_start_date,
+              trips.end_date AS trip_end_date,
+              (
+                SELECT json_group_array(name)
+                FROM (
+                  SELECT name
+                  FROM trip_stops
+                  WHERE trip_id = trips.id
+                  ORDER BY position
+                )
+              ) AS trip_destinations_json,
               trip_invitation_tokens.expires_at AS token_expires_at,
               trip_invitation_tokens.revoked_at AS token_revoked_at
        FROM trip_invitations
@@ -199,6 +229,7 @@ export async function createInvitation(
     tripId: string;
     email: string;
     invitedByUserId: string;
+    inviterDisplayName: string;
     tokenHash: string;
     now: string;
     expiresAt: string;
@@ -218,14 +249,16 @@ export async function createInvitation(
     database
       .prepare(
         `INSERT INTO trip_invitations (
-          id, trip_id, email, access_level, invited_by_user_id, expires_at, created_at, updated_at
-        ) VALUES (?, ?, ?, 'viewer', ?, ?, ?, ?)`,
+          id, trip_id, email, access_level, invited_by_user_id, inviter_display_name,
+          expires_at, created_at, updated_at
+        ) VALUES (?, ?, ?, 'viewer', ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
         input.tripId,
         input.email,
         input.invitedByUserId,
+        input.inviterDisplayName,
         input.expiresAt,
         input.now,
         input.now,

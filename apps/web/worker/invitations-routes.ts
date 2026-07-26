@@ -89,6 +89,26 @@ function configuredUserDirectory(bindings: Bindings, dependency: UserDirectory |
   return bindings.CLERK_SECRET_KEY ? createClerkUserDirectory(bindings.CLERK_SECRET_KEY) : null;
 }
 
+function invitationDestinations(value: string) {
+  try {
+    const destinations = JSON.parse(value);
+    if (Array.isArray(destinations)) {
+      const validDestinations = destinations.filter(
+        (destination): destination is string =>
+          typeof destination === "string" && destination.length > 0,
+      );
+      if (validDestinations.length > 0) return validDestinations;
+    }
+  } catch {
+    // The trip contract guarantees at least one stop; this fallback keeps older rows readable.
+  }
+  return ["Destination not set"];
+}
+
+function displayNameForInvitation(identity: Awaited<ReturnType<UserDirectory["getUser"]>> | null) {
+  return identity?.displayName?.trim() || identity?.primaryEmail || "Your trip organizer";
+}
+
 async function requireOwner(database: D1Database, tripId: string, userId: string) {
   const access = await getTripAccess(database, tripId, userId);
   if (!access) return { response: error("not_found", "Trip not found."), status: 404 as const };
@@ -149,7 +169,7 @@ export function createInvitationRoutes(
         : [];
     const response = tripPeopleResponseSchema.parse({
       members: membershipRows.map((membership) =>
-        mapMembership(membership, identities.get(membership.user_id)),
+        mapMembership(membership, identities.get(membership.user_id), access === "owner"),
       ),
       invitations,
       canManage: access === "owner",
@@ -197,8 +217,16 @@ export function createInvitationRoutes(
       return context.json(error("rate_limited", "Too many invitations. Try again later."), 429);
     }
 
-    const memberships = await listMemberships(context.env.DB, tripId);
     const directory = configuredUserDirectory(context.env, dependencies.userDirectory);
+    let inviterIdentity: Awaited<ReturnType<UserDirectory["getUser"]>> | null = null;
+    if (directory) {
+      try {
+        inviterIdentity = await directory.getUser(context.var.authUserId);
+      } catch {
+        // Invitation delivery remains available with honest generic Organizer copy.
+      }
+    }
+    const memberships = await listMemberships(context.env.DB, tripId);
     const memberIdentities = directory
       ? await Promise.allSettled(
           memberships.map((membership) => directory.getUser(membership.user_id)),
@@ -232,6 +260,7 @@ export function createInvitationRoutes(
         tripId,
         email,
         invitedByUserId: context.var.authUserId,
+        inviterDisplayName: displayNameForInvitation(inviterIdentity),
         tokenHash,
         now,
         expiresAt,
@@ -254,6 +283,10 @@ export function createInvitationRoutes(
           invitationId: invitation.id,
           recipientEmail: email,
           tripName: invitation.trip_name,
+          destinations: invitationDestinations(invitation.trip_destinations_json),
+          startDate: invitation.trip_start_date,
+          endDate: invitation.trip_end_date,
+          invitedByName: invitation.inviter_display_name ?? "Your trip organizer",
           invitationUrl: url,
           expiresAt,
         });
@@ -313,6 +346,10 @@ export function createInvitationRoutes(
           invitationId: invitation.id,
           recipientEmail: invitation.email,
           tripName: invitation.trip_name,
+          destinations: invitationDestinations(invitation.trip_destinations_json),
+          startDate: invitation.trip_start_date,
+          endDate: invitation.trip_end_date,
+          invitedByName: invitation.inviter_display_name ?? "Your trip organizer",
           invitationUrl: url,
           expiresAt,
         });
@@ -401,6 +438,10 @@ export function createInvitationRoutes(
     const response = invitationSummaryResponseSchema.parse({
       invitation: {
         tripName: invitation.trip_name,
+        destinations: invitationDestinations(invitation.trip_destinations_json),
+        startDate: invitation.trip_start_date,
+        endDate: invitation.trip_end_date,
+        invitedByName: invitation.inviter_display_name ?? "Your trip organizer",
         invitedEmail: maskEmail(invitation.email),
         role: "Traveler",
         status: invitationStatus(invitation, currentTime().toISOString()),
