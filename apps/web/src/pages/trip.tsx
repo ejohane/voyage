@@ -1,20 +1,17 @@
 import {
   ArrowLeft,
   BedDouble,
-  CalendarDays,
   CheckCircle2,
-  Clock3,
   LayoutDashboard,
   ListChecks,
-  MapPin,
   Route,
   Users,
   X,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink, useLocation, useParams } from "react-router-dom";
-import { EditTripDialog } from "@/components/edit-trip-dialog";
 import { GmailImportExperience } from "@/components/gmail-import-experience";
+import { TripHeaderFields } from "@/components/trip-header-fields";
 import { ItinerarySection } from "@/components/trip-itinerary-section";
 import { TripMapHeader } from "@/components/trip-map-header";
 import { TripPartyPresence } from "@/components/trip-party-presence";
@@ -24,7 +21,6 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiRequestError } from "@/lib/api";
-import { formatTripDates, formatTripDestinations, formatTripDuration } from "@/lib/format-trip";
 import { useTrip } from "@/lib/trips";
 import { cn } from "@/lib/utils";
 
@@ -35,9 +31,7 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
   const trip = useTrip(tripId);
   const location = useLocation();
   const joinedState = location.state as { joinedTrip?: boolean; invitedByName?: string } | null;
-  const [editOpen, setEditOpen] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(Boolean(joinedState?.joinedTrip));
-
   if (trip.isPending) return <TripPageSkeleton />;
 
   if (trip.isError) {
@@ -139,30 +133,12 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
                 <span className="inline-flex rounded-full border border-foreground/10 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground backdrop-blur-md">
                   Traveler · View only
                 </span>
-              ) : (
-                <EditTripDialog trip={trip.data} open={editOpen} onOpenChange={setEditOpen} />
-              )}
+              ) : null}
             </div>
           </div>
 
           <div className="mt-auto max-w-xl pb-14 sm:pb-16">
-            <p className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <MapPin className="size-4 shrink-0" aria-hidden="true" />
-              <span>{formatTripDestinations(trip.data)}</span>
-            </p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-[-0.045em] sm:text-5xl lg:text-6xl">
-              {trip.data.name}
-            </h1>
-            <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
-              <span className="flex items-center gap-2">
-                <CalendarDays className="size-4" aria-hidden="true" />
-                {formatTripDates(trip.data)}
-              </span>
-              <span className="flex items-center gap-2">
-                <Clock3 className="size-4" aria-hidden="true" />
-                {formatTripDuration(trip.data)}
-              </span>
-            </div>
+            <TripHeaderFields trip={trip.data} />
 
             <div className="mt-6 flex flex-wrap gap-2 sm:hidden [&>button]:border-foreground/10 [&>button]:bg-background/75 [&>button]:shadow-none [&>button]:backdrop-blur-md [&>button]:hover:bg-background">
               <TripPartyPresence tripId={trip.data.id} />
@@ -170,9 +146,7 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
                 <span className="inline-flex rounded-full border border-foreground/10 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground backdrop-blur-md">
                   Traveler · View only
                 </span>
-              ) : (
-                <EditTripDialog trip={trip.data} open={editOpen} onOpenChange={setEditOpen} />
-              )}
+              ) : null}
             </div>
           </div>
         </div>
