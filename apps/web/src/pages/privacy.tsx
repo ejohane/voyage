@@ -7,7 +7,8 @@ function PrivacyPage() {
         <p>
           Voyage stores the information you provide to create and coordinate trips, including your
           account identity, trip names, destinations, dates, travel and stay details, and trip
-          memberships.
+          memberships. When someone is invited, Voyage stores their email address and invitation
+          status so the organizer can manage access.
         </p>
       </LegalSection>
 
@@ -35,9 +36,9 @@ function PrivacyPage() {
       <LegalSection title="Service providers">
         <p>
           Voyage relies on service providers to operate the product, including Clerk for account
-          authentication, Cloudflare for hosting and data storage, and Google Maps Platform for
-          destination search. These providers process information on Voyage’s behalf or as described
-          in their own terms and privacy notices.
+          authentication, Cloudflare for hosting and data storage, Resend for trip invitation email,
+          and Google Maps Platform for destination search. These providers process information on
+          Voyage’s behalf or as described in their own terms and privacy notices.
         </p>
       </LegalSection>
 

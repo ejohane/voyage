@@ -4,6 +4,7 @@ export const healthEndpoint = "/api/health" as const;
 export const tripsEndpoint = "/api/trips" as const;
 export const gmailIntegrationEndpoint = "/api/integrations/gmail" as const;
 export const locationsEndpoint = "/api/locations" as const;
+export const invitationsEndpoint = "/api/invitations" as const;
 
 export const locationSuggestionsEndpoint = `${locationsEndpoint}/suggestions` as const;
 export const resolveLocationEndpoint = `${locationsEndpoint}/resolve` as const;
@@ -22,6 +23,42 @@ export function tripGmailImportEndpoint(tripId: string) {
 
 export function tripEndpoint(tripId: string) {
   return `${tripsEndpoint}/${tripId}` as const;
+}
+
+export function tripPeopleEndpoint(tripId: string) {
+  return `${tripEndpoint(tripId)}/people` as const;
+}
+
+export function tripInvitationsEndpoint(tripId: string) {
+  return `${tripEndpoint(tripId)}/invitations` as const;
+}
+
+export function tripInvitationEndpoint(tripId: string, invitationId: string) {
+  return `${tripInvitationsEndpoint(tripId)}/${invitationId}` as const;
+}
+
+export function resendTripInvitationEndpoint(tripId: string, invitationId: string) {
+  return `${tripInvitationEndpoint(tripId, invitationId)}/resend` as const;
+}
+
+export function copyTripInvitationLinkEndpoint(tripId: string, invitationId: string) {
+  return `${tripInvitationEndpoint(tripId, invitationId)}/link` as const;
+}
+
+export function tripMemberEndpoint(tripId: string, userId: string) {
+  return `${tripPeopleEndpoint(tripId)}/${encodeURIComponent(userId)}` as const;
+}
+
+export function invitationEndpoint(token: string) {
+  return `${invitationsEndpoint}/${encodeURIComponent(token)}` as const;
+}
+
+export function acceptInvitationEndpoint(token: string) {
+  return `${invitationEndpoint(token)}/accept` as const;
+}
+
+export function declineInvitationEndpoint(token: string) {
+  return `${invitationEndpoint(token)}/decline` as const;
 }
 
 export function tripMapEndpoint(tripId: string) {
@@ -216,6 +253,71 @@ export const tripSchema = tripBaseFieldsSchema.extend({
 
 export const tripResponseSchema = z.object({ trip: tripSchema });
 export const tripListResponseSchema = z.object({ trips: z.array(tripSchema) });
+
+export const createInvitationInputSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email("Enter a valid email address.")
+    .max(320, "Keep the email address under 320 characters."),
+});
+
+export const tripMemberSchema = z.object({
+  userId: z.string().min(1),
+  email: z.string().email().nullable(),
+  displayName: z.string().nullable(),
+  imageUrl: z.string().url().nullable(),
+  role: z.enum(["Organizer", "Planner", "Traveler"]),
+  accessLevel: tripAccessLevelSchema,
+  joinedAt: z.string(),
+});
+
+export const invitationStatusSchema = z.enum([
+  "pending",
+  "accepted",
+  "declined",
+  "revoked",
+  "expired",
+]);
+
+export const tripInvitationSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  role: z.literal("Traveler"),
+  status: invitationStatusSchema,
+  expiresAt: z.string(),
+  lastSentAt: z.string().nullable(),
+  sendCount: z.number().int().nonnegative(),
+  createdAt: z.string(),
+});
+
+export const tripPeopleResponseSchema = z.object({
+  members: z.array(tripMemberSchema),
+  invitations: z.array(tripInvitationSchema),
+  canManage: z.boolean(),
+});
+
+export const createInvitationResponseSchema = z.object({
+  invitation: tripInvitationSchema,
+  previewUrl: z.string().url().optional(),
+});
+
+export const invitationLinkResponseSchema = z.object({ invitationUrl: z.string().url() });
+
+export const invitationSummarySchema = z.object({
+  tripName: z.string(),
+  invitedEmail: z.string(),
+  role: z.literal("Traveler"),
+  status: invitationStatusSchema,
+  expiresAt: z.string(),
+});
+
+export const invitationSummaryResponseSchema = z.object({ invitation: invitationSummarySchema });
+export const invitationActionResponseSchema = z.object({
+  tripId: z.string().uuid(),
+  status: z.enum(["accepted", "declined", "already_member"]),
+});
 
 export const locationSuggestionSchema = z.object({
   placeId: z.string().trim().min(1).max(300),
@@ -553,6 +655,11 @@ export const apiErrorSchema = z.object({
       "not_found",
       "validation_error",
       "gmail_not_connected",
+      "conflict",
+      "email_mismatch",
+      "expired",
+      "revoked",
+      "rate_limited",
       "service_unavailable",
       "internal_error",
     ]),
@@ -569,6 +676,16 @@ export type TripStop = z.infer<typeof tripStopSchema>;
 export type TripAccessLevel = z.infer<typeof tripAccessLevelSchema>;
 export type TripListResponse = z.infer<typeof tripListResponseSchema>;
 export type TripResponse = z.infer<typeof tripResponseSchema>;
+export type CreateInvitationInput = z.infer<typeof createInvitationInputSchema>;
+export type TripMember = z.infer<typeof tripMemberSchema>;
+export type InvitationStatus = z.infer<typeof invitationStatusSchema>;
+export type TripInvitation = z.infer<typeof tripInvitationSchema>;
+export type TripPeopleResponse = z.infer<typeof tripPeopleResponseSchema>;
+export type CreateInvitationResponse = z.infer<typeof createInvitationResponseSchema>;
+export type InvitationLinkResponse = z.infer<typeof invitationLinkResponseSchema>;
+export type InvitationSummary = z.infer<typeof invitationSummarySchema>;
+export type InvitationSummaryResponse = z.infer<typeof invitationSummaryResponseSchema>;
+export type InvitationActionResponse = z.infer<typeof invitationActionResponseSchema>;
 export type LocationKind = z.infer<typeof locationKindSchema>;
 export type TripStopLocation = z.infer<typeof tripStopLocationSchema>;
 export type LocationSuggestion = z.infer<typeof locationSuggestionSchema>;
