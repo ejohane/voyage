@@ -117,6 +117,7 @@ function StayDialog({
 }
 
 function PlanDialog({
+  initialScheduledDate,
   initialStopId,
   onOpenChange,
   open,
@@ -124,7 +125,11 @@ function PlanDialog({
   stops,
   trigger,
   tripId,
-}: DialogProps & { initialStopId?: string; plan?: TripPlan }) {
+}: DialogProps & {
+  initialScheduledDate?: string;
+  initialStopId?: string;
+  plan?: TripPlan;
+}) {
   const createPlan = useCreatePlan(tripId);
   const updatePlan = useUpdatePlan(tripId, plan?.id ?? "");
 
@@ -147,6 +152,7 @@ function PlanDialog({
         {open ? (
           <PlanForm
             initialPlan={plan}
+            initialScheduledDate={initialScheduledDate}
             initialStopId={initialStopId}
             stops={stops}
             onCancel={() => onOpenChange(false)}

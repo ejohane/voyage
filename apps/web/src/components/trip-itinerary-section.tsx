@@ -1,10 +1,12 @@
-import type { Stay, Travel, Trip, TripPlan, TripStop } from "@voyage/contracts";
+import type { CreatePlanInput, Stay, Travel, Trip, TripPlan, TripStop } from "@voyage/contracts";
 import { format, parse } from "date-fns";
 import {
   BedDouble,
   BusFront,
   CalendarDays,
   CarFront,
+  ChevronDown,
+  Clock3,
   ExternalLink,
   Landmark,
   Lightbulb,
@@ -24,11 +26,17 @@ import {
 import { type ComponentType, useState } from "react";
 import { Link } from "react-router-dom";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
+import { PlanForm } from "@/components/plan-form";
 import { PlanDialog } from "@/components/planning-dialogs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useDeletePlan, usePlans, useStays, useTravel } from "@/lib/planning";
+import {
+  destinationNamesForDate,
+  initialStopIdForDate,
+  itineraryDates,
+} from "@/lib/itinerary-timeline";
+import { useCreatePlan, useDeletePlan, usePlans, useStays, useTravel } from "@/lib/planning";
 import { cn } from "@/lib/utils";
 
 type ItineraryView = "schedule" | "ideas";
@@ -42,7 +50,11 @@ type TimelineEntry = {
   eyebrow: string;
   title: string;
   detail?: string;
+  notes?: string | null;
+  confirmationNumber?: string | null;
+  bookingUrl?: string | null;
   href?: string;
+  hrefLabel?: string;
   plan?: TripPlan;
 };
 
@@ -107,7 +119,11 @@ function buildTimelineEntries(
         eyebrow: "Rental car pickup",
         title: rentalTitle,
         detail: item.departureLocation,
+        notes: item.notes,
+        confirmationNumber: item.confirmationNumber,
+        bookingUrl: item.bookingUrl,
         href: `/trips/${trip.id}/travel`,
+        hrefLabel: "Open transportation",
       });
       if (arrivalDate && arrivalTime) {
         entries.push({
@@ -118,7 +134,11 @@ function buildTimelineEntries(
           eyebrow: "Rental car return",
           title: rentalTitle,
           detail: item.arrivalLocation,
+          notes: item.notes,
+          confirmationNumber: item.confirmationNumber,
+          bookingUrl: item.bookingUrl,
           href: `/trips/${trip.id}/travel`,
+          hrefLabel: "Open transportation",
         });
       }
       continue;
@@ -132,7 +152,11 @@ function buildTimelineEntries(
       eyebrow: `${titleCase(item.type)} departure`,
       title: `${item.departureLocation} → ${item.arrivalLocation}`,
       detail: item.departureStopId ? stopNames.get(item.departureStopId) : undefined,
+      notes: item.notes,
+      confirmationNumber: item.confirmationNumber,
+      bookingUrl: item.bookingUrl,
       href: `/trips/${trip.id}/travel`,
+      hrefLabel: "Open transportation",
     });
 
     if (arrivalDate && arrivalTime && arrivalDate !== departureDate) {
@@ -144,7 +168,11 @@ function buildTimelineEntries(
         eyebrow: `${titleCase(item.type)} arrival`,
         title: item.arrivalLocation,
         detail: item.arrivalStopId ? stopNames.get(item.arrivalStopId) : undefined,
+        notes: item.notes,
+        confirmationNumber: item.confirmationNumber,
+        bookingUrl: item.bookingUrl,
         href: `/trips/${trip.id}/travel`,
+        hrefLabel: "Open transportation",
       });
     }
   }
@@ -158,8 +186,12 @@ function buildTimelineEntries(
       icon: BedDouble,
       eyebrow: "Stay check-in",
       title: stay.propertyName,
-      detail: stopName,
+      detail: stay.address || stopName,
+      notes: stay.notes,
+      confirmationNumber: stay.confirmationNumber,
+      bookingUrl: stay.bookingUrl,
       href: `/trips/${trip.id}/stays`,
+      hrefLabel: "Open stay",
     });
     entries.push({
       id: `stay-checkout-${stay.id}`,
@@ -168,8 +200,12 @@ function buildTimelineEntries(
       icon: BedDouble,
       eyebrow: "Stay checkout",
       title: stay.propertyName,
-      detail: stopName,
+      detail: stay.address || stopName,
+      notes: stay.notes,
+      confirmationNumber: stay.confirmationNumber,
+      bookingUrl: stay.bookingUrl,
       href: `/trips/${trip.id}/stays`,
+      hrefLabel: "Open stay",
     });
   }
 
@@ -184,6 +220,9 @@ function buildTimelineEntries(
       eyebrow: `${titleCase(plan.category)} · ${titleCase(plan.status)}`,
       title: plan.title,
       detail: plan.location ?? stopNames.get(plan.tripStopId),
+      notes: plan.notes,
+      confirmationNumber: plan.confirmationNumber,
+      bookingUrl: plan.bookingUrl,
       plan,
     });
   }
@@ -305,7 +344,13 @@ function ScheduleView({
   entries: TimelineEntry[];
   trip: Trip;
 }) {
-  if (entries.length === 0) {
+  const [draftSlot, setDraftSlot] = useState<string | null>(null);
+  const dates = itineraryDates(
+    trip,
+    entries.map((entry) => entry.date),
+  );
+
+  if (dates.length === 0) {
     return (
       <Card className="mt-6 border-dashed shadow-none">
         <CardContent>
@@ -325,39 +370,144 @@ function ScheduleView({
   }
 
   return (
-    <div className="mt-6 grid gap-5">
-      {[...days].map(([date, dayEntries]) => {
-        const timed = dayEntries.filter((entry) => entry.time);
-        const anytime = dayEntries.filter((entry) => !entry.time);
+    <div className="relative mt-7 max-w-4xl">
+      <div className="absolute bottom-6 left-6 top-5 w-px bg-border" aria-hidden="true" />
+      {dates.map((date, dayIndex) => {
+        const dayEntries = days.get(date) ?? [];
+        const destinations = destinationNamesForDate(trip.stops, date);
 
         return (
-          <Card className="gap-0 py-0" key={date}>
-            <div className="border-b px-5 py-4 sm:px-6">
-              <p className="text-sm font-semibold">{formatDay(date)}</p>
+          <section className="relative pb-3" key={date} aria-labelledby={`itinerary-${date}`}>
+            <div className="grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-x-3 py-2">
+              <span className="relative z-10 grid size-8 place-self-center rounded-full border bg-background text-xs font-semibold shadow-sm">
+                <span className="m-auto">{dayIndex + 1}</span>
+              </span>
+              <div className="border-b py-3">
+                <h3 id={`itinerary-${date}`} className="font-semibold tracking-tight">
+                  {formatDay(date)}
+                </h3>
+                {destinations.length > 0 ? (
+                  <p className="mt-0.5 text-sm text-muted-foreground">{destinations.join(" · ")}</p>
+                ) : null}
+              </div>
             </div>
-            <CardContent className="px-5 py-2 sm:px-6">
-              {timed.map((entry) => (
-                <TimelineRow key={entry.id} entry={entry} trip={trip} canEdit={canEdit} />
-              ))}
-              {anytime.length > 0 ? (
-                <div className={cn(timed.length > 0 && "border-t")}>
-                  <p className="pb-1 pt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Anytime
-                  </p>
-                  {anytime.map((entry) => (
-                    <TimelineRow key={entry.id} entry={entry} trip={trip} canEdit={canEdit} />
-                  ))}
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
+
+            <TimelineInsertPoint
+              slotId={`${date}:start`}
+              active={draftSlot === `${date}:start`}
+              date={date}
+              trip={trip}
+              canEdit={canEdit}
+              onOpen={() => setDraftSlot(`${date}:start`)}
+              onClose={() => setDraftSlot(null)}
+            />
+            {dayEntries.map((entry) => (
+              <div key={entry.id}>
+                <TimelineCard entry={entry} trip={trip} canEdit={canEdit} />
+                <TimelineInsertPoint
+                  slotId={`${date}:after:${entry.id}`}
+                  active={draftSlot === `${date}:after:${entry.id}`}
+                  date={date}
+                  trip={trip}
+                  canEdit={canEdit}
+                  onOpen={() => setDraftSlot(`${date}:after:${entry.id}`)}
+                  onClose={() => setDraftSlot(null)}
+                />
+              </div>
+            ))}
+          </section>
         );
       })}
     </div>
   );
 }
 
-function TimelineRow({
+function TimelineInsertPoint({
+  active,
+  canEdit,
+  date,
+  onClose,
+  onOpen,
+  slotId,
+  trip,
+}: {
+  active: boolean;
+  canEdit: boolean;
+  date: string;
+  onClose: () => void;
+  onOpen: () => void;
+  slotId: string;
+  trip: Trip;
+}) {
+  if (!canEdit) return <div className="h-4" aria-hidden="true" />;
+
+  if (active) {
+    return <TimelineDraftCard date={date} trip={trip} onClose={onClose} />;
+  }
+
+  return (
+    <div className="group grid h-9 grid-cols-[3rem_minmax(0,1fr)] items-center gap-x-3">
+      <Button
+        id={`itinerary-insert-${slotId.replaceAll(":", "-")}`}
+        size="icon"
+        variant="outline"
+        className="relative z-20 size-7 place-self-center rounded-full bg-background opacity-50 shadow-sm transition md:scale-90 md:opacity-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-focus-within:scale-100 md:group-focus-within:opacity-100"
+        aria-label={`Add a plan to ${formatDay(date)}`}
+        onClick={onOpen}
+      >
+        <Plus className="size-3.5" />
+      </Button>
+      <div className="h-px origin-left scale-x-0 bg-border transition-transform group-hover:scale-x-100 group-focus-within:scale-x-100" />
+    </div>
+  );
+}
+
+function TimelineDraftCard({
+  date,
+  onClose,
+  trip,
+}: {
+  date: string;
+  onClose: () => void;
+  trip: Trip;
+}) {
+  const createPlan = useCreatePlan(trip.id);
+  const destinations = destinationNamesForDate(trip.stops, date);
+
+  async function handleSubmit(input: CreatePlanInput) {
+    await createPlan.mutateAsync(input);
+    onClose();
+  }
+
+  return (
+    <div className="grid grid-cols-[3rem_minmax(0,1fr)] items-start gap-x-3 py-2">
+      <span className="relative z-10 mt-5 grid size-7 place-self-center rounded-full border bg-background shadow-sm">
+        <Plus className="m-auto size-3.5 text-muted-foreground" />
+      </span>
+      <article className="overflow-hidden rounded-xl border bg-card shadow-md ring-1 ring-ring/10">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-4 py-3 sm:px-5">
+          <p className="text-sm font-medium">New plan</p>
+          <p className="text-xs text-muted-foreground">
+            {formatDay(date)}
+            {destinations.length > 0 ? ` · ${destinations.join(" · ")}` : ""}
+          </p>
+        </div>
+        <div className="px-4 py-4 sm:px-5">
+          <PlanForm
+            presentation="inline"
+            initialScheduledDate={date}
+            initialStopId={initialStopIdForDate(trip.stops, date)}
+            stops={trip.stops}
+            onCancel={onClose}
+            onSubmit={handleSubmit}
+          />
+        </div>
+      </article>
+    </div>
+  );
+}
+
+function TimelineCard({
   canEdit,
   entry,
   trip,
@@ -366,69 +516,120 @@ function TimelineRow({
   entry: TimelineEntry;
   trip: Trip;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const remove = useDeletePlan(trip.id, entry.plan?.id ?? "");
   const Icon = entry.icon;
-  const content = (
-    <>
-      {entry.time ? (
-        <span className="w-14 shrink-0 pt-0.5 text-xs font-medium text-muted-foreground sm:w-16">
-          {formatTimeRange(entry.time, entry.endTime)}
-        </span>
-      ) : null}
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg border bg-muted/30">
-        <Icon className="size-4 text-muted-foreground" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {entry.eyebrow}
-        </p>
-        <p className="mt-0.5 font-medium">{entry.title}</p>
-        {entry.detail ? (
-          <p className="mt-0.5 text-sm text-muted-foreground">{entry.detail}</p>
-        ) : null}
-      </div>
-    </>
-  );
 
   return (
-    <div className="flex items-start gap-3 border-b py-4 last:border-b-0">
-      {entry.href ? (
-        <Link
-          className="flex min-w-0 flex-1 items-start gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          to={entry.href}
+    <div className="grid grid-cols-[3rem_minmax(0,1fr)] items-start gap-x-3">
+      <span className="relative z-10 mt-5 grid size-5 place-self-center rounded-full border bg-background">
+        <span className="m-auto size-1.5 rounded-full bg-muted-foreground/60" />
+      </span>
+      <article className="overflow-hidden rounded-xl border bg-card shadow-sm transition-shadow hover:shadow-md">
+        <button
+          type="button"
+          className="flex w-full items-start gap-3 px-4 py-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
         >
-          {content}
-        </Link>
-      ) : (
-        <div className="flex min-w-0 flex-1 items-start gap-3">{content}</div>
-      )}
-      {entry.plan && canEdit ? (
-        <div className="flex shrink-0 gap-1">
-          <PlanDialog
-            tripId={trip.id}
-            stops={trip.stops}
-            plan={entry.plan}
-            open={editOpen}
-            onOpenChange={setEditOpen}
-            trigger={
-              <Button size="icon" variant="ghost" aria-label={`Edit ${entry.plan.title}`}>
-                <Pencil className="size-4" />
-              </Button>
-            }
+          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted/60">
+            <Icon className="size-4 text-muted-foreground" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {entry.time ? (
+                <span className="inline-flex items-center gap-1 normal-case tracking-normal">
+                  <Clock3 className="size-3" />
+                  {formatTimeRange(entry.time, entry.endTime)}
+                </span>
+              ) : (
+                <span className="normal-case tracking-normal">Anytime</span>
+              )}
+              <span aria-hidden="true">·</span>
+              <span>{entry.eyebrow}</span>
+            </span>
+            <span className="mt-1 block font-medium">{entry.title}</span>
+            {entry.detail ? (
+              <span className="mt-0.5 block truncate text-sm text-muted-foreground">
+                {entry.detail}
+              </span>
+            ) : null}
+          </span>
+          <ChevronDown
+            className={cn(
+              "mt-2 size-4 shrink-0 text-muted-foreground transition-transform",
+              expanded && "rotate-180",
+            )}
           />
-          <ConfirmDeleteDialog
-            title="Remove this plan?"
-            description="This permanently removes the plan from the trip."
-            onDelete={() => remove.mutateAsync()}
-            trigger={
-              <Button size="icon" variant="ghost" aria-label={`Remove ${entry.plan.title}`}>
-                <Trash2 className="size-4 text-muted-foreground" />
-              </Button>
-            }
-          />
-        </div>
-      ) : null}
+        </button>
+
+        {expanded ? (
+          <div className="border-t bg-muted/15 px-4 py-4 sm:px-5">
+            {entry.notes ? (
+              <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                {entry.notes}
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">No additional notes yet.</p>
+            )}
+            {entry.confirmationNumber ? (
+              <p className="mt-3 text-sm">
+                <span className="text-muted-foreground">Confirmation </span>
+                <span className="font-medium">{entry.confirmationNumber}</span>
+              </p>
+            ) : null}
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {entry.bookingUrl ? (
+                <a
+                  className="inline-flex h-8 items-center justify-center gap-2 rounded-md border bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-muted"
+                  href={entry.bookingUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Booking link <ExternalLink className="size-3.5" />
+                </a>
+              ) : null}
+              {entry.href ? (
+                <Link
+                  className="inline-flex h-8 items-center justify-center gap-2 rounded-md border bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-muted"
+                  to={entry.href}
+                >
+                  {entry.hrefLabel ?? "Open details"}
+                </Link>
+              ) : null}
+              {entry.plan && canEdit ? (
+                <>
+                  <PlanDialog
+                    tripId={trip.id}
+                    stops={trip.stops}
+                    plan={entry.plan}
+                    open={editOpen}
+                    onOpenChange={setEditOpen}
+                    trigger={
+                      <Button size="sm" variant="outline">
+                        <Pencil className="size-3.5" />
+                        Edit plan
+                      </Button>
+                    }
+                  />
+                  <ConfirmDeleteDialog
+                    title="Remove this plan?"
+                    description="This permanently removes the plan from the trip."
+                    onDelete={() => remove.mutateAsync()}
+                    trigger={
+                      <Button size="sm" variant="ghost">
+                        <Trash2 className="size-3.5 text-muted-foreground" />
+                        Remove
+                      </Button>
+                    }
+                  />
+                </>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </article>
     </div>
   );
 }
