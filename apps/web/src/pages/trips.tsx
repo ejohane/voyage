@@ -154,7 +154,7 @@ function TripRow({ trip }: { trip: Trip }) {
               <DropdownMenuTrigger asChild>
                 <Button
                   aria-label={`Trip actions for ${trip.name}`}
-                  className="opacity-100 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100 data-[state=open]:opacity-100"
+                  className="text-muted-foreground hover:text-foreground data-[state=open]:bg-muted data-[state=open]:text-foreground"
                   size="icon"
                   variant="ghost"
                 >
