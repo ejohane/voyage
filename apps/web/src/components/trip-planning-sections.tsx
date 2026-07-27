@@ -59,6 +59,54 @@ const travelIcons: Record<Travel["type"], ComponentType<{ className?: string }>>
   other: Route,
 };
 
+const travelTypePresentation: Record<
+  Travel["type"],
+  { label: string; card: string; icon: string; badge: string }
+> = {
+  flight: {
+    label: "Flight",
+    card: "border-l-sky-500 bg-sky-50/30 hover:bg-sky-50/55",
+    icon: "bg-sky-100 text-sky-700",
+    badge: "border-sky-200 bg-sky-100/80 text-sky-700",
+  },
+  train: {
+    label: "Train",
+    card: "border-l-violet-500 bg-violet-50/30 hover:bg-violet-50/55",
+    icon: "bg-violet-100 text-violet-700",
+    badge: "border-violet-200 bg-violet-100/80 text-violet-700",
+  },
+  bus: {
+    label: "Bus",
+    card: "border-l-orange-500 bg-orange-50/30 hover:bg-orange-50/55",
+    icon: "bg-orange-100 text-orange-700",
+    badge: "border-orange-200 bg-orange-100/80 text-orange-700",
+  },
+  drive: {
+    label: "Drive / transfer",
+    card: "border-l-rose-500 bg-rose-50/30 hover:bg-rose-50/55",
+    icon: "bg-rose-100 text-rose-700",
+    badge: "border-rose-200 bg-rose-100/80 text-rose-700",
+  },
+  ferry: {
+    label: "Ferry",
+    card: "border-l-cyan-500 bg-cyan-50/30 hover:bg-cyan-50/55",
+    icon: "bg-cyan-100 text-cyan-700",
+    badge: "border-cyan-200 bg-cyan-100/80 text-cyan-700",
+  },
+  car: {
+    label: "Rental car",
+    card: "border-l-amber-500 bg-amber-50/35 hover:bg-amber-50/60",
+    icon: "bg-amber-100 text-amber-800",
+    badge: "border-amber-200 bg-amber-100/85 text-amber-800",
+  },
+  other: {
+    label: "Other",
+    card: "border-l-slate-400 bg-slate-50/45 hover:bg-slate-50/75",
+    icon: "bg-slate-100 text-slate-700",
+    badge: "border-slate-200 bg-slate-100 text-slate-700",
+  },
+};
+
 function formatLocalDateTime(value: string) {
   return format(parse(value, "yyyy-MM-dd'T'HH:mm", new Date()), "MMM d, yyyy · h:mm a");
 }
@@ -82,6 +130,21 @@ function StatusBadge({ status }: { status: "planning" | "booked" }) {
       )}
     >
       {titleCase(status)}
+    </span>
+  );
+}
+
+function TravelTypeBadge({ type }: { type: Travel["type"] }) {
+  const presentation = travelTypePresentation[type];
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border px-2 py-0.5 text-[0.68rem] font-semibold",
+        presentation.badge,
+      )}
+    >
+      {presentation.label}
     </span>
   );
 }
@@ -454,6 +517,7 @@ function TravelListCard({
   stops: TripStop[];
 }) {
   const Icon = travelIcons[item.type];
+  const presentation = travelTypePresentation[item.type];
   const isRental = item.kind === "rental";
   const departureStop = stops.find((stop) => stop.id === item.departureStopId);
   const arrivalStop = stops.find((stop) => stop.id === item.arrivalStopId);
@@ -464,8 +528,9 @@ function TravelListCard({
   return (
     <li
       className={cn(
-        "group flex min-w-0 items-center gap-2 rounded-md border bg-background transition-colors hover:bg-muted/25",
-        isSelected && "border-blue-200 bg-blue-50/65 hover:bg-blue-50/65",
+        "group flex min-w-0 items-center gap-2 rounded-md border border-l-4 transition-colors",
+        presentation.card,
+        isSelected && "ring-2 ring-blue-500/20 ring-offset-1",
       )}
     >
       <button
@@ -473,12 +538,15 @@ function TravelListCard({
         className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         onClick={onSelect}
       >
-        <span className="grid size-9 shrink-0 place-items-center rounded-md bg-muted/60">
-          <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+        <span
+          className={cn("grid size-9 shrink-0 place-items-center rounded-md", presentation.icon)}
+        >
+          <Icon className="size-4" aria-hidden="true" />
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="truncate font-medium">{title}</span>
+            <TravelTypeBadge type={item.type} />
             <StatusBadge status={item.status} />
           </span>
           <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
