@@ -2,7 +2,9 @@ import { useAuth } from "@clerk/react";
 import { LoaderCircle } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
-import { AppHeader } from "@/components/app-header";
+import { AppSidebar } from "@/components/app-sidebar";
+import { AppTopbar } from "@/components/app-topbar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
 const PrivacyPage = lazy(() => import("@/pages/privacy"));
@@ -41,10 +43,13 @@ function RequireAuth() {
 
 function SignedInLayout() {
   return (
-    <div className="min-h-svh bg-muted/30 text-foreground">
-      <AppHeader />
-      <Outlet />
-    </div>
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset className="min-w-0 bg-muted/20 text-foreground">
+        <AppTopbar />
+        <Outlet />
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
 
@@ -71,6 +76,7 @@ function App() {
             <Route path="/trips" element={<TripsPage />} />
             <Route path="/trips/:tripId" element={<TripPage />} />
             <Route path="/trips/:tripId/itinerary" element={<TripPage section="itinerary" />} />
+            <Route path="/trips/:tripId/ideas" element={<TripPage section="ideas" />} />
             <Route path="/trips/:tripId/travel" element={<TripPage section="travel" />} />
             <Route path="/trips/:tripId/stays" element={<TripPage section="stays" />} />
             <Route path="/trips/:tripId/people" element={<TripPage section="people" />} />

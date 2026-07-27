@@ -1,5 +1,5 @@
 import type { Trip } from "@voyage/contracts";
-import { CalendarDays, Clock3, MapPin, MapPinned } from "lucide-react";
+import { ArrowRight, CalendarDays, Clock3, MapPin, MapPinned } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { CreateTripDialog } from "@/components/create-trip-dialog";
@@ -16,23 +16,20 @@ function TripsPage() {
   const [createOpen, setCreateOpen] = useState(false);
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-5 py-10 sm:px-8 sm:py-14">
-      <div className="flex items-start justify-between gap-6">
+    <main className="mx-auto w-full max-w-[96rem] p-4 md:p-6">
+      <div className="border-b pb-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Your trips</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Everything you are planning, in one place.
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            Workspace
           </p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">All trips</h1>
         </div>
-        {trips.data?.length ? (
-          <CreateTripDialog open={createOpen} onOpenChange={setCreateOpen} />
-        ) : null}
       </div>
 
       {trips.isPending ? <TripsSkeleton /> : null}
 
       {trips.isError ? (
-        <Card className="mt-8 border-dashed shadow-none">
+        <Card className="mt-4 border-dashed shadow-none">
           <CardContent className="flex min-h-60 flex-col items-center justify-center text-center">
             <p className="text-sm font-medium">We couldn’t load your trips.</p>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -50,10 +47,10 @@ function TripsPage() {
       ) : null}
 
       {trips.data?.length === 0 ? (
-        <Card className="mt-8 border-dashed shadow-none">
-          <CardContent className="flex min-h-80 flex-col items-center justify-center px-6 text-center">
-            <span className="grid size-12 place-items-center rounded-xl border bg-background">
-              <MapPinned className="size-5 text-muted-foreground" aria-hidden="true" />
+        <Card className="mt-4 border-dashed shadow-none">
+          <CardContent className="flex min-h-72 flex-col items-center justify-center px-6 text-center">
+            <span className="grid size-10 place-items-center rounded-md border bg-background">
+              <MapPinned className="size-4 text-muted-foreground" aria-hidden="true" />
             </span>
             <h2 className="mt-4 text-base font-medium">Create your first trip</h2>
             <p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
@@ -72,42 +69,53 @@ function TripsPage() {
       ) : null}
 
       {trips.data?.length ? (
-        <section className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" aria-label="Trips">
-          {trips.data.map((trip) => (
-            <TripCard key={trip.id} trip={trip} />
-          ))}
+        <section
+          className="mt-4 overflow-hidden rounded-lg border bg-background"
+          aria-label="Trips"
+        >
+          <div className="hidden grid-cols-[8.5rem_minmax(12rem,1.2fr)_minmax(10rem,1fr)_10rem_7rem_2rem] items-center gap-4 border-b bg-muted/35 px-3 py-2 text-xs font-medium text-muted-foreground lg:grid">
+            <span>Route</span>
+            <span>Project</span>
+            <span>Destinations</span>
+            <span>Dates</span>
+            <span>Duration</span>
+            <span className="sr-only">Open</span>
+          </div>
+          <div className="divide-y">
+            {trips.data.map((trip) => (
+              <TripRow key={trip.id} trip={trip} />
+            ))}
+          </div>
         </section>
       ) : null}
     </main>
   );
 }
 
-function TripCard({ trip }: { trip: Trip }) {
+function TripRow({ trip }: { trip: Trip }) {
   return (
     <Link
-      className="group rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="group grid min-h-24 gap-3 p-3 outline-none transition-colors hover:bg-muted/30 focus-visible:bg-muted/30 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[8.5rem_minmax(0,1fr)_auto] sm:items-center lg:grid-cols-[8.5rem_minmax(12rem,1.2fr)_minmax(10rem,1fr)_10rem_7rem_2rem] lg:gap-4"
       to={`/trips/${trip.id}`}
     >
-      <Card className="h-full gap-0 overflow-hidden rounded-2xl py-0 shadow-sm transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-foreground/20 group-hover:shadow-lg">
-        <TripMapHeader trip={trip} />
-        <CardContent className="border-t px-5 py-5">
-          <h2 className="text-lg font-semibold leading-6 tracking-tight">{trip.name}</h2>
-          <p className="mt-2 flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-            <MapPin className="size-4 shrink-0" aria-hidden="true" />
-            <span className="truncate">{formatTripDestinations(trip, 2)}</span>
-          </p>
-        </CardContent>
-        <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-3 border-t bg-[#fafaf8] px-5 py-4 text-xs text-muted-foreground">
-          <p className="flex min-w-0 items-center gap-2">
-            <CalendarDays className="size-3.5 shrink-0" aria-hidden="true" />
-            <span className="truncate">{formatTripDates(trip)}</span>
-          </p>
-          <p className="flex items-center gap-2 whitespace-nowrap">
-            <Clock3 className="size-3.5" aria-hidden="true" />
-            {formatTripDurationDays(trip)}
-          </p>
-        </div>
-      </Card>
+      <TripMapHeader trip={trip} className="h-16 w-full rounded-md border sm:w-[8.5rem]" />
+      <div className="min-w-0">
+        <h2 className="truncate font-medium">{trip.name}</h2>
+        <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground lg:hidden">
+          <CalendarDays className="size-3.5" aria-hidden="true" />
+          {formatTripDates(trip)}
+        </p>
+      </div>
+      <p className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground sm:col-span-2 lg:col-span-1">
+        <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
+        <span className="truncate">{formatTripDestinations(trip, 3)}</span>
+      </p>
+      <p className="hidden text-sm text-muted-foreground lg:block">{formatTripDates(trip)}</p>
+      <p className="hidden items-center gap-1.5 text-sm text-muted-foreground lg:flex">
+        <Clock3 className="size-3.5" aria-hidden="true" />
+        {formatTripDurationDays(trip)}
+      </p>
+      <ArrowRight className="hidden size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 sm:block" />
     </Link>
   );
 }
@@ -115,21 +123,18 @@ function TripCard({ trip }: { trip: Trip }) {
 function TripsSkeleton() {
   return (
     <div
-      className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
+      className="mt-4 overflow-hidden rounded-lg border bg-background"
       aria-label="Loading trips"
       role="status"
     >
       {[0, 1, 2].map((item) => (
-        <Card className="gap-0 overflow-hidden rounded-2xl py-0" key={item}>
-          <Skeleton className="aspect-[2/1] w-full rounded-none" />
-          <CardContent className="px-5 py-5">
-            <Skeleton className="h-5 w-1/2" />
-          </CardContent>
-          <div className="border-t px-5 py-4">
-            <Skeleton className="h-3 w-2/3" />
-            <Skeleton className="mt-4 h-3 w-4/5" />
+        <div className="flex items-center gap-4 border-b p-3 last:border-b-0" key={item}>
+          <Skeleton className="h-16 w-[8.5rem] shrink-0" />
+          <div className="flex-1">
+            <Skeleton className="h-4 w-1/3" />
+            <Skeleton className="mt-3 h-3 w-2/3" />
           </div>
-        </Card>
+        </div>
       ))}
     </div>
   );

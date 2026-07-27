@@ -19,6 +19,7 @@ import { useUpdateTrip } from "@/lib/trips";
 import { cn } from "@/lib/utils";
 
 type TripHeaderFieldsProps = {
+  presentation?: "hero" | "workspace";
   trip: Trip;
 };
 
@@ -321,21 +322,37 @@ function editableStops(trip: Trip): NonNullable<UpdateTripInput["stops"]> {
   }));
 }
 
-function TripHeaderFields({ trip }: TripHeaderFieldsProps) {
+function TripHeaderFields({ presentation = "hero", trip }: TripHeaderFieldsProps) {
   const updateTrip = useUpdateTrip(trip.id);
   const editable = trip.accessLevel !== "viewer";
+  const workspace = presentation === "workspace";
 
   if (!editable) {
     return (
       <>
-        <p className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+        <p
+          className={cn(
+            "flex items-center gap-2 font-medium text-muted-foreground",
+            workspace ? "text-xs" : "text-sm",
+          )}
+        >
           <MapPin className="size-4 shrink-0" aria-hidden="true" />
           <span>{formatTripDestinations(trip)}</span>
         </p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.045em] sm:text-5xl lg:text-6xl">
+        <h1
+          className={cn(
+            "font-semibold tracking-tight",
+            workspace ? "mt-1.5 text-2xl sm:text-3xl" : "mt-3 text-4xl sm:text-5xl lg:text-6xl",
+          )}
+        >
           {trip.name}
         </h1>
-        <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
+        <div
+          className={cn(
+            "flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground",
+            workspace ? "mt-3" : "mt-5",
+          )}
+        >
           <span className="flex items-center gap-2">
             <CalendarDays className="size-4" aria-hidden="true" />
             {formatTripDates(trip)}
@@ -353,7 +370,12 @@ function TripHeaderFields({ trip }: TripHeaderFieldsProps) {
 
   return (
     <>
-      <p className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+      <p
+        className={cn(
+          "flex items-center gap-2 font-medium text-muted-foreground",
+          workspace ? "text-xs" : "text-sm",
+        )}
+      >
         <MapPin className="size-4 shrink-0" aria-hidden="true" />
         <InlineTextField
           destination={{
@@ -373,7 +395,12 @@ function TripHeaderFields({ trip }: TripHeaderFieldsProps) {
           }}
         />
       </p>
-      <h1 className="mt-3 text-4xl font-semibold tracking-[-0.045em] sm:text-5xl lg:text-6xl">
+      <h1
+        className={cn(
+          "font-semibold tracking-tight",
+          workspace ? "mt-1.5 text-2xl sm:text-3xl" : "mt-3 text-4xl sm:text-5xl lg:text-6xl",
+        )}
+      >
         <InlineTextField
           className="text-inherit"
           label="Trip title"
@@ -383,7 +410,12 @@ function TripHeaderFields({ trip }: TripHeaderFieldsProps) {
           }}
         />
       </h1>
-      <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
+      <div
+        className={cn(
+          "flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground",
+          workspace ? "mt-3" : "mt-5",
+        )}
+      >
         <span className="flex items-center gap-2">
           <CalendarDays className="size-4" aria-hidden="true" />
           <InlineDateField

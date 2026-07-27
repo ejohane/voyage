@@ -1,30 +1,50 @@
-import type { Stay, Travel, Trip, TripStop } from "@voyage/contracts";
+import type {
+  CreateStayInput,
+  CreateTravelInput,
+  Stay,
+  Travel,
+  Trip,
+  TripStop,
+} from "@voyage/contracts";
 import { format, parse } from "date-fns";
 import {
-  ArrowRight,
+  ArrowUpRight,
   BedDouble,
   BusFront,
   CalendarCheck,
   CarFront,
   ExternalLink,
-  MapPin,
+  Lightbulb,
   MoreHorizontal,
-  Pencil,
   Plane,
   Plus,
   Route,
   Ship,
   TrainFront,
   Trash2,
+  Undo2,
+  Users,
 } from "lucide-react";
-import { type ComponentType, type ReactNode, useState } from "react";
+import { type ComponentType, type ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
-import { StayDialog, TravelDialog } from "@/components/planning-dialogs";
+import { StayForm } from "@/components/stay-form";
+import { TravelForm } from "@/components/travel-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useDeleteStay, useDeleteTravel, usePlans, useStays, useTravel } from "@/lib/planning";
+import { WorkspaceInspector } from "@/components/workspace-inspector";
+import { useTripPeople } from "@/lib/invitations";
+import {
+  useCreateStay,
+  useCreateTravel,
+  useDeleteStay,
+  useDeleteTravel,
+  usePlans,
+  useStays,
+  useTravel,
+  useUpdateStay,
+  useUpdateTravel,
+} from "@/lib/planning";
 import { cn } from "@/lib/utils";
 
 type SectionProps = { trip: Trip };
@@ -51,10 +71,6 @@ function titleCase(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function transportationLabel(item: Travel) {
-  return item.kind === "rental" ? "Rental car" : titleCase(item.type);
-}
-
 function StatusBadge({ status }: { status: "planning" | "booked" }) {
   return (
     <span
@@ -74,542 +90,830 @@ function OverviewSection({ trip }: SectionProps) {
   const travel = useTravel(trip.id);
   const stays = useStays(trip.id);
   const plans = usePlans(trip.id);
-  const loading = travel.isPending || stays.isPending || plans.isPending;
-  const items = [
-    ...(travel.data ?? []).map((item) => ({
-      id: `travel-${item.id}`,
-      start: item.departureAt,
-      icon: travelIcons[item.type],
-      eyebrow: `${transportationLabel(item)} · ${titleCase(item.status)}`,
-      title:
-        item.kind === "rental"
-          ? [item.carrier ?? "Rental car", item.vehicleDescription].filter(Boolean).join(" · ")
-          : `${item.departureLocation} → ${item.arrivalLocation}`,
-      detail:
-        item.kind === "rental"
-          ? `Pick up ${formatLocalDateTime(item.departureAt)} · Return ${formatLocalDateTime(item.arrivalAt ?? item.departureAt)}`
-          : formatLocalDateTime(item.departureAt),
-    })),
-    ...(stays.data ?? []).map((item) => ({
-      id: `stay-${item.id}`,
-      start: `${item.checkInDate}T00:00`,
-      icon: BedDouble,
-      eyebrow: `Stay · ${titleCase(item.status)}`,
-      title: item.propertyName,
-      detail: `${formatDateOnly(item.checkInDate)} – ${formatDateOnly(item.checkOutDate)}`,
-    })),
-    ...(plans.data ?? [])
-      .filter((item) => item.scheduledDate)
-      .map((item) => ({
-        id: `plan-${item.id}`,
-        start: `${item.scheduledDate}T${item.startTime ?? "23:59"}`,
-        icon: CalendarCheck,
-        eyebrow: `${titleCase(item.category)} · ${titleCase(item.status)}`,
-        title: item.title,
-        detail: item.startTime
-          ? `${formatDateOnly(item.scheduledDate ?? "")} · ${format(
-              parse(item.startTime, "HH:mm", new Date()),
-              "h:mm a",
-            )}`
-          : formatDateOnly(item.scheduledDate ?? ""),
-      })),
-  ].sort((left, right) => left.start.localeCompare(right.start));
+  const people = useTripPeople(trip.id);
   const travelBooked = travel.data?.filter((item) => item.status === "booked").length ?? 0;
   const staysBooked = stays.data?.filter((item) => item.status === "booked").length ?? 0;
   const scheduledPlans = plans.data?.filter((item) => item.scheduledDate).length ?? 0;
   const savedIdeas = plans.data?.filter((item) => !item.scheduledDate).length ?? 0;
-  const nextItem = items.find((item) => item.start >= format(new Date(), "yyyy-MM-dd'T'HH:mm"));
-
-  if (travel.isError || stays.isError || plans.isError) {
-    return (
-      <LoadError
-        onRetry={() => {
-          void travel.refetch();
-          void stays.refetch();
-          void plans.refetch();
-        }}
-      />
-    );
-  }
+  const memberCount = people.data?.members.length;
+  const openInvitations =
+    people.data?.invitations.filter((invitation) =>
+      ["pending", "delivery_failed"].includes(invitation.status),
+    ).length ?? 0;
 
   return (
-    <div className="divide-y divide-border/70">
-      <section className="pb-9">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full bg-muted/70">
-            <MapPin className="size-4 text-muted-foreground" aria-hidden="true" />
-          </span>
-          <div>
-            <h2 className="text-lg font-semibold tracking-[-0.02em]">Destinations</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Your itinerary in travel order.</p>
-          </div>
-        </div>
-        <ol className="mt-5 grid overflow-hidden rounded-xl border border-border/70 bg-muted/15 sm:grid-cols-2 sm:divide-x lg:grid-cols-3">
-          {trip.stops.map((stop, index) => (
-            <li
-              className="flex min-h-20 gap-3 border-b border-border/70 p-4 last:border-b-0 sm:border-b-0"
-              key={stop.id}
-            >
-              <span className="grid size-7 shrink-0 place-items-center rounded-full border border-border/80 bg-background text-xs font-medium">
-                {index + 1}
-              </span>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{stop.name}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {stop.arrivalDate
-                    ? `${formatDateOnly(stop.arrivalDate)}${
-                        stop.departureDate ? ` – ${formatDateOnly(stop.departureDate)}` : ""
-                      }`
-                    : "Dates flexible"}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <section className="grid gap-10 py-9 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-0">
-        <div className="lg:pr-10">
-          <div className="flex items-start gap-3">
-            <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full bg-muted/70">
-              <CalendarCheck className="size-4 text-muted-foreground" aria-hidden="true" />
-            </span>
-            <div>
-              <h2 className="text-lg font-semibold tracking-[-0.02em]">Trip timeline</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Transportation, stays, and plans in chronological order.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-6 min-h-64 rounded-2xl bg-muted/25 p-5 sm:p-6">
-            {loading ? (
-              <div className="space-y-4">
-                <Skeleton className="h-16" />
-                <Skeleton className="h-16" />
-              </div>
-            ) : items.length > 0 ? (
-              <div className="relative space-y-1 before:absolute before:bottom-5 before:left-[15px] before:top-5 before:w-px before:bg-border">
-                {items.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <div className="relative flex gap-4 py-3" key={item.id}>
-                      <span className="relative z-10 grid size-8 shrink-0 place-items-center rounded-full border bg-background">
-                        <Icon className="size-4 text-muted-foreground" />
-                      </span>
-                      <div className="min-w-0 pt-0.5">
-                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          {item.eyebrow}
-                        </p>
-                        <p className="mt-1 font-medium">{item.title}</p>
-                        <p className="mt-0.5 text-sm text-muted-foreground">{item.detail}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <EmptyMessage
-                icon={CalendarCheck}
-                title="Your timeline is ready"
-                description="Add transportation, stays, or a plan to see the trip come together."
-              />
-            )}
-          </div>
-        </div>
-
-        <aside className="border-t border-border/70 pt-7 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+    <section aria-labelledby="workspace-heading">
+      <div className="mb-4 flex items-end justify-between gap-4">
+        <div>
           <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            At a glance
+            Trip workspace
           </p>
-          <div className="flex items-center gap-4 border-b border-border/70 py-5">
-            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-muted/70">
-              <CalendarCheck className="size-4 text-muted-foreground" aria-hidden="true" />
-            </span>
-            <div className="min-w-0">
-              <p className="font-medium">Next up</p>
-              <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                {loading ? "Loading…" : (nextItem?.title ?? "No upcoming reservations")}
-              </p>
-            </div>
+          <h2 id="workspace-heading" className="mt-1 text-xl font-semibold tracking-tight">
+            Pick up where you left off
+          </h2>
+        </div>
+        <p className="hidden text-sm text-muted-foreground sm:block">
+          {trip.stops.length} {trip.stops.length === 1 ? "destination" : "destinations"}
+        </p>
+      </div>
+
+      <div className="grid auto-rows-[10rem] gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <WorkspaceCard
+          className="min-h-48 bg-foreground text-background md:col-span-2"
+          description="See the daily schedule, reservations, and committed plans."
+          href={`/trips/${trip.id}/itinerary`}
+          icon={CalendarCheck}
+          meta={
+            plans.isPending
+              ? "Loading plans…"
+              : plans.isError
+                ? "Open itinerary"
+                : scheduledPlans
+                  ? `${scheduledPlans} scheduled`
+                  : "Nothing scheduled yet"
+          }
+          title="Itinerary"
+          tone="inverse"
+        >
+          <ol className="mt-auto grid gap-2 pt-6 sm:grid-cols-2">
+            {trip.stops.slice(0, 4).map((stop, index) => (
+              <li
+                className="flex min-w-0 items-center gap-2 border-t border-background/20 pt-2 text-sm"
+                key={stop.id}
+              >
+                <span className="text-background/55 tabular-nums">{index + 1}</span>
+                <span className="truncate">{stop.name}</span>
+              </li>
+            ))}
+          </ol>
+        </WorkspaceCard>
+
+        <WorkspaceCard
+          className="min-h-48 border-blue-200 bg-blue-50/55 md:col-span-2"
+          description="A fast scratchpad for restaurants, sights, reminders, and maybes."
+          href={`/trips/${trip.id}/ideas`}
+          icon={Lightbulb}
+          meta={
+            plans.isPending
+              ? "Loading ideas…"
+              : plans.isError
+                ? "Open ideas"
+                : savedIdeas
+                  ? `${savedIdeas} saved ${savedIdeas === 1 ? "idea" : "ideas"}`
+                  : "Ready for your first idea"
+          }
+          title="Ideas"
+        />
+
+        <WorkspaceCard
+          className="md:col-span-2"
+          description="Flights, trains, transfers, ferries, and rental cars."
+          href={`/trips/${trip.id}/travel`}
+          icon={Route}
+          meta={
+            travel.isPending
+              ? "Loading transportation…"
+              : travel.isError
+                ? "Open transportation"
+                : travel.data.length
+                  ? `${travelBooked} of ${travel.data.length} booked`
+                  : "Nothing added"
+          }
+          title="Transportation"
+        >
+          <div className="mt-auto flex items-center gap-3 pt-4 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            <span className="max-w-32 truncate">{trip.stops[0]?.name}</span>
+            <span className="h-px min-w-8 flex-1 bg-border" />
+            <Plane className="size-4 shrink-0" aria-hidden="true" />
+            <span className="h-px min-w-8 flex-1 bg-border" />
+            <span className="max-w-32 truncate">{trip.stops.at(-1)?.name}</span>
           </div>
-          <SummaryCard
-            icon={CalendarCheck}
-            label="Itinerary"
-            value={
-              scheduledPlans || savedIdeas
-                ? `${scheduledPlans} scheduled · ${savedIdeas} saved`
-                : "No plans yet"
-            }
-            href={`/trips/${trip.id}/itinerary`}
-          />
-          <SummaryCard
-            icon={Route}
-            label="Transportation"
-            value={
-              travel.data?.length ? `${travelBooked} of ${travel.data.length} booked` : "Not added"
-            }
-            href={`/trips/${trip.id}/travel`}
-          />
-          <SummaryCard
-            icon={BedDouble}
-            label="Stays"
-            value={
-              stays.data?.length ? `${staysBooked} of ${stays.data.length} booked` : "Not added"
-            }
-            href={`/trips/${trip.id}/stays`}
-          />
-        </aside>
-      </section>
-    </div>
+        </WorkspaceCard>
+
+        <WorkspaceCard
+          className="bg-muted/35"
+          description="Hotels, rentals, and check-in details."
+          href={`/trips/${trip.id}/stays`}
+          icon={BedDouble}
+          meta={
+            stays.isPending
+              ? "Loading stays…"
+              : stays.isError
+                ? "Open stays"
+                : stays.data.length
+                  ? `${staysBooked} of ${stays.data.length} booked`
+                  : "No stays yet"
+          }
+          title="Stays"
+        />
+
+        <WorkspaceCard
+          description="Invite travelers and manage access."
+          href={`/trips/${trip.id}/people`}
+          icon={Users}
+          meta={
+            people.isPending
+              ? "Loading people…"
+              : people.isError || memberCount === undefined
+                ? "Open people"
+                : `${memberCount} ${memberCount === 1 ? "traveler" : "travelers"}${
+                    openInvitations ? ` · ${openInvitations} invited` : ""
+                  }`
+          }
+          title="People"
+        />
+      </div>
+    </section>
   );
 }
 
-function SummaryCard({
+function WorkspaceCard({
+  children,
+  className,
+  description,
   href,
   icon: Icon,
-  label,
-  value,
+  meta,
+  title,
+  tone = "default",
 }: {
+  children?: ReactNode;
+  className?: string;
+  description: string;
   href: string;
   icon: ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
+  meta: string;
+  title: string;
+  tone?: "default" | "inverse";
 }) {
   return (
     <Link
       to={href}
-      className="group flex items-center gap-4 border-b border-border/70 py-5 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      className={cn(
+        "group relative flex min-h-40 flex-col overflow-hidden rounded-lg border bg-background p-5 outline-none transition-[transform,box-shadow,border-color] hover:-translate-y-0.5 hover:border-foreground/25 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        className,
+      )}
     >
-      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-muted/70">
-        <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="font-medium">{label}</p>
-        <p className="mt-0.5 text-sm text-muted-foreground">{value}</p>
+      <div className="flex items-start justify-between gap-4">
+        <span
+          className={cn(
+            "grid size-9 shrink-0 place-items-center rounded-md border bg-muted/60",
+            tone === "inverse" && "border-background/20 bg-background/10",
+          )}
+        >
+          <Icon className="size-4" aria-hidden="true" />
+        </span>
+        <ArrowUpRight
+          className={cn(
+            "size-4 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5",
+            tone === "inverse" && "text-background/60",
+          )}
+          aria-hidden="true"
+        />
       </div>
-      <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+      <div className="mt-4">
+        <h3 className="text-xl font-semibold tracking-tight">{title}</h3>
+        <p
+          className={cn(
+            "mt-1 max-w-md text-sm leading-5 text-muted-foreground",
+            tone === "inverse" && "text-background/65",
+          )}
+        >
+          {description}
+        </p>
+      </div>
+      {children}
+      <p
+        className={cn(
+          "mt-auto pt-4 text-xs font-medium text-muted-foreground",
+          tone === "inverse" && "text-background/60",
+        )}
+      >
+        {meta}
+      </p>
     </Link>
   );
 }
 
 function TravelSection({ trip }: SectionProps) {
   const travel = useTravel(trip.id);
-  const [addOpen, setAddOpen] = useState(false);
+  const createTravel = useCreateTravel(trip.id);
   const canEdit = trip.accessLevel !== "viewer";
+  const [inspector, setInspector] = useState<
+    { mode: "new" } | { mode: "edit"; travelId: string }
+  >();
+  const [pendingDelete, setPendingDelete] = useState<Travel>();
+  const [notice, setNotice] = useState<{ kind: "error" | "saved"; message: string }>();
+  const visibleTravel = (travel.data ?? []).filter((item) => item.id !== pendingDelete?.id);
+  const selectedTravel =
+    inspector?.mode === "edit"
+      ? (travel.data ?? []).find((item) => item.id === inspector.travelId)
+      : undefined;
+
+  useEffect(() => {
+    function handleShortcut(event: globalThis.KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const isTyping =
+        target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
+
+      if (event.key === "Escape" && inspector) {
+        setInspector(undefined);
+        return;
+      }
+      if (isTyping || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (canEdit && event.key.toLocaleLowerCase() === "n") {
+        event.preventDefault();
+        setInspector({ mode: "new" });
+      }
+    }
+
+    document.addEventListener("keydown", handleShortcut);
+    return () => document.removeEventListener("keydown", handleShortcut);
+  }, [canEdit, inspector]);
+
+  async function handleCreate(input: CreateTravelInput) {
+    const item = await createTravel.mutateAsync(input);
+    setInspector({ mode: "edit", travelId: item.id });
+    setNotice({ kind: "saved", message: "Transportation added." });
+    window.setTimeout(() => setNotice(undefined), 3_000);
+  }
+
+  function requestDelete(item: Travel) {
+    setPendingDelete(item);
+    if (inspector?.mode === "edit" && inspector.travelId === item.id) setInspector(undefined);
+  }
 
   return (
-    <section>
-      <SectionHeading
-        title="Transportation"
-        description="Flights, trains, ferries, transfers, and vehicle rentals in one place."
-        action={
-          canEdit ? (
-            <TravelDialog
-              tripId={trip.id}
-              stops={trip.stops}
-              open={addOpen}
-              onOpenChange={setAddOpen}
-              trigger={
-                <Button>
-                  <Plus className="size-4" />
-                  Add transportation
-                </Button>
-              }
-            />
-          ) : null
-        }
-      />
-      {travel.isPending ? (
-        <SectionSkeleton />
-      ) : travel.isError ? (
-        <LoadError onRetry={() => void travel.refetch()} />
-      ) : travel.data.length === 0 ? (
-        <Card className="mt-5 border-dashed shadow-none">
-          <CardContent>
+    <section aria-labelledby="transportation-heading">
+      <div
+        className={cn("min-w-0 transition-[padding] duration-200", inspector && "lg:pr-[28rem]")}
+      >
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+          <div>
+            <h2 id="transportation-heading" className="text-xl font-semibold tracking-tight">
+              Transportation
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Flights, trains, ferries, transfers, and vehicle rentals in one place.
+            </p>
+          </div>
+          {canEdit && !inspector ? (
+            <Button size="lg" onClick={() => setInspector({ mode: "new" })}>
+              <Plus className="size-4.5" aria-hidden="true" />
+              New transportation
+            </Button>
+          ) : null}
+        </div>
+
+        {travel.isPending ? (
+          <div className="mt-5 grid gap-2">
+            <Skeleton className="h-20" />
+            <Skeleton className="h-20" />
+          </div>
+        ) : travel.isError ? (
+          <LoadError onRetry={() => void travel.refetch()} />
+        ) : visibleTravel.length === 0 ? (
+          <div className="mt-5 border-t">
             <EmptyMessage
               icon={Plane}
               title="No transportation added yet"
               description="Add your first flight, train, ferry, transfer, or rental car."
             />
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="mt-5 grid gap-4">
-          {travel.data.map((item) => (
-            <TravelCard key={item.id} item={item} canEdit={canEdit} stops={trip.stops} />
-          ))}
+          </div>
+        ) : (
+          <ul className="mt-5 grid gap-2" aria-label="Transportation list">
+            {visibleTravel.map((item) => (
+              <TravelListCard
+                key={item.id}
+                item={item}
+                canEdit={canEdit}
+                isSelected={selectedTravel?.id === item.id}
+                onDelete={() => requestDelete(item)}
+                onSelect={() => setInspector({ mode: "edit", travelId: item.id })}
+                stops={trip.stops}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {inspector ? (
+        <TravelInspector
+          inspector={inspector}
+          item={selectedTravel}
+          onClose={() => setInspector(undefined)}
+          onCreate={handleCreate}
+          stops={trip.stops}
+          tripId={trip.id}
+        />
+      ) : null}
+
+      {pendingDelete ? (
+        <TravelDeleteUndoToast
+          item={pendingDelete}
+          onError={() => {
+            setPendingDelete(undefined);
+            setNotice({
+              kind: "error",
+              message: "We couldn’t remove that transportation item. Try again.",
+            });
+          }}
+          onFinished={() => setPendingDelete(undefined)}
+          onUndo={() => setPendingDelete(undefined)}
+        />
+      ) : null}
+
+      {notice ? (
+        <div
+          className={cn(
+            "fixed bottom-5 right-5 z-50 rounded-md border bg-background px-4 py-3 text-sm shadow-lg",
+            notice.kind === "error" && "border-red-200 text-red-700",
+          )}
+          role="status"
+        >
+          {notice.message}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }
 
-function TravelCard({
+function TravelListCard({
   item,
   canEdit,
+  isSelected,
+  onDelete,
+  onSelect,
   stops,
 }: {
   item: Travel;
   canEdit: boolean;
+  isSelected: boolean;
+  onDelete: () => void;
+  onSelect: () => void;
   stops: TripStop[];
 }) {
-  const [editOpen, setEditOpen] = useState(false);
-  const remove = useDeleteTravel(item.tripId, item.id);
   const Icon = travelIcons[item.type];
   const isRental = item.kind === "rental";
   const departureStop = stops.find((stop) => stop.id === item.departureStopId);
   const arrivalStop = stops.find((stop) => stop.id === item.arrivalStopId);
+  const title = isRental
+    ? [item.carrier ?? "Rental car", item.vehicleDescription].filter(Boolean).join(" · ")
+    : `${item.departureLocation} → ${item.arrivalLocation}`;
 
   return (
-    <Card className="gap-4 py-5">
-      <CardContent className="flex flex-col gap-5 sm:flex-row sm:items-start">
-        <span className="grid size-10 shrink-0 place-items-center rounded-lg border bg-muted/30">
-          <Icon className="size-4 text-muted-foreground" />
+    <li
+      className={cn(
+        "group flex min-w-0 items-center gap-2 rounded-md border bg-background transition-colors hover:bg-muted/25",
+        isSelected && "border-blue-200 bg-blue-50/65 hover:bg-blue-50/65",
+      )}
+    >
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        onClick={onSelect}
+      >
+        <span className="grid size-9 shrink-0 place-items-center rounded-md bg-muted/60">
+          <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
         </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="font-semibold">
-              {isRental ? (
-                [item.carrier ?? "Rental car", item.vehicleDescription].filter(Boolean).join(" · ")
-              ) : (
-                <>
-                  {item.departureLocation} <span className="text-muted-foreground">→</span>{" "}
-                  {item.arrivalLocation}
-                </>
-              )}
-            </p>
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="truncate font-medium">{title}</span>
             <StatusBadge status={item.status} />
-          </div>
-          {isRental ? (
-            <>
-              <p className="mt-1 text-sm">
-                <span className="font-medium">Pick up:</span> {item.departureLocation}
-                <span className="mx-2 text-muted-foreground">→</span>
-                <span className="font-medium">Return:</span> {item.arrivalLocation}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {formatLocalDateTime(item.departureAt)} –{" "}
-                {formatLocalDateTime(item.arrivalAt ?? item.departureAt)}
-              </p>
-            </>
-          ) : (
-            <p className="mt-1 text-sm text-muted-foreground">
-              {formatLocalDateTime(item.departureAt)}
-              {item.arrivalAt ? ` – ${formatLocalDateTime(item.arrivalAt)}` : ""}
-            </p>
-          )}
-          {departureStop || arrivalStop ? (
-            <p className="mt-2 text-xs font-medium text-muted-foreground">
-              {departureStop?.name ?? "Outside this trip"} →{" "}
-              {arrivalStop?.name ?? "Outside this trip"}
-            </p>
-          ) : null}
-          {!isRental && (item.carrier || item.referenceNumber) ? (
-            <p className="mt-3 text-sm">
-              {[item.carrier, item.referenceNumber].filter(Boolean).join(" · ")}
-            </p>
-          ) : null}
-          {item.confirmationNumber ? (
-            <p className="mt-1 text-sm text-muted-foreground">
-              Confirmation:{" "}
-              <span className="font-medium text-foreground">{item.confirmationNumber}</span>
-            </p>
-          ) : null}
-          {item.notes ? (
-            <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-              {item.notes}
-            </p>
-          ) : null}
-          {item.bookingUrl ? (
-            <a
-              className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium underline-offset-4 hover:underline"
-              href={item.bookingUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open booking <ExternalLink className="size-3.5" />
-            </a>
-          ) : null}
+          </span>
+          <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span>{formatLocalDateTime(item.departureAt)}</span>
+            {item.arrivalAt ? <span>to {formatLocalDateTime(item.arrivalAt)}</span> : null}
+            {departureStop || arrivalStop ? (
+              <span className="truncate font-medium">
+                {departureStop?.name ?? "Outside trip"} → {arrivalStop?.name ?? "Outside trip"}
+              </span>
+            ) : null}
+            {!isRental && (item.carrier || item.referenceNumber) ? (
+              <span>{[item.carrier, item.referenceNumber].filter(Boolean).join(" · ")}</span>
+            ) : null}
+            {item.bookingUrl ? (
+              <span className="inline-flex items-center gap-1">
+                Booking linked <ExternalLink className="size-3" aria-hidden="true" />
+              </span>
+            ) : null}
+          </span>
+        </span>
+      </button>
+      {canEdit ? (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="mr-2 size-8 opacity-60 hover:opacity-100"
+          aria-label={`Remove ${title}`}
+          onClick={onDelete}
+        >
+          <Trash2 className="size-3.5" aria-hidden="true" />
+        </Button>
+      ) : null}
+    </li>
+  );
+}
+
+function TravelInspector({
+  inspector,
+  item,
+  onClose,
+  onCreate,
+  stops,
+  tripId,
+}: {
+  inspector: { mode: "new" } | { mode: "edit"; travelId: string };
+  item?: Travel;
+  onClose: () => void;
+  onCreate: (input: CreateTravelInput) => Promise<void>;
+  stops: TripStop[];
+  tripId: string;
+}) {
+  const update = useUpdateTravel(tripId, item?.id ?? "");
+  const isNew = inspector.mode === "new";
+  const title = item
+    ? item.kind === "rental"
+      ? item.carrier || "Rental car"
+      : `${item.departureLocation} → ${item.arrivalLocation}`
+    : "Add transportation";
+
+  async function handleUpdate(input: CreateTravelInput) {
+    if (!item) return;
+    await update.mutateAsync(input);
+  }
+
+  return (
+    <WorkspaceInspector
+      className="animate-in border-l-2 border-l-blue-600 fade-in slide-in-from-right-4 duration-200"
+      description={
+        isNew
+          ? "Add the route, timing, and any booking details you have."
+          : "Update this transportation without leaving the list."
+      }
+      eyebrow={isNew ? "New transportation" : "Transportation details"}
+      onClose={onClose}
+      title={title}
+    >
+      {isNew ? (
+        <TravelForm
+          key="new-transportation"
+          presentation="inspector"
+          stops={stops}
+          onCancel={onClose}
+          onSubmit={onCreate}
+        />
+      ) : item ? (
+        <TravelForm
+          key={`${item.id}:${item.updatedAt}`}
+          initialTravel={item}
+          presentation="inspector"
+          stops={stops}
+          onCancel={onClose}
+          onSubmit={handleUpdate}
+        />
+      ) : (
+        <div className="grid min-h-40 place-items-center">
+          <Skeleton className="h-8 w-40" />
         </div>
-        {canEdit ? (
-          <div className="flex shrink-0 gap-2">
-            <TravelDialog
-              tripId={item.tripId}
-              stops={stops}
-              travel={item}
-              open={editOpen}
-              onOpenChange={setEditOpen}
-              trigger={
-                <Button size="icon" variant="outline" aria-label="Edit transportation">
-                  <Pencil className="size-4" />
-                </Button>
-              }
-            />
-            <ConfirmDeleteDialog
-              title="Remove this transportation item?"
-              description="This permanently removes the journey or rental and its booking details from the trip."
-              onDelete={() => remove.mutateAsync()}
-              trigger={
-                <Button size="icon" variant="ghost" aria-label="Remove transportation">
-                  <Trash2 className="size-4 text-muted-foreground" />
-                </Button>
-              }
-            />
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
+      )}
+    </WorkspaceInspector>
+  );
+}
+
+function TravelDeleteUndoToast({
+  item,
+  onError,
+  onFinished,
+  onUndo,
+}: {
+  item: Travel;
+  onError: () => void;
+  onFinished: () => void;
+  onUndo: () => void;
+}) {
+  const remove = useDeleteTravel(item.tripId, item.id);
+  const label =
+    item.kind === "rental"
+      ? item.carrier || "Rental car"
+      : `${item.departureLocation} → ${item.arrivalLocation}`;
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void remove.mutateAsync().then(onFinished).catch(onError);
+    }, 5_000);
+    return () => window.clearTimeout(timeout);
+  }, [onError, onFinished, remove.mutateAsync]);
+
+  return (
+    <div
+      className="fixed bottom-5 right-5 z-50 flex items-center gap-4 rounded-md bg-foreground px-4 py-3 text-sm text-background shadow-xl"
+      role="status"
+    >
+      <span className="max-w-64 truncate">Removed “{label}”</span>
+      <Button size="sm" variant="secondary" onClick={onUndo}>
+        <Undo2 className="size-3.5" aria-hidden="true" />
+        Undo
+      </Button>
+    </div>
   );
 }
 
 function StaysSection({ trip }: SectionProps) {
   const stays = useStays(trip.id);
-  const [addOpen, setAddOpen] = useState(false);
+  const createStay = useCreateStay(trip.id);
   const canEdit = trip.accessLevel !== "viewer";
+  const [inspector, setInspector] = useState<{ mode: "new" } | { mode: "edit"; stayId: string }>();
+  const [pendingDelete, setPendingDelete] = useState<Stay>();
+  const [notice, setNotice] = useState<{ kind: "error" | "saved"; message: string }>();
+  const visibleStays = (stays.data ?? []).filter((item) => item.id !== pendingDelete?.id);
+  const selectedStay =
+    inspector?.mode === "edit"
+      ? (stays.data ?? []).find((item) => item.id === inspector.stayId)
+      : undefined;
+
+  useEffect(() => {
+    function handleShortcut(event: globalThis.KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const isTyping =
+        target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
+
+      if (event.key === "Escape" && inspector) {
+        setInspector(undefined);
+        return;
+      }
+      if (isTyping || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (canEdit && event.key.toLocaleLowerCase() === "n") {
+        event.preventDefault();
+        setInspector({ mode: "new" });
+      }
+    }
+
+    document.addEventListener("keydown", handleShortcut);
+    return () => document.removeEventListener("keydown", handleShortcut);
+  }, [canEdit, inspector]);
+
+  async function handleCreate(input: CreateStayInput) {
+    const item = await createStay.mutateAsync(input);
+    setInspector({ mode: "edit", stayId: item.id });
+    setNotice({ kind: "saved", message: "Stay added." });
+    window.setTimeout(() => setNotice(undefined), 3_000);
+  }
+
+  function requestDelete(item: Stay) {
+    setPendingDelete(item);
+    if (inspector?.mode === "edit" && inspector.stayId === item.id) setInspector(undefined);
+  }
 
   return (
-    <section>
-      <SectionHeading
-        title="Stays"
-        description="Hotels, rentals, and every place the group is staying."
-        action={
-          canEdit ? (
-            <StayDialog
-              tripId={trip.id}
-              stops={trip.stops}
-              open={addOpen}
-              onOpenChange={setAddOpen}
-              trigger={
-                <Button>
-                  <Plus className="size-4" />
-                  Add stay
-                </Button>
-              }
-            />
-          ) : null
-        }
-      />
-      {stays.isPending ? (
-        <SectionSkeleton />
-      ) : stays.isError ? (
-        <LoadError onRetry={() => void stays.refetch()} />
-      ) : stays.data.length === 0 ? (
-        <Card className="mt-5 border-dashed shadow-none">
-          <CardContent>
+    <section aria-labelledby="stays-heading">
+      <div
+        className={cn("min-w-0 transition-[padding] duration-200", inspector && "lg:pr-[28rem]")}
+      >
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+          <div>
+            <h2 id="stays-heading" className="text-xl font-semibold tracking-tight">
+              Stays
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Hotels, rentals, and every place the group is staying.
+            </p>
+          </div>
+          {canEdit && !inspector ? (
+            <Button size="lg" onClick={() => setInspector({ mode: "new" })}>
+              <Plus className="size-4.5" aria-hidden="true" />
+              New stay
+            </Button>
+          ) : null}
+        </div>
+
+        {stays.isPending ? (
+          <div className="mt-5 grid gap-2">
+            <Skeleton className="h-20" />
+            <Skeleton className="h-20" />
+          </div>
+        ) : stays.isError ? (
+          <LoadError onRetry={() => void stays.refetch()} />
+        ) : visibleStays.length === 0 ? (
+          <div className="mt-5 border-t">
             <EmptyMessage
               icon={BedDouble}
               title="No stays added yet"
               description="Add a hotel, rental, or other accommodation."
             />
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="mt-5 grid gap-4">
-          {stays.data.map((item) => (
-            <StayCard key={item.id} item={item} canEdit={canEdit} stops={trip.stops} />
-          ))}
+          </div>
+        ) : (
+          <ul className="mt-5 grid gap-2" aria-label="Stays list">
+            {visibleStays.map((item) => (
+              <StayListCard
+                key={item.id}
+                item={item}
+                canEdit={canEdit}
+                isSelected={selectedStay?.id === item.id}
+                onDelete={() => requestDelete(item)}
+                onSelect={() => setInspector({ mode: "edit", stayId: item.id })}
+                stops={trip.stops}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {inspector ? (
+        <StayInspector
+          inspector={inspector}
+          item={selectedStay}
+          onClose={() => setInspector(undefined)}
+          onCreate={handleCreate}
+          stops={trip.stops}
+          tripId={trip.id}
+        />
+      ) : null}
+
+      {pendingDelete ? (
+        <StayDeleteUndoToast
+          item={pendingDelete}
+          onError={() => {
+            setPendingDelete(undefined);
+            setNotice({ kind: "error", message: "We couldn’t remove that stay. Try again." });
+          }}
+          onFinished={() => setPendingDelete(undefined)}
+          onUndo={() => setPendingDelete(undefined)}
+        />
+      ) : null}
+
+      {notice ? (
+        <div
+          className={cn(
+            "fixed bottom-5 right-5 z-50 rounded-md border bg-background px-4 py-3 text-sm shadow-lg",
+            notice.kind === "error" && "border-red-200 text-red-700",
+          )}
+          role="status"
+        >
+          {notice.message}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }
 
-function StayCard({ item, canEdit, stops }: { item: Stay; canEdit: boolean; stops: TripStop[] }) {
-  const [editOpen, setEditOpen] = useState(false);
-  const remove = useDeleteStay(item.tripId, item.id);
+function StayListCard({
+  item,
+  canEdit,
+  isSelected,
+  onDelete,
+  onSelect,
+  stops,
+}: {
+  item: Stay;
+  canEdit: boolean;
+  isSelected: boolean;
+  onDelete: () => void;
+  onSelect: () => void;
+  stops: TripStop[];
+}) {
   const stop = stops.find((candidate) => candidate.id === item.tripStopId);
 
   return (
-    <Card className="gap-4 py-5">
-      <CardContent className="flex flex-col gap-5 sm:flex-row sm:items-start">
-        <span className="grid size-10 shrink-0 place-items-center rounded-lg border bg-muted/30">
-          <BedDouble className="size-4 text-muted-foreground" />
+    <li
+      className={cn(
+        "group flex min-w-0 items-center gap-2 rounded-md border bg-background transition-colors hover:bg-muted/25",
+        isSelected && "border-blue-200 bg-blue-50/65 hover:bg-blue-50/65",
+      )}
+    >
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        onClick={onSelect}
+      >
+        <span className="grid size-9 shrink-0 place-items-center rounded-md bg-muted/60">
+          <BedDouble className="size-4 text-muted-foreground" aria-hidden="true" />
         </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="font-semibold">{item.propertyName}</p>
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="truncate font-medium">{item.propertyName}</span>
             <StatusBadge status={item.status} />
-          </div>
-          {stop ? (
-            <p className="mt-1 text-xs font-medium text-muted-foreground">{stop.name}</p>
-          ) : null}
-          <p className="mt-1 flex items-start gap-1.5 text-sm text-muted-foreground">
-            <MapPin className="mt-0.5 size-3.5 shrink-0" />
-            {item.address}
-          </p>
-          <p className="mt-3 text-sm">
-            {formatDateOnly(item.checkInDate)} – {formatDateOnly(item.checkOutDate)}
-          </p>
-          {item.confirmationNumber ? (
-            <p className="mt-1 text-sm text-muted-foreground">
-              Confirmation:{" "}
-              <span className="font-medium text-foreground">{item.confirmationNumber}</span>
-            </p>
-          ) : null}
-          {item.notes ? (
-            <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-              {item.notes}
-            </p>
-          ) : null}
-          {item.bookingUrl ? (
-            <a
-              className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium underline-offset-4 hover:underline"
-              href={item.bookingUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open booking <ExternalLink className="size-3.5" />
-            </a>
-          ) : null}
-        </div>
-        {canEdit ? (
-          <div className="flex shrink-0 gap-2">
-            <StayDialog
-              tripId={item.tripId}
-              stops={stops}
-              stay={item}
-              open={editOpen}
-              onOpenChange={setEditOpen}
-              trigger={
-                <Button size="icon" variant="outline" aria-label="Edit stay">
-                  <Pencil className="size-4" />
-                </Button>
-              }
-            />
-            <ConfirmDeleteDialog
-              title="Remove this stay?"
-              description="This permanently removes the accommodation and its booking details from the trip."
-              onDelete={() => remove.mutateAsync()}
-              trigger={
-                <Button size="icon" variant="ghost" aria-label="Remove stay">
-                  <Trash2 className="size-4 text-muted-foreground" />
-                </Button>
-              }
-            />
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
+          </span>
+          <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            {stop ? <span className="font-medium">{stop.name}</span> : null}
+            <span>
+              {formatDateOnly(item.checkInDate)} – {formatDateOnly(item.checkOutDate)}
+            </span>
+            <span className="truncate">{item.address}</span>
+            {item.bookingUrl ? (
+              <span className="inline-flex items-center gap-1">
+                Booking linked <ExternalLink className="size-3" aria-hidden="true" />
+              </span>
+            ) : null}
+          </span>
+        </span>
+      </button>
+      {canEdit ? (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="mr-2 size-8 opacity-60 hover:opacity-100"
+          aria-label={`Remove ${item.propertyName}`}
+          onClick={onDelete}
+        >
+          <Trash2 className="size-3.5" aria-hidden="true" />
+        </Button>
+      ) : null}
+    </li>
   );
 }
 
-function SectionHeading({
-  title,
-  description,
-  action,
+function StayInspector({
+  inspector,
+  item,
+  onClose,
+  onCreate,
+  stops,
+  tripId,
 }: {
-  title: string;
-  description: string;
-  action: ReactNode;
+  inspector: { mode: "new" } | { mode: "edit"; stayId: string };
+  item?: Stay;
+  onClose: () => void;
+  onCreate: (input: CreateStayInput) => Promise<void>;
+  stops: TripStop[];
+  tripId: string;
 }) {
+  const update = useUpdateStay(tripId, item?.id ?? "");
+  const isNew = inspector.mode === "new";
+
+  async function handleUpdate(input: CreateStayInput) {
+    if (!item) return;
+    await update.mutateAsync(input);
+  }
+
   return (
-    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-      </div>
-      {action}
+    <WorkspaceInspector
+      className="animate-in border-l-2 border-l-blue-600 fade-in slide-in-from-right-4 duration-200"
+      description={
+        isNew
+          ? "Add the property, dates, and any booking details you have."
+          : "Update this stay without leaving the list."
+      }
+      eyebrow={isNew ? "New stay" : "Stay details"}
+      onClose={onClose}
+      title={item?.propertyName ?? "Add a stay"}
+    >
+      {isNew ? (
+        <StayForm
+          key="new-stay"
+          presentation="inspector"
+          stops={stops}
+          onCancel={onClose}
+          onSubmit={onCreate}
+        />
+      ) : item ? (
+        <StayForm
+          key={`${item.id}:${item.updatedAt}`}
+          initialStay={item}
+          presentation="inspector"
+          stops={stops}
+          onCancel={onClose}
+          onSubmit={handleUpdate}
+        />
+      ) : (
+        <div className="grid min-h-40 place-items-center">
+          <Skeleton className="h-8 w-40" />
+        </div>
+      )}
+    </WorkspaceInspector>
+  );
+}
+
+function StayDeleteUndoToast({
+  item,
+  onError,
+  onFinished,
+  onUndo,
+}: {
+  item: Stay;
+  onError: () => void;
+  onFinished: () => void;
+  onUndo: () => void;
+}) {
+  const remove = useDeleteStay(item.tripId, item.id);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void remove.mutateAsync().then(onFinished).catch(onError);
+    }, 5_000);
+    return () => window.clearTimeout(timeout);
+  }, [onError, onFinished, remove.mutateAsync]);
+
+  return (
+    <div
+      className="fixed bottom-5 right-5 z-50 flex items-center gap-4 rounded-md bg-foreground px-4 py-3 text-sm text-background shadow-xl"
+      role="status"
+    >
+      <span className="max-w-64 truncate">Removed “{item.propertyName}”</span>
+      <Button size="sm" variant="secondary" onClick={onUndo}>
+        <Undo2 className="size-3.5" aria-hidden="true" />
+        Undo
+      </Button>
     </div>
   );
 }
@@ -650,15 +954,6 @@ function LoadError({ onRetry }: { onRetry: () => void }) {
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function SectionSkeleton() {
-  return (
-    <div className="mt-5 grid gap-4">
-      <Skeleton className="h-40" />
-      <Skeleton className="h-40" />
-    </div>
   );
 }
 

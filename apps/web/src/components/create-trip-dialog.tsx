@@ -1,5 +1,6 @@
 import type { CreateTripInput } from "@voyage/contracts";
 import { Plus } from "lucide-react";
+import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { TripForm } from "@/components/trip-form";
 import { Button } from "@/components/ui/button";
@@ -17,9 +18,15 @@ type CreateTripDialogProps = {
   buttonLabel?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  trigger?: ReactNode;
 };
 
-function CreateTripDialog({ buttonLabel = "New trip", open, onOpenChange }: CreateTripDialogProps) {
+function CreateTripDialog({
+  buttonLabel = "New trip",
+  open,
+  onOpenChange,
+  trigger,
+}: CreateTripDialogProps) {
   const createTrip = useCreateTrip();
   const navigate = useNavigate();
 
@@ -32,10 +39,12 @@ function CreateTripDialog({ buttonLabel = "New trip", open, onOpenChange }: Crea
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button>
-          <Plus className="size-4" aria-hidden="true" />
-          {buttonLabel}
-        </Button>
+        {trigger ?? (
+          <Button>
+            <Plus className="size-4" aria-hidden="true" />
+            {buttonLabel}
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="max-h-[calc(100svh-2rem)] max-w-2xl overflow-y-auto">
         <DialogHeader>

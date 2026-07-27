@@ -29,7 +29,8 @@ type PlanFormProps = {
   initialStopId?: string;
   onCancel: () => void;
   onSubmit: (input: CreatePlanInput) => Promise<void>;
-  presentation?: "dialog" | "inline";
+  presentation?: "dialog" | "inline" | "inspector";
+  submitLabel?: string;
   stops: TripStop[];
 };
 
@@ -75,6 +76,7 @@ function PlanForm({
   onCancel,
   onSubmit,
   presentation = "dialog",
+  submitLabel,
   stops,
 }: PlanFormProps) {
   const [values, setValues] = useState(() =>
@@ -317,8 +319,13 @@ function PlanForm({
     );
   }
 
+  const isInspector = presentation === "inspector";
+
   return (
-    <form className="grid gap-5" onSubmit={handleSubmit}>
+    <form
+      className={isInspector ? "flex min-h-full flex-col gap-4" : "grid gap-5"}
+      onSubmit={handleSubmit}
+    >
       <FormField id="plan-title" label="Title" error={fieldErrors.title?.[0]}>
         <Input
           id="plan-title"
@@ -329,7 +336,7 @@ function PlanForm({
         />
       </FormField>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className={isInspector ? "grid gap-4" : "grid gap-4 sm:grid-cols-2"}>
         <FormField id="plan-destination" label="Destination" error={fieldErrors.tripStopId?.[0]}>
           <Select
             value={values.tripStopId}
@@ -367,7 +374,7 @@ function PlanForm({
         </FormField>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-[1fr_11rem]">
+      <div className={isInspector ? "grid gap-4" : "grid gap-4 sm:grid-cols-[1fr_11rem]"}>
         <FormField
           id="plan-date"
           label="Date (optional)"
@@ -432,7 +439,7 @@ function PlanForm({
         />
       </FormField>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className={isInspector ? "grid gap-4" : "grid gap-4 sm:grid-cols-2"}>
         <FormField
           id="plan-confirmation"
           label="Confirmation number"
@@ -466,13 +473,19 @@ function PlanForm({
       </FormField>
 
       {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
-      <DialogFooter>
+      <DialogFooter
+        className={
+          isInspector
+            ? "sticky bottom-0 -mx-5 -mb-5 mt-auto bg-background px-5 pb-5 pt-4"
+            : undefined
+        }
+      >
         <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
-          Cancel
+          {isInspector ? "Close" : "Cancel"}
         </Button>
         <Button type="submit" disabled={isPending}>
           {isPending ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : null}
-          {isPending ? "Saving…" : initialPlan ? "Save changes" : "Add plan"}
+          {isPending ? "Saving…" : (submitLabel ?? (initialPlan ? "Save changes" : "Add plan"))}
         </Button>
       </DialogFooter>
     </form>

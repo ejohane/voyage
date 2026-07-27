@@ -27,6 +27,7 @@ type TravelFormProps = {
   initialTravel?: Travel;
   onCancel: () => void;
   onSubmit: (input: CreateTravelInput) => Promise<void>;
+  presentation?: "dialog" | "inspector";
   stops: TripStop[];
   submitLabel?: string;
 };
@@ -82,7 +83,14 @@ function initialValues(initialTravel?: Travel): TravelFormValues {
   };
 }
 
-function TravelForm({ initialTravel, onCancel, onSubmit, stops, submitLabel }: TravelFormProps) {
+function TravelForm({
+  initialTravel,
+  onCancel,
+  onSubmit,
+  presentation = "dialog",
+  stops,
+  submitLabel,
+}: TravelFormProps) {
   const [values, setValues] = useState(() => initialValues(initialTravel));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [formError, setFormError] = useState<string>();
@@ -166,6 +174,7 @@ function TravelForm({ initialTravel, onCancel, onSubmit, stops, submitLabel }: T
   }
 
   const isRental = values.kind === "rental";
+  const isInspector = presentation === "inspector";
   const transportationType = `${values.kind}:${values.type}`;
 
   function setTransportationType(value: string) {
@@ -181,7 +190,10 @@ function TravelForm({ initialTravel, onCancel, onSubmit, stops, submitLabel }: T
   }
 
   return (
-    <form className="grid gap-5" onSubmit={handleSubmit}>
+    <form
+      className={isInspector ? "flex min-h-full flex-col gap-4" : "grid gap-5"}
+      onSubmit={handleSubmit}
+    >
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField id="travel-type" label="Transportation type">
           <Select value={transportationType} onValueChange={setTransportationType}>
@@ -381,9 +393,15 @@ function TravelForm({ initialTravel, onCancel, onSubmit, stops, submitLabel }: T
       </FormField>
 
       {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
-      <DialogFooter>
+      <DialogFooter
+        className={
+          isInspector
+            ? "sticky bottom-0 -mx-5 -mb-5 mt-auto bg-background px-5 pb-5 pt-4"
+            : undefined
+        }
+      >
         <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
-          Cancel
+          {isInspector ? "Close" : "Cancel"}
         </Button>
         <Button type="submit" disabled={isPending}>
           {isPending ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : null}
