@@ -56,6 +56,10 @@ committed production app URL and sender address live in `wrangler.jsonc`.
 The local app is available at the URL printed by Vite. The frontend calls `/api/health` through the
 same Workers runtime used by production.
 
+The separate Phase 0 MCP Worker proves Clerk OAuth account linking without access to trip data. See
+the [MCP Phase 0 runbook](docs/MCP_PHASE_0.md) for its staging endpoints, configuration, and
+verification contract.
+
 Before committing:
 
 ```bash
@@ -74,4 +78,5 @@ bun run deploy
 - [Vision](docs/VISION.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Gmail OAuth infrastructure](docs/GMAIL_OAUTH.md)
+- [MCP Phase 0](docs/MCP_PHASE_0.md)
 - [Brand direction](design/brand/README.md)

@@ -7,16 +7,18 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "bun run --cwd apps/web build",
+    "build": "bun run --cwd apps/web build && bun run --cwd apps/mcp build",
     "check": "bun run format:check && bun run typecheck && bun run test && bun run build",
     "deploy": "bun run --cwd apps/web deploy",
+    "deploy:mcp:staging": "bun run --cwd apps/mcp deploy:staging",
     "dev": "bun run --cwd apps/web dev",
+    "dev:mcp": "bun run --cwd apps/mcp dev",
     "format": "biome check --write .",
     "format:check": "biome check .",
     "preview": "bun run --cwd apps/web preview",
     "setup:worktree": "bash scripts/setup-worktree.sh",
-    "test": "bun run --cwd apps/web test",
-    "typecheck": "bun run --cwd apps/web typecheck"
+    "test": "bun run --cwd apps/web test && bun run --cwd apps/mcp test",
+    "typecheck": "bun run --cwd apps/web typecheck && bun run --cwd apps/mcp typecheck"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.4"
