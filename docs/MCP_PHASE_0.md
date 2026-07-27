@@ -29,6 +29,11 @@ Dynamic registration is intentionally enabled only on the development Clerk inst
 0. It exposes a public client-registration endpoint and must be monitored and reviewed before any
 production rollout.
 
+When creating the staging connection in ChatGPT developer mode, open **Advanced OAuth settings**,
+keep Dynamic Client Registration and the `openid` default scope selected, and turn **OIDC enabled**
+off. Clerk registers this Phase 0 client for `openid` only; leaving ChatGPT's optional OIDC
+enrichment enabled adds `email` and `offline_access`, which Clerk correctly rejects for this client.
+
 ## Local configuration
 
 Copy the example file and supply the development Clerk instance values without committing them:
@@ -90,3 +95,21 @@ bun run --cwd apps/mcp verify:oauth
 
 Also verify that calling the tool before linking returns an MCP error with
 `_meta["mcp/www_authenticate"]`, and that the linked Worker has no D1 binding.
+
+### ChatGPT developer-mode smoke
+
+1. Enable ChatGPT developer mode under **Settings → Security and login**.
+2. Create a plugin with `https://mcp-staging.voyageplan.app/mcp`, OAuth, DCR, `openid`, and OIDC
+   enrichment disabled as described above.
+3. Connect the plugin and complete Clerk consent.
+4. In a new chat, add **Voyage (Phase 0)** and ask it to check which account is connected without
+   accessing trip data.
+5. Confirm the response reports `environment: staging` and trip data access disabled.
+6. Ask Voyage to list trips and confirm ChatGPT explains that Phase 0 cannot do so.
+
+ChatGPT begins discovery with an empty `POST /mcp` probe using
+`application/octet-stream`. The Worker answers that probe with `401 Unauthorized` and a
+`WWW-Authenticate` resource-metadata challenge, then accepts the authenticated MCP initialize,
+tool-list, and tool-call requests. Staging request telemetry records only HTTP/RPC method, response
+status/type, content length, and session presence; it never records authorization headers, tokens,
+tool arguments, or tool results.

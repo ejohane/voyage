@@ -40,7 +40,7 @@ const connectionTool = {
   },
 };
 
-function authenticationChallenge(bindings: Bindings): string {
+export function authenticationChallenge(bindings: Bindings): string {
   const metadataUrl = `${bindings.MCP_RESOURCE_URL}/.well-known/oauth-protected-resource`;
   return `Bearer resource_metadata="${metadataUrl}", error="invalid_token", error_description="Connect your Voyage account to continue"`;
 }

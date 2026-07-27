@@ -86,6 +86,31 @@ describe("Voyage Phase 0 MCP worker", () => {
     expect(authenticate).not.toHaveBeenCalled();
   });
 
+  it("challenges ChatGPT's empty OAuth discovery probe", async () => {
+    const worker = createVoyageMcpWorker(async () => null);
+    const response = await worker.fetch(
+      new Request("https://mcp-staging.voyageplan.app/mcp", {
+        method: "POST",
+        headers: {
+          Accept: "*/*",
+          "Content-Length": "0",
+          "Content-Type": "application/octet-stream",
+        },
+      }),
+      bindings,
+      context,
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("WWW-Authenticate")).toContain(
+      `${bindings.MCP_RESOURCE_URL}/.well-known/oauth-protected-resource`,
+    );
+    await expect(response.json()).resolves.toEqual({
+      error: "unauthorized",
+      error_description: "Connect your Voyage account to continue",
+    });
+  });
+
   it("returns an MCP OAuth challenge instead of account data when unauthenticated", async () => {
     const worker = createVoyageMcpWorker(async () => null);
     const response = await worker.fetch(

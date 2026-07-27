@@ -1,7 +1,12 @@
 import { createMcpHandler } from "agents/mcp";
 import { authenticateClerkOAuthRequest } from "./auth";
-import { createVoyageMcpServer } from "./server";
+import { authenticationChallenge, createVoyageMcpServer } from "./server";
 import type { AuthenticateOAuthRequest, Bindings } from "./types";
+
+type McpEnvelope = {
+  id?: unknown;
+  method?: unknown;
+};
 
 function jsonResponse(body: unknown, status = 200): Response {
   return Response.json(body, {
@@ -54,11 +59,69 @@ export function createVoyageMcpWorker(authenticateOAuthRequest: AuthenticateOAut
         return jsonResponse({ error: "not_found" }, 404);
       }
 
+      if (request.method === "POST" && request.headers.get("content-length") === "0") {
+        const response = Response.json(
+          {
+            error: "unauthorized",
+            error_description: "Connect your Voyage account to continue",
+          },
+          {
+            status: 401,
+            headers: {
+              "Access-Control-Allow-Origin": "*",
+              "Cache-Control": "no-store",
+              "WWW-Authenticate": authenticationChallenge(bindings),
+            },
+          },
+        );
+
+        console.info(
+          JSON.stringify({
+            event: "mcp_request",
+            httpMethod: request.method,
+            requestType: request.headers.get("content-type"),
+            accept: request.headers.get("accept"),
+            contentLength: request.headers.get("content-length"),
+            rpcMethods: [],
+            rpcIdPresent: false,
+            status: response.status,
+            responseType: response.headers.get("content-type"),
+            sessionCreated: false,
+          }),
+        );
+
+        return response;
+      }
+
       const server = createVoyageMcpServer(request, bindings, authenticateOAuthRequest);
-      return createMcpHandler(server, {
+      const payload = await request
+        .clone()
+        .json<McpEnvelope | McpEnvelope[]>()
+        .catch(() => null);
+      const envelopes = Array.isArray(payload) ? payload : payload ? [payload] : [];
+      const response = await createMcpHandler(server, {
         route: "/mcp",
         enableJsonResponse: true,
       })(request, bindings, context);
+
+      console.info(
+        JSON.stringify({
+          event: "mcp_request",
+          httpMethod: request.method,
+          requestType: request.headers.get("content-type"),
+          accept: request.headers.get("accept"),
+          contentLength: request.headers.get("content-length"),
+          rpcMethods: envelopes
+            .map((envelope) => envelope.method)
+            .filter((method): method is string => typeof method === "string"),
+          rpcIdPresent: envelopes.some((envelope) => envelope.id !== undefined),
+          status: response.status,
+          responseType: response.headers.get("content-type"),
+          sessionCreated: response.headers.has("mcp-session-id"),
+        }),
+      );
+
+      return response;
     },
   } satisfies ExportedHandler<Bindings>;
 }
