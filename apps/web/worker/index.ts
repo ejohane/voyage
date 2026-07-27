@@ -1,10 +1,12 @@
 import {
+  airportsEndpoint,
   type HealthResponse,
   healthEndpoint,
   locationsEndpoint,
   tripsEndpoint,
 } from "@voyage/contracts";
 import { Hono } from "hono";
+import { createAirportRoutes } from "./airport-routes";
 import { type AuthenticateRequest, authenticateClerkRequest } from "./auth";
 import { createGmailImportRoutes } from "./gmail-import-routes";
 import { createGmailIntegrationRoutes } from "./gmail-integration-routes";
@@ -70,6 +72,7 @@ export function createApp(dependencies: AppDependencies = {}) {
     locationsEndpoint,
     createLocationRoutes(authenticateRequest, { placesClient: dependencies.placesClient }),
   );
+  app.route(airportsEndpoint, createAirportRoutes(authenticateRequest));
 
   app.notFound((context) => context.json({ error: "Not found" }, 404));
   app.onError((error, context) => {

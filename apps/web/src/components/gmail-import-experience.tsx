@@ -206,6 +206,10 @@ function fakeTravel(tripId: string, candidate: GmailImportCandidate): Travel | u
     id: candidate.source.key,
     tripId,
     ...candidate.input,
+    departureAirportId: candidate.input.departureAirportId ?? null,
+    arrivalAirportId: candidate.input.arrivalAirportId ?? null,
+    departureAirport: null,
+    arrivalAirport: null,
     createdAt: candidate.source.receivedAt,
     updatedAt: candidate.source.receivedAt,
   };

@@ -97,6 +97,7 @@ describe("trip planning API", () => {
     await env.DB.batch([
       env.DB.prepare("DELETE FROM trip_plans"),
       env.DB.prepare("DELETE FROM travel_segments"),
+      env.DB.prepare("DELETE FROM airports"),
       env.DB.prepare("DELETE FROM stays"),
       env.DB.prepare("DELETE FROM trip_stops"),
       env.DB.prepare("DELETE FROM trip_memberships"),
@@ -141,6 +142,38 @@ describe("trip planning API", () => {
         count: number;
       }>(),
     ).toEqual({ count: 0 });
+  });
+
+  it("stores catalog airports and returns their coordinates with a flight", async () => {
+    await env.DB.prepare(
+      `INSERT INTO airports (
+        id, ident, iata_code, icao_code, type, name, municipality, iso_country, iso_region,
+        latitude, longitude, keywords, search_text
+      ) VALUES
+        (3830, 'KORD', 'ORD', 'KORD', 'large_airport', 'Chicago O''Hare International Airport',
+         'Chicago', 'US', 'US-IL', 41.9786, -87.9048, 'O''Hare', 'ord chicago o''hare'),
+        (1636, 'LPPT', 'LIS', 'LPPT', 'large_airport', 'Humberto Delgado Airport',
+         'Lisbon', 'PT', 'PT-11', 38.7813, -9.1359, NULL, 'lis lisbon humberto delgado')`,
+    ).run();
+    const { trip } = await createTrip();
+    const createResponse = await request(tripTravelEndpoint(trip.id), "user_owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...travelInput,
+        departureAirportId: 3830,
+        arrivalAirportId: 1636,
+      }),
+    });
+    const created = await createResponse.json<TravelResponse>();
+
+    expect(createResponse.status).toBe(201);
+    expect(created.travel).toMatchObject({
+      departureAirportId: 3830,
+      arrivalAirportId: 1636,
+      departureAirport: { iataCode: "ORD", latitude: 41.9786, longitude: -87.9048 },
+      arrivalAirport: { iataCode: "LIS", latitude: 38.7813, longitude: -9.1359 },
+    });
   });
 
   it("stores vehicle rentals as transportation without treating them as journey segments", async () => {
