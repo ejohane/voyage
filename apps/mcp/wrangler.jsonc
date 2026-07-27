@@ -10,8 +10,17 @@
       "custom_domain": true
     }
   ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "voyage-production",
+      "database_id": "d6747c04-a897-4d16-afc4-eff3d29acd6a",
+      "migrations_dir": "../web/migrations"
+    }
+  ],
   "vars": {
     "ENVIRONMENT": "staging",
+    "APP_URL": "https://voyageplan.app",
     "MCP_RESOURCE_URL": "https://mcp-staging.voyageplan.app",
     "CLERK_AUTHORIZATION_SERVER": "https://special-bullfrog-79.clerk.accounts.dev"
   },

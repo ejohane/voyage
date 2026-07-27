@@ -49,9 +49,9 @@ export function createVoyageMcpWorker(authenticateOAuthRequest: AuthenticateOAut
         return jsonResponse({
           status: "ok",
           service: "voyage-mcp",
-          phase: 0,
+          phase: 1,
           environment: bindings.ENVIRONMENT,
-          tripDataAccess: false,
+          tripDataAccess: "read-only",
         });
       }
 
