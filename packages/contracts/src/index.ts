@@ -62,8 +62,20 @@ export function declineInvitationEndpoint(token: string) {
   return `${invitationEndpoint(token)}/decline` as const;
 }
 
-export function tripMapEndpoint(tripId: string) {
-  return `${tripEndpoint(tripId)}/map` as const;
+export function tripMapEndpoint(tripId: string, locations: string[] = []) {
+  const endpoint = `${tripEndpoint(tripId)}/map` as const;
+  const visibleLocations = locations
+    .map((location) => location.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (visibleLocations.length === 0) return endpoint;
+
+  const search = new URLSearchParams();
+  visibleLocations.forEach((location) => {
+    search.append("location", location);
+  });
+  return `${endpoint}?${search.toString()}`;
 }
 
 export function tripTravelEndpoint(tripId: string) {

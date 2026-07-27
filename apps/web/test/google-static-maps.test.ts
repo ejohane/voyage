@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildLocationStaticMapUrl,
   buildStaticMapUrl,
   createGoogleStaticMapsClient,
   StaticMapsServiceError,
@@ -39,6 +40,18 @@ describe("Google Static Maps client", () => {
     ]);
     expect(url.searchParams.getAll("style")).toContain(
       "feature:landscape|element:geometry|color:0xf2f0e9",
+    );
+  });
+
+  it("builds a focused route map for booking locations", () => {
+    const url = new URL(buildLocationStaticMapUrl(["MKE Airport", "ORD Airport"], "test-key"));
+
+    expect(url.searchParams.getAll("markers")).toEqual([
+      "size:small|color:0x2563eb|label:A|MKE Airport",
+      "size:small|color:0x2563eb|label:B|ORD Airport",
+    ]);
+    expect(url.searchParams.get("path")).toBe(
+      "weight:3|color:0x2563ebcc|geodesic:true|MKE Airport|ORD Airport",
     );
   });
 

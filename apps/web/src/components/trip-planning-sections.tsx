@@ -16,6 +16,7 @@ import {
   ExternalLink,
   Lightbulb,
   MoreHorizontal,
+  Pencil,
   Plane,
   Plus,
   Route,
@@ -27,6 +28,7 @@ import {
 } from "lucide-react";
 import { type ComponentType, type ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { BookingLocationMap } from "@/components/booking-location-map";
 import { StayForm } from "@/components/stay-form";
 import { TravelForm } from "@/components/travel-form";
 import { Button } from "@/components/ui/button";
@@ -462,6 +464,8 @@ function TravelSection({ trip }: SectionProps) {
 
       {inspector ? (
         <TravelInspector
+          key={inspector.mode === "new" ? "new" : inspector.travelId}
+          canEdit={canEdit}
           inspector={inspector}
           item={selectedTravel}
           onClose={() => setInspector(undefined)}
@@ -584,6 +588,7 @@ function TravelListCard({
 }
 
 function TravelInspector({
+  canEdit,
   inspector,
   item,
   onClose,
@@ -591,6 +596,7 @@ function TravelInspector({
   stops,
   tripId,
 }: {
+  canEdit: boolean;
   inspector: { mode: "new" } | { mode: "edit"; travelId: string };
   item?: Travel;
   onClose: () => void;
@@ -600,6 +606,7 @@ function TravelInspector({
 }) {
   const update = useUpdateTravel(tripId, item?.id ?? "");
   const isNew = inspector.mode === "new";
+  const [isEditing, setIsEditing] = useState(false);
   const title = item
     ? item.kind === "rental"
       ? item.carrier || "Rental car"
@@ -609,6 +616,7 @@ function TravelInspector({
   async function handleUpdate(input: CreateTravelInput) {
     if (!item) return;
     await update.mutateAsync(input);
+    setIsEditing(false);
   }
 
   return (
@@ -617,9 +625,11 @@ function TravelInspector({
       description={
         isNew
           ? "Add the route, timing, and any booking details you have."
-          : "Update this transportation without leaving the list."
+          : isEditing
+            ? "Make a rare correction to this booking record."
+            : "The useful details from this booking, organized for quick reference."
       }
-      eyebrow={isNew ? "New transportation" : "Transportation details"}
+      eyebrow={isNew ? "New transportation" : isEditing ? "Edit transportation" : "Transportation"}
       onClose={onClose}
       title={title}
     >
@@ -631,14 +641,21 @@ function TravelInspector({
           onCancel={onClose}
           onSubmit={onCreate}
         />
-      ) : item ? (
+      ) : item && isEditing ? (
         <TravelForm
           key={`${item.id}:${item.updatedAt}`}
           initialTravel={item}
           presentation="inspector"
           stops={stops}
-          onCancel={onClose}
+          onCancel={() => setIsEditing(false)}
           onSubmit={handleUpdate}
+        />
+      ) : item ? (
+        <TravelDetails
+          canEdit={canEdit}
+          item={item}
+          onEdit={() => setIsEditing(true)}
+          tripId={tripId}
         />
       ) : (
         <div className="grid min-h-40 place-items-center">
@@ -646,6 +663,89 @@ function TravelInspector({
         </div>
       )}
     </WorkspaceInspector>
+  );
+}
+
+function TravelDetails({
+  canEdit,
+  item,
+  onEdit,
+  tripId,
+}: {
+  canEdit: boolean;
+  item: Travel;
+  onEdit: () => void;
+  tripId: string;
+}) {
+  const Icon = travelIcons[item.type];
+  const isRental = item.kind === "rental";
+  const locations = Array.from(new Set([item.departureLocation, item.arrivalLocation])).filter(
+    Boolean,
+  );
+
+  return (
+    <div className="min-h-full">
+      <BookingLocationMap
+        className="-mx-5 -mt-3 mb-5"
+        label={`Map showing ${locations.join(" to ")}`}
+        locations={locations}
+        tripId={tripId}
+      />
+
+      <div className="flex items-center justify-between gap-3">
+        <StatusBadge status={item.status} />
+        {canEdit ? (
+          <Button size="sm" variant="outline" onClick={onEdit}>
+            <Pencil className="size-3.5" aria-hidden="true" />
+            Edit
+          </Button>
+        ) : null}
+      </div>
+
+      <div className="mt-5 grid grid-cols-[1.75rem_minmax(0,1fr)] gap-x-3">
+        <div className="flex flex-col items-center">
+          <span className="grid size-7 place-items-center rounded-full bg-blue-600 text-white">
+            <Icon className="size-3.5" aria-hidden="true" />
+          </span>
+          <span className="my-1 w-px flex-1 bg-blue-200" />
+          <span className="size-2.5 rounded-full border-2 border-blue-600 bg-background" />
+        </div>
+        <div className="grid gap-5 pb-0.5">
+          <RoutePoint
+            label={isRental ? "Pick up" : "Depart"}
+            location={item.departureLocation}
+            time={formatLocalDateTime(item.departureAt)}
+          />
+          <RoutePoint
+            label={isRental ? "Return" : "Arrive"}
+            location={item.arrivalLocation}
+            time={item.arrivalAt ? formatLocalDateTime(item.arrivalAt) : "Time not set"}
+          />
+        </div>
+      </div>
+
+      <DetailList className="mt-6">
+        <DetailRow label="Type" value={titleCase(item.type)} />
+        {item.carrier ? (
+          <DetailRow label={isRental ? "Company" : "Carrier"} value={item.carrier} />
+        ) : null}
+        {item.referenceNumber ? (
+          <DetailRow
+            label={isRental ? "Reservation" : "Flight / route"}
+            value={item.referenceNumber}
+          />
+        ) : null}
+        {item.vehicleDescription ? (
+          <DetailRow label="Vehicle" value={item.vehicleDescription} />
+        ) : null}
+        {item.confirmationNumber ? (
+          <DetailRow label="Confirmation" value={item.confirmationNumber} mono />
+        ) : null}
+      </DetailList>
+
+      {item.bookingUrl ? <BookingLink href={item.bookingUrl} /> : null}
+      {item.notes ? <NotesBlock notes={item.notes} /> : null}
+    </div>
   );
 }
 
@@ -789,6 +889,8 @@ function StaysSection({ trip }: SectionProps) {
 
       {inspector ? (
         <StayInspector
+          key={inspector.mode === "new" ? "new" : inspector.stayId}
+          canEdit={canEdit}
           inspector={inspector}
           item={selectedStay}
           onClose={() => setInspector(undefined)}
@@ -892,6 +994,7 @@ function StayListCard({
 }
 
 function StayInspector({
+  canEdit,
   inspector,
   item,
   onClose,
@@ -899,6 +1002,7 @@ function StayInspector({
   stops,
   tripId,
 }: {
+  canEdit: boolean;
   inspector: { mode: "new" } | { mode: "edit"; stayId: string };
   item?: Stay;
   onClose: () => void;
@@ -908,10 +1012,12 @@ function StayInspector({
 }) {
   const update = useUpdateStay(tripId, item?.id ?? "");
   const isNew = inspector.mode === "new";
+  const [isEditing, setIsEditing] = useState(false);
 
   async function handleUpdate(input: CreateStayInput) {
     if (!item) return;
     await update.mutateAsync(input);
+    setIsEditing(false);
   }
 
   return (
@@ -920,9 +1026,11 @@ function StayInspector({
       description={
         isNew
           ? "Add the property, dates, and any booking details you have."
-          : "Update this stay without leaving the list."
+          : isEditing
+            ? "Make a rare correction to this booking record."
+            : "Check-in, location, and booking details at a glance."
       }
-      eyebrow={isNew ? "New stay" : "Stay details"}
+      eyebrow={isNew ? "New stay" : isEditing ? "Edit stay" : "Stay"}
       onClose={onClose}
       title={item?.propertyName ?? "Add a stay"}
     >
@@ -934,14 +1042,22 @@ function StayInspector({
           onCancel={onClose}
           onSubmit={onCreate}
         />
-      ) : item ? (
+      ) : item && isEditing ? (
         <StayForm
           key={`${item.id}:${item.updatedAt}`}
           initialStay={item}
           presentation="inspector"
           stops={stops}
-          onCancel={onClose}
+          onCancel={() => setIsEditing(false)}
           onSubmit={handleUpdate}
+        />
+      ) : item ? (
+        <StayDetails
+          canEdit={canEdit}
+          item={item}
+          onEdit={() => setIsEditing(true)}
+          stop={stops.find((stop) => stop.id === item.tripStopId)}
+          tripId={tripId}
         />
       ) : (
         <div className="grid min-h-40 place-items-center">
@@ -949,6 +1065,134 @@ function StayInspector({
         </div>
       )}
     </WorkspaceInspector>
+  );
+}
+
+function StayDetails({
+  canEdit,
+  item,
+  onEdit,
+  stop,
+  tripId,
+}: {
+  canEdit: boolean;
+  item: Stay;
+  onEdit: () => void;
+  stop?: TripStop;
+  tripId: string;
+}) {
+  return (
+    <div className="min-h-full">
+      <BookingLocationMap
+        className="-mx-5 -mt-3 mb-5"
+        label={`Map showing ${item.address}`}
+        locations={[item.address]}
+        tripId={tripId}
+      />
+
+      <div className="flex items-center justify-between gap-3">
+        <StatusBadge status={item.status} />
+        {canEdit ? (
+          <Button size="sm" variant="outline" onClick={onEdit}>
+            <Pencil className="size-3.5" aria-hidden="true" />
+            Edit
+          </Button>
+        ) : null}
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-md border bg-border">
+        <DateBlock label="Check in" value={formatDateOnly(item.checkInDate)} />
+        <DateBlock label="Check out" value={formatDateOnly(item.checkOutDate)} />
+      </div>
+
+      <div className="mt-5">
+        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Location
+        </p>
+        <p className="mt-1 text-sm font-medium leading-6">{item.address}</p>
+        {stop ? <p className="mt-0.5 text-xs text-muted-foreground">{stop.name}</p> : null}
+      </div>
+
+      {item.confirmationNumber ? (
+        <DetailList className="mt-6">
+          <DetailRow label="Confirmation" value={item.confirmationNumber} mono />
+        </DetailList>
+      ) : null}
+
+      {item.bookingUrl ? <BookingLink href={item.bookingUrl} /> : null}
+      {item.notes ? <NotesBlock notes={item.notes} /> : null}
+    </div>
+  );
+}
+
+function RoutePoint({ label, location, time }: { label: string; location: string; time: string }) {
+  return (
+    <div>
+      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-0.5 font-semibold leading-5">{location}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{time}</p>
+    </div>
+  );
+}
+
+function DateBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-background p-3">
+      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function DetailList({ children, className }: { children: ReactNode; className?: string }) {
+  return <dl className={cn("divide-y border-y text-sm", className)}>{children}</dl>;
+}
+
+function DetailRow({
+  label,
+  mono = false,
+  value,
+}: {
+  label: string;
+  mono?: boolean;
+  value: string;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-5 py-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className={cn("max-w-[65%] text-right font-medium", mono && "font-mono text-xs")}>
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function BookingLink({ href }: { href: string }) {
+  return (
+    <a
+      className="mt-5 flex items-center justify-between rounded-md border px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      href={href}
+      rel="noreferrer"
+      target="_blank"
+    >
+      Open booking
+      <ExternalLink className="size-3.5 text-muted-foreground" aria-hidden="true" />
+    </a>
+  );
+}
+
+function NotesBlock({ notes }: { notes: string }) {
+  return (
+    <div className="mt-6">
+      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        Notes
+      </p>
+      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{notes}</p>
+    </div>
   );
 }
 

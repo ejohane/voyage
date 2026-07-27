@@ -9,6 +9,10 @@ const staticMapsClient: StaticMapsClient = {
     new Response(new Uint8Array([137, 80, 78, 71]), {
       headers: { "Content-Type": "image/png" },
     }),
+  renderLocations: async () =>
+    new Response(new Uint8Array([137, 80, 78, 71]), {
+      headers: { "Content-Type": "image/png" },
+    }),
 };
 
 const testApp = createApp({

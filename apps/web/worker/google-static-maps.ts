@@ -40,8 +40,39 @@ export function buildStaticMapUrl(trip: Pick<Trip, "stops">, apiKey: string) {
   return `https://maps.googleapis.com/maps/api/staticmap?${parameters.toString()}`;
 }
 
+export function buildLocationStaticMapUrl(locations: string[], apiKey: string) {
+  const visibleLocations = locations
+    .map((location) => location.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+  const parameters = new URLSearchParams({
+    size: "640x320",
+    scale: "2",
+    format: "png32",
+    maptype: "roadmap",
+    language: "en",
+    key: apiKey,
+  });
+
+  for (const style of mapStyles) parameters.append("style", style);
+  visibleLocations.forEach((location, index) => {
+    const label = visibleLocations.length > 1 ? `|label:${index === 0 ? "A" : "B"}` : "";
+    parameters.append("markers", `size:small|color:0x2563eb${label}|${location}`);
+  });
+
+  if (visibleLocations.length === 2) {
+    parameters.append(
+      "path",
+      `weight:3|color:0x2563ebcc|geodesic:true|${visibleLocations.join("|")}`,
+    );
+  }
+
+  return `https://maps.googleapis.com/maps/api/staticmap?${parameters.toString()}`;
+}
+
 export type StaticMapsClient = {
   render(trip: Pick<Trip, "stops">): Promise<Response>;
+  renderLocations(locations: string[]): Promise<Response>;
 };
 
 export class StaticMapsServiceError extends Error {
@@ -58,6 +89,17 @@ export function createGoogleStaticMapsClient(
   return {
     async render(trip) {
       const response = await fetchRequest(buildStaticMapUrl(trip, apiKey), {
+        headers: { Accept: "image/png" },
+      });
+
+      if (!response.ok || !response.headers.get("Content-Type")?.startsWith("image/")) {
+        throw new StaticMapsServiceError();
+      }
+
+      return response;
+    },
+    async renderLocations(locations) {
+      const response = await fetchRequest(buildLocationStaticMapUrl(locations, apiKey), {
         headers: { Accept: "image/png" },
       });
 

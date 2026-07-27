@@ -103,7 +103,13 @@ export function createTripsRoutes(
       const maps =
         dependencies.staticMapsClient ??
         createGoogleStaticMapsClient(context.env.GOOGLE_STATIC_MAPS_API_KEY);
-      const map = await maps.render(trip);
+      const locations = (context.req.queries("location") ?? [])
+        .map((location) => location.trim())
+        .filter(Boolean)
+        .slice(0, 2);
+      const map = locations.length
+        ? await maps.renderLocations(locations)
+        : await maps.render(trip);
 
       return new Response(map.body, {
         status: 200,
