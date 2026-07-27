@@ -1,0 +1,22 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "voyage-mcp-staging",
+  "main": "./src/index.ts",
+  "compatibility_date": "2026-07-21",
+  "compatibility_flags": ["nodejs_compat"],
+  "routes": [
+    {
+      "pattern": "mcp-staging.voyageplan.app",
+      "custom_domain": true
+    }
+  ],
+  "vars": {
+    "ENVIRONMENT": "staging",
+    "MCP_RESOURCE_URL": "https://mcp-staging.voyageplan.app",
+    "CLERK_AUTHORIZATION_SERVER": "https://special-bullfrog-79.clerk.accounts.dev"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "upload_source_maps": true
+}
