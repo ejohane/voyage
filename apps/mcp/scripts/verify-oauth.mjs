@@ -68,7 +68,7 @@ const callbackServer = Bun.serve({
     }
 
     resolveCallback(code);
-    return new Response("Voyage Phase 0 authorization succeeded. You can close this tab.");
+    return new Response("Voyage Phase 1 authorization succeeded. You can close this tab.");
   },
 });
 
@@ -79,7 +79,7 @@ try {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      client_name: "Voyage Phase 0 Verification",
+      client_name: "Voyage Phase 1 Verification",
       redirect_uris: [redirectUri],
       grant_types: ["authorization_code"],
       response_types: ["code"],
@@ -154,37 +154,41 @@ try {
 
   console.log(JSON.stringify({ tokenDiagnostics }, null, 2));
 
-  const mcpResponse = await fetch(`${resource}/mcp`, {
-    method: "POST",
-    headers: {
-      accept: "application/json, text/event-stream",
-      authorization: `Bearer ${token.access_token}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/call",
-      params: { name: "get_connection_status", arguments: {} },
-    }),
-  });
-  if (!mcpResponse.ok) {
-    throw new Error(`MCP request failed: ${mcpResponse.status}`);
-  }
-  const mcp = await mcpResponse.json();
-  if (mcp.error) {
-    throw new Error(`MCP protocol error: ${JSON.stringify(mcp.error)}`);
-  }
-  if (mcp.result?.isError) {
-    throw new Error(`MCP tool rejected the token: ${JSON.stringify(mcp.result)}`);
+  async function callTool(id, name, args = {}) {
+    const response = await fetch(`${resource}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: `Bearer ${token.access_token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id,
+        method: "tools/call",
+        params: { name, arguments: args },
+      }),
+    });
+    if (!response.ok) throw new Error(`MCP request failed: ${response.status}`);
+
+    const payload = await response.json();
+    if (payload.error) throw new Error(`MCP protocol error: ${JSON.stringify(payload.error)}`);
+    if (payload.result?.isError) {
+      throw new Error(`MCP tool rejected the token: ${JSON.stringify(payload.result)}`);
+    }
+    return payload.result?.structuredContent;
   }
 
-  const result = mcp.result?.structuredContent;
-  if (result?.tripDataAccess !== false) {
-    throw new Error("MCP tool did not preserve the Phase 0 data boundary");
+  const result = await callTool(1, "get_connection_status");
+  if (result?.tripDataAccess !== true || result?.tripWriteAccess !== false) {
+    throw new Error("MCP tool did not preserve the Phase 1 read-only boundary");
   }
   if (result.accountSubject !== claims.sub) {
     throw new Error("MCP account subject did not match the access token subject");
+  }
+  const tripList = await callTool(2, "list_trips", { limit: 1 });
+  if (!Array.isArray(tripList?.trips) || typeof tripList?.total !== "number") {
+    throw new Error("MCP list_trips did not return the Phase 1 result contract");
   }
 
   console.log(
@@ -206,6 +210,12 @@ try {
           accountSubjectMatches: true,
           environment: result.environment,
           tripDataAccess: result.tripDataAccess,
+          tripWriteAccess: result.tripWriteAccess,
+        },
+        tripRead: {
+          tool: "list_trips",
+          resultShapeValid: true,
+          accessibleTripCount: tripList.total,
         },
       },
       null,

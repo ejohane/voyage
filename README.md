@@ -56,9 +56,10 @@ committed production app URL and sender address live in `wrangler.jsonc`.
 The local app is available at the URL printed by Vite. The frontend calls `/api/health` through the
 same Workers runtime used by production.
 
-The separate Phase 0 MCP Worker proves Clerk OAuth account linking without access to trip data. See
-the [MCP Phase 0 runbook](docs/MCP_PHASE_0.md) for its staging endpoints, configuration, and
-verification contract.
+The separate MCP Worker gives linked ChatGPT accounts read-only access to their Voyage trips. See
+the [MCP Phase 1 runbook](docs/MCP_PHASE_1.md) for its tool contract, authorization boundary,
+staging configuration, and verification steps. The [Phase 0 runbook](docs/MCP_PHASE_0.md) preserves
+the original account-linking proof.
 
 Before committing:
 
@@ -79,4 +80,5 @@ bun run deploy
 - [Architecture](docs/ARCHITECTURE.md)
 - [Gmail OAuth infrastructure](docs/GMAIL_OAUTH.md)
 - [MCP Phase 0](docs/MCP_PHASE_0.md)
+- [MCP Phase 1](docs/MCP_PHASE_1.md)
 - [Brand direction](design/brand/README.md)

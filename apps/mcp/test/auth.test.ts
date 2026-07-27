@@ -1,9 +1,12 @@
+import { env } from "cloudflare:test";
 import { describe, expect, it, vi } from "vitest";
 import { authenticateClerkOAuthRequestWith } from "../src/auth";
 import type { Bindings } from "../src/types";
 
 const bindings: Bindings = {
+  DB: env.DB,
   ENVIRONMENT: "staging",
+  APP_URL: "https://voyageplan.app",
   MCP_RESOURCE_URL: "https://mcp-staging.voyageplan.app",
   CLERK_AUTHORIZATION_SERVER: "https://example.clerk.accounts.dev",
   CLERK_JWT_KEY: "test-public-key",
