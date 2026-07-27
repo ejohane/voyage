@@ -17,7 +17,6 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
-  ChevronRight,
   ExternalLink,
   LoaderCircle,
   LockKeyhole,
@@ -27,7 +26,6 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
-  Sparkles,
   Unplug,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -527,51 +525,24 @@ function GmailImportExperience({ trip }: { trip: Trip }) {
     });
   }
 
-  const trigger = connected ? (
-    <button
-      className="group flex w-full items-center justify-between gap-4 rounded-xl border bg-background px-4 py-3 text-left outline-none transition-colors hover:bg-muted/45 focus-visible:ring-2 focus-visible:ring-ring sm:px-5"
+  const triggerLabel = connected ? "Find bookings in Gmail" : "Connect Gmail to find bookings";
+  const trigger = (
+    <Button
       type="button"
+      size="icon"
+      variant="outline"
+      className="relative size-8 bg-background shadow-sm"
+      aria-label={triggerLabel}
+      title={triggerLabel}
     >
-      <span className="flex min-w-0 items-center gap-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-foreground text-background">
-          <RefreshCw className="size-4" aria-hidden="true" />
-        </span>
-        <span className="min-w-0">
-          <span className="block text-sm font-semibold">Import updates from Gmail</span>
-          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-            Connected as {connectedAccount?.email}
-          </span>
-        </span>
-      </span>
-      <ChevronRight
-        className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
-        aria-hidden="true"
-      />
-    </button>
-  ) : (
-    <button
-      className="group grid w-full gap-5 rounded-2xl border border-slate-900 bg-[#071a2c] px-5 py-6 text-left text-white shadow-md shadow-slate-950/15 outline-none transition-[background-color,box-shadow,transform] hover:-translate-y-0.5 hover:bg-[#0a2238] hover:shadow-lg hover:shadow-slate-950/20 focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-7 sm:py-7"
-      type="button"
-    >
-      <span className="min-w-0">
-        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-200/65">
-          Recommended next step
-        </span>
-        <span className="mt-2 block text-xl font-semibold tracking-tight sm:text-2xl">
-          Build this trip from your inbox
-        </span>
-        <span className="mt-2 block max-w-2xl text-sm leading-6 text-slate-300">
-          Voyage can find flights, stays, and rental cars already in Gmail, then guide you through
-          every booking before anything is added.
-        </span>
-      </span>
-      <span className="grid gap-2 sm:justify-items-end">
-        <span className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-white px-5 text-sm font-medium text-slate-950 shadow-sm transition-colors group-hover:bg-sky-50">
-          <Sparkles className="size-4" aria-hidden="true" /> Start guided import
-        </span>
-        <span className="text-xs text-slate-300">About 2 minutes · You stay in control</span>
-      </span>
-    </button>
+      <Mail className="size-4" aria-hidden="true" />
+      {connection.data?.connected === false ? (
+        <span
+          className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-blue-600 ring-2 ring-background"
+          aria-hidden="true"
+        />
+      ) : null}
+    </Button>
   );
 
   return (

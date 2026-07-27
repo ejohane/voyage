@@ -337,3 +337,8 @@ export async function updateTrip(
 
   return getTrip(database, userId, tripId);
 }
+
+export async function deleteTrip(database: D1Database, tripId: string): Promise<boolean> {
+  const result = await database.prepare("DELETE FROM trips WHERE id = ?").bind(tripId).run();
+  return result.meta.changes > 0;
+}

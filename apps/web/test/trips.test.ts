@@ -142,6 +142,47 @@ describe("trip API", () => {
     expect(hiddenResponse.status).toBe(404);
   });
 
+  it("lets only the owner delete a trip and cascades its workspace data", async () => {
+    const { trip } = await createTrip();
+    await env.DB.prepare(
+      `INSERT INTO trip_memberships (trip_id, user_id, access_level, joined_at)
+       VALUES (?, ?, 'editor', ?)`,
+    )
+      .bind(trip.id, "user_editor", new Date().toISOString())
+      .run();
+
+    const editorResponse = await request(`${tripsEndpoint}/${trip.id}`, "user_editor", {
+      method: "DELETE",
+    });
+    const strangerResponse = await request(`${tripsEndpoint}/${trip.id}`, "user_other", {
+      method: "DELETE",
+    });
+    const ownerResponse = await request(`${tripsEndpoint}/${trip.id}`, "user_owner", {
+      method: "DELETE",
+    });
+    const deletedTrip = await env.DB.prepare("SELECT id FROM trips WHERE id = ?")
+      .bind(trip.id)
+      .first();
+    const memberships = await env.DB.prepare(
+      "SELECT count(*) AS count FROM trip_memberships WHERE trip_id = ?",
+    )
+      .bind(trip.id)
+      .first<{ count: number }>();
+    const stops = await env.DB.prepare("SELECT count(*) AS count FROM trip_stops WHERE trip_id = ?")
+      .bind(trip.id)
+      .first<{ count: number }>();
+
+    expect(editorResponse.status).toBe(403);
+    expect(await editorResponse.json()).toEqual({
+      error: { code: "forbidden", message: "Only the organizer can delete this trip." },
+    });
+    expect(strangerResponse.status).toBe(404);
+    expect(ownerResponse.status).toBe(204);
+    expect(deletedTrip).toBeNull();
+    expect(memberships).toEqual({ count: 0 });
+    expect(stops).toEqual({ count: 0 });
+  });
+
   it("returns a private map image only to trip members", async () => {
     const { trip } = await createTrip();
     const appWithMaps = createApp({

@@ -75,4 +75,19 @@ function useUpdateTrip(tripId: string) {
   });
 }
 
-export { useCreateTrip, useTrip, useTrips, useUpdateTrip };
+function useDeleteTrip(tripId: string) {
+  const request = useApiRequest();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => request<void>(tripEndpoint(tripId), { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.setQueryData<Trip[]>(tripKeys.all, (trips) =>
+        trips?.filter((trip) => trip.id !== tripId),
+      );
+      queryClient.removeQueries({ queryKey: tripKeys.detail(tripId) });
+    },
+  });
+}
+
+export { useCreateTrip, useDeleteTrip, useTrip, useTrips, useUpdateTrip };

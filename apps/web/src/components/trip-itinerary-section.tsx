@@ -1,4 +1,4 @@
-import type { CreatePlanInput, Stay, Travel, Trip, TripPlan, TripStop } from "@voyage/contracts";
+import type { CreatePlanInput, Stay, Travel, Trip, TripPlan } from "@voyage/contracts";
 import { format, parse } from "date-fns";
 import {
   BedDouble,
@@ -9,7 +9,6 @@ import {
   Clock3,
   ExternalLink,
   Landmark,
-  Lightbulb,
   MapPin,
   MoreHorizontal,
   Pencil,
@@ -39,7 +38,6 @@ import {
 import { useCreatePlan, useDeletePlan, usePlans, useStays, useTravel } from "@/lib/planning";
 import { cn } from "@/lib/utils";
 
-type ItineraryView = "schedule" | "ideas";
 type TimelineAccent = "flight" | "ground" | "stay" | "plan";
 
 type TimelineEntry = {
@@ -277,21 +275,19 @@ function ItinerarySection({ trip }: { trip: Trip }) {
   const travel = useTravel(trip.id);
   const stays = useStays(trip.id);
   const plans = usePlans(trip.id);
-  const [view, setView] = useState<ItineraryView>("schedule");
   const [addOpen, setAddOpen] = useState(false);
   const canEdit = trip.accessLevel !== "viewer";
   const loading = travel.isPending || stays.isPending || plans.isPending;
   const hasError = travel.isError || stays.isError || plans.isError;
   const entries = buildTimelineEntries(trip, travel.data ?? [], stays.data ?? [], plans.data ?? []);
-  const ideas = (plans.data ?? []).filter((plan) => !plan.scheduledDate);
 
   return (
-    <section>
+    <section className="rounded-lg border bg-background p-4 md:p-5">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Itinerary</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Bring reservations, activities, and saved ideas into one trip plan.
+            See reservations and scheduled plans together, day by day.
           </p>
         </div>
         {canEdit ? (
@@ -310,37 +306,8 @@ function ItinerarySection({ trip }: { trip: Trip }) {
         ) : null}
       </div>
 
-      <fieldset className="mt-6 inline-flex rounded-lg border bg-muted/30 p-1">
-        <legend className="sr-only">Itinerary view</legend>
-        <Button
-          size="sm"
-          variant={view === "schedule" ? "secondary" : "ghost"}
-          className={cn(view === "schedule" && "bg-background shadow-sm")}
-          aria-pressed={view === "schedule"}
-          onClick={() => setView("schedule")}
-        >
-          <CalendarDays className="size-3.5" />
-          Schedule
-        </Button>
-        <Button
-          size="sm"
-          variant={view === "ideas" ? "secondary" : "ghost"}
-          className={cn(view === "ideas" && "bg-background shadow-sm")}
-          aria-pressed={view === "ideas"}
-          onClick={() => setView("ideas")}
-        >
-          <Lightbulb className="size-3.5" />
-          Ideas
-          {ideas.length > 0 ? (
-            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] leading-none">
-              {ideas.length}
-            </span>
-          ) : null}
-        </Button>
-      </fieldset>
-
       {loading ? (
-        <div className="mt-6 grid gap-4">
+        <div className="mt-5 grid gap-4">
           <Skeleton className="h-32" />
           <Skeleton className="h-48" />
         </div>
@@ -365,10 +332,8 @@ function ItinerarySection({ trip }: { trip: Trip }) {
             </Button>
           </CardContent>
         </Card>
-      ) : view === "schedule" ? (
-        <ScheduleView trip={trip} entries={entries} canEdit={canEdit} />
       ) : (
-        <IdeasView trip={trip} ideas={ideas} canEdit={canEdit} />
+        <ScheduleView trip={trip} entries={entries} canEdit={canEdit} />
       )}
     </section>
   );
@@ -409,7 +374,7 @@ function ScheduleView({
   }
 
   return (
-    <div className="relative mt-7 max-w-4xl">
+    <div className="relative mt-6 max-w-5xl">
       <div className="absolute bottom-6 left-6 top-5 w-px bg-border" aria-hidden="true" />
       {dates.map((date, dayIndex) => {
         const dayEntries = days.get(date) ?? [];
@@ -523,7 +488,7 @@ function TimelineDraftCard({
       <span className="relative z-10 mt-5 grid size-7 place-self-center rounded-full border bg-background shadow-sm">
         <Plus className="m-auto size-3.5 text-muted-foreground" />
       </span>
-      <article className="overflow-hidden rounded-xl border bg-card shadow-md ring-1 ring-ring/10">
+      <article className="overflow-hidden rounded-lg border bg-card shadow-md ring-1 ring-ring/10">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-4 py-3 sm:px-5">
           <p className="text-sm font-medium">New plan</p>
           <p className="text-xs text-muted-foreground">
@@ -571,7 +536,7 @@ function TimelineCard({
       </span>
       <article
         className={cn(
-          "overflow-hidden rounded-xl border border-l-2 bg-card shadow-sm transition-shadow hover:shadow-md",
+          "overflow-hidden rounded-lg border border-l-2 bg-card shadow-sm transition-shadow hover:shadow-md",
           accent.cardBorder,
         )}
         data-itinerary-accent={entry.accent}
@@ -683,155 +648,6 @@ function TimelinePlanActions({ plan, trip }: { plan: TripPlan; trip: Trip }) {
         }
       />
     </>
-  );
-}
-
-function IdeasView({ canEdit, ideas, trip }: { canEdit: boolean; ideas: TripPlan[]; trip: Trip }) {
-  if (ideas.length === 0) {
-    return (
-      <Card className="mt-6 border-dashed shadow-none">
-        <CardContent>
-          <EmptyState
-            icon={Lightbulb}
-            title="Save possibilities here"
-            description="Collect restaurants, attractions, and activities before deciding when to do them."
-          />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="mt-6 grid gap-6">
-      {trip.stops.map((stop) => {
-        const stopIdeas = ideas.filter((idea) => idea.tripStopId === stop.id);
-        return stopIdeas.length > 0 ? (
-          <DestinationIdeas
-            key={stop.id}
-            trip={trip}
-            stop={stop}
-            ideas={stopIdeas}
-            canEdit={canEdit}
-          />
-        ) : null;
-      })}
-    </div>
-  );
-}
-
-function DestinationIdeas({
-  canEdit,
-  ideas,
-  stop,
-  trip,
-}: {
-  canEdit: boolean;
-  ideas: TripPlan[];
-  stop: TripStop;
-  trip: Trip;
-}) {
-  const [addOpen, setAddOpen] = useState(false);
-
-  return (
-    <section>
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h3 className="font-semibold">{stop.name}</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {ideas.length} {ideas.length === 1 ? "idea" : "ideas"}
-          </p>
-        </div>
-        {canEdit ? (
-          <PlanDialog
-            tripId={trip.id}
-            stops={trip.stops}
-            initialStopId={stop.id}
-            open={addOpen}
-            onOpenChange={setAddOpen}
-            trigger={
-              <Button size="sm" variant="outline">
-                <Plus className="size-3.5" />
-                Add idea
-              </Button>
-            }
-          />
-        ) : null}
-      </div>
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
-        {ideas.map((idea) => (
-          <IdeaCard key={idea.id} plan={idea} trip={trip} canEdit={canEdit} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function IdeaCard({ plan, trip, canEdit }: { plan: TripPlan; trip: Trip; canEdit: boolean }) {
-  const [editOpen, setEditOpen] = useState(false);
-  const remove = useDeletePlan(trip.id, plan.id);
-  const Icon = categoryIcons[plan.category];
-
-  return (
-    <Card className="gap-4 py-5">
-      <CardContent className="flex gap-4 px-5">
-        <span className="grid size-9 shrink-0 place-items-center rounded-lg border bg-muted/30">
-          <Icon className="size-4 text-muted-foreground" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {titleCase(plan.category)}
-          </p>
-          <p className="mt-1 font-medium">{plan.title}</p>
-          {plan.location ? (
-            <p className="mt-1 flex items-start gap-1.5 text-sm text-muted-foreground">
-              <MapPin className="mt-0.5 size-3.5 shrink-0" />
-              {plan.location}
-            </p>
-          ) : null}
-          {plan.notes ? (
-            <p className="mt-3 line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-              {plan.notes}
-            </p>
-          ) : null}
-          {plan.bookingUrl ? (
-            <a
-              className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium underline-offset-4 hover:underline"
-              href={plan.bookingUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open link <ExternalLink className="size-3.5" />
-            </a>
-          ) : null}
-        </div>
-        {canEdit ? (
-          <div className="flex shrink-0 gap-1">
-            <PlanDialog
-              tripId={trip.id}
-              stops={trip.stops}
-              plan={plan}
-              open={editOpen}
-              onOpenChange={setEditOpen}
-              trigger={
-                <Button size="icon" variant="ghost" aria-label={`Edit ${plan.title}`}>
-                  <Pencil className="size-4" />
-                </Button>
-              }
-            />
-            <ConfirmDeleteDialog
-              title="Remove this idea?"
-              description="This permanently removes the idea from the trip."
-              onDelete={() => remove.mutateAsync()}
-              trigger={
-                <Button size="icon" variant="ghost" aria-label={`Remove ${plan.title}`}>
-                  <Trash2 className="size-4 text-muted-foreground" />
-                </Button>
-              }
-            />
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
   );
 }
 

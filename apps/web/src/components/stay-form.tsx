@@ -25,6 +25,7 @@ type StayFormProps = {
   initialStay?: Stay;
   onCancel: () => void;
   onSubmit: (input: CreateStayInput) => Promise<void>;
+  presentation?: "dialog" | "inspector";
   stops: TripStop[];
   submitLabel?: string;
 };
@@ -55,7 +56,14 @@ function initialValues(stops: TripStop[], initialStay?: Stay): StayFormValues {
   };
 }
 
-function StayForm({ initialStay, onCancel, onSubmit, stops, submitLabel }: StayFormProps) {
+function StayForm({
+  initialStay,
+  onCancel,
+  onSubmit,
+  presentation = "dialog",
+  stops,
+  submitLabel,
+}: StayFormProps) {
   const [values, setValues] = useState(() => initialValues(stops, initialStay));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [formError, setFormError] = useState<string>();
@@ -113,9 +121,13 @@ function StayForm({ initialStay, onCancel, onSubmit, stops, submitLabel }: StayF
   }
 
   const dateError = fieldErrors.checkInDate?.[0] ?? fieldErrors.checkOutDate?.[0];
+  const isInspector = presentation === "inspector";
 
   return (
-    <form className="grid gap-5" onSubmit={handleSubmit}>
+    <form
+      className={isInspector ? "flex min-h-full flex-col gap-4" : "grid gap-5"}
+      onSubmit={handleSubmit}
+    >
       <FormField id="stay-destination" label="Destination" error={fieldErrors.tripStopId?.[0]}>
         <Select value={values.tripStopId} onValueChange={(value) => setValue("tripStopId", value)}>
           <SelectTrigger id="stay-destination">
@@ -212,9 +224,15 @@ function StayForm({ initialStay, onCancel, onSubmit, stops, submitLabel }: StayF
       </FormField>
 
       {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
-      <DialogFooter>
+      <DialogFooter
+        className={
+          isInspector
+            ? "sticky bottom-0 -mx-5 -mb-5 mt-auto bg-background px-5 pb-5 pt-4"
+            : undefined
+        }
+      >
         <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
-          Cancel
+          {isInspector ? "Close" : "Cancel"}
         </Button>
         <Button type="submit" disabled={isPending}>
           {isPending ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : null}
