@@ -4,6 +4,7 @@ export const healthEndpoint = "/api/health" as const;
 export const tripsEndpoint = "/api/trips" as const;
 export const gmailIntegrationEndpoint = "/api/integrations/gmail" as const;
 export const locationsEndpoint = "/api/locations" as const;
+export const airportsEndpoint = "/api/airports" as const;
 export const invitationsEndpoint = "/api/invitations" as const;
 
 export const locationSuggestionsEndpoint = `${locationsEndpoint}/suggestions` as const;
@@ -345,6 +346,24 @@ export const resolvedLocationResponseSchema = z.object({
   location: tripStopLocationSchema,
 });
 
+export const airportSchema = z.object({
+  id: z.number().int().positive(),
+  ident: z.string().min(1),
+  iataCode: z.string().length(3),
+  icaoCode: z.string().nullable(),
+  type: z.string().min(1),
+  name: z.string().min(1),
+  municipality: z.string().nullable(),
+  isoCountry: z.string().length(2),
+  isoRegion: z.string().nullable(),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+});
+
+export const airportListResponseSchema = z.object({
+  airports: z.array(airportSchema).max(10),
+});
+
 export const reservationStatusSchema = z.enum(["planning", "booked"]);
 export const transportationKindSchema = z.enum(["journey", "rental"]);
 export const travelTypeSchema = z.enum([
@@ -363,6 +382,8 @@ const travelBaseFieldsSchema = z.object({
   status: reservationStatusSchema,
   departureStopId: z.string().uuid().nullable(),
   arrivalStopId: z.string().uuid().nullable(),
+  departureAirportId: z.number().int().positive().nullable().optional(),
+  arrivalAirportId: z.number().int().positive().nullable().optional(),
   departureLocation: z
     .string()
     .trim()
@@ -414,13 +435,22 @@ export const travelFieldsSchema = travelBaseFieldsSchema.superRefine(validateTra
 
 export const createTravelInputSchema = travelFieldsSchema;
 export const updateTravelInputSchema = travelBaseFieldsSchema
+  .omit({ departureAirportId: true, arrivalAirportId: true })
   .partial()
+  .extend({
+    departureAirportId: z.number().int().positive().nullable().optional(),
+    arrivalAirportId: z.number().int().positive().nullable().optional(),
+  })
   .refine((value) => Object.keys(value).length > 0, "Provide at least one field to update.");
 
 export const travelSchema = travelBaseFieldsSchema
   .extend({
     id: z.string().uuid(),
     tripId: z.string().uuid(),
+    departureAirportId: z.number().int().positive().nullable(),
+    arrivalAirportId: z.number().int().positive().nullable(),
+    departureAirport: airportSchema.nullable(),
+    arrivalAirport: airportSchema.nullable(),
     createdAt: z.string(),
     updatedAt: z.string(),
   })
@@ -696,6 +726,8 @@ export type LocationSuggestion = z.infer<typeof locationSuggestionSchema>;
 export type LocationSuggestionsResponse = z.infer<typeof locationSuggestionsResponseSchema>;
 export type ResolveLocationInput = z.infer<typeof resolveLocationInputSchema>;
 export type ResolvedLocationResponse = z.infer<typeof resolvedLocationResponseSchema>;
+export type Airport = z.infer<typeof airportSchema>;
+export type AirportListResponse = z.infer<typeof airportListResponseSchema>;
 export type ReservationStatus = z.infer<typeof reservationStatusSchema>;
 export type TransportationKind = z.infer<typeof transportationKindSchema>;
 export type TravelType = z.infer<typeof travelTypeSchema>;

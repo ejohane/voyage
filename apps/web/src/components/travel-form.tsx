@@ -1,4 +1,5 @@
 import {
+  type Airport,
   type CreateTravelInput,
   createTravelInputSchema,
   type TransportationKind,
@@ -8,6 +9,7 @@ import {
 } from "@voyage/contracts";
 import { LoaderCircle } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import { AirportAutocomplete, airportLocationLabel } from "@/components/airport-autocomplete";
 import { DatePicker } from "@/components/date-picker";
 import { FormField } from "@/components/form-field";
 import { Button } from "@/components/ui/button";
@@ -38,6 +40,8 @@ type TravelFormValues = {
   status: "planning" | "booked";
   departureStopId: string;
   arrivalStopId: string;
+  departureAirport: Airport | null;
+  arrivalAirport: Airport | null;
   departureLocation: string;
   arrivalLocation: string;
   departureDate: string;
@@ -68,6 +72,8 @@ function initialValues(initialTravel?: Travel): TravelFormValues {
     status: initialTravel?.status ?? "planning",
     departureStopId: initialTravel?.departureStopId ?? "",
     arrivalStopId: initialTravel?.arrivalStopId ?? "",
+    departureAirport: initialTravel?.departureAirport ?? null,
+    arrivalAirport: initialTravel?.arrivalAirport ?? null,
     departureLocation: initialTravel?.departureLocation ?? "",
     arrivalLocation: initialTravel?.arrivalLocation ?? "",
     departureDate: departure.date,
@@ -128,6 +134,8 @@ function TravelForm({
       status: values.status,
       departureStopId: values.departureStopId || null,
       arrivalStopId: values.arrivalStopId || null,
+      departureAirportId: values.type === "flight" ? (values.departureAirport?.id ?? null) : null,
+      arrivalAirportId: values.type === "flight" ? (values.arrivalAirport?.id ?? null) : null,
       departureLocation: values.departureLocation,
       arrivalLocation: values.arrivalLocation,
       departureAt:
@@ -185,6 +193,8 @@ function TravelForm({
       type,
       referenceNumber: kind === "rental" ? "" : current.referenceNumber,
       vehicleDescription: kind === "journey" ? "" : current.vehicleDescription,
+      departureAirport: type === "flight" ? current.departureAirport : null,
+      arrivalAirport: type === "flight" ? current.arrivalAirport : null,
     }));
     setFieldErrors((current) => ({ ...current, kind: [], type: [], arrivalAt: [] }));
   }
@@ -280,24 +290,50 @@ function TravelForm({
           label={isRental ? "Pickup location" : "Leaving from"}
           error={fieldErrors.departureLocation?.[0]}
         >
-          <Input
-            id="departure-location"
-            placeholder={isRental ? "Bari Airport rental center" : "ORD · Chicago"}
-            value={values.departureLocation}
-            onChange={(event) => setValue("departureLocation", event.target.value)}
-          />
+          {values.type === "flight" ? (
+            <AirportAutocomplete
+              id="departure-location"
+              placeholder={values.departureLocation || "Search departure airport"}
+              value={values.departureAirport}
+              invalid={Boolean(fieldErrors.departureLocation?.[0])}
+              onChange={(airport) => {
+                setValue("departureAirport", airport);
+                setValue("departureLocation", airportLocationLabel(airport));
+              }}
+            />
+          ) : (
+            <Input
+              id="departure-location"
+              placeholder={isRental ? "Bari Airport rental center" : "Station or address"}
+              value={values.departureLocation}
+              onChange={(event) => setValue("departureLocation", event.target.value)}
+            />
+          )}
         </FormField>
         <FormField
           id="arrival-location"
           label={isRental ? "Return location" : "Arriving at"}
           error={fieldErrors.arrivalLocation?.[0]}
         >
-          <Input
-            id="arrival-location"
-            placeholder={isRental ? "Olbia Airport rental return" : "LIS · Lisbon"}
-            value={values.arrivalLocation}
-            onChange={(event) => setValue("arrivalLocation", event.target.value)}
-          />
+          {values.type === "flight" ? (
+            <AirportAutocomplete
+              id="arrival-location"
+              placeholder={values.arrivalLocation || "Search arrival airport"}
+              value={values.arrivalAirport}
+              invalid={Boolean(fieldErrors.arrivalLocation?.[0])}
+              onChange={(airport) => {
+                setValue("arrivalAirport", airport);
+                setValue("arrivalLocation", airportLocationLabel(airport));
+              }}
+            />
+          ) : (
+            <Input
+              id="arrival-location"
+              placeholder={isRental ? "Olbia Airport rental return" : "Station or address"}
+              value={values.arrivalLocation}
+              onChange={(event) => setValue("arrivalLocation", event.target.value)}
+            />
+          )}
         </FormField>
       </div>
 

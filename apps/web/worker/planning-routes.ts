@@ -9,6 +9,7 @@ import {
   updateTravelInputSchema,
 } from "@voyage/contracts";
 import { Hono } from "hono";
+import { airportsExist } from "./airport-repository";
 import { type AuthenticateRequest, createAuthMiddleware } from "./auth";
 import {
   createPlan,
@@ -107,6 +108,17 @@ export function createPlanningRoutes(authenticateRequest: AuthenticateRequest) {
         422,
       );
     }
+    if (
+      !(await airportsExist(context.env.DB, [
+        parsed.data.departureAirportId,
+        parsed.data.arrivalAirportId,
+      ]))
+    ) {
+      return context.json(
+        validationError({ departureAirportId: ["Choose airports from the airport catalog."] }),
+        422,
+      );
+    }
 
     const travel = await createTravel(context.env.DB, tripId, context.var.authUserId, parsed.data);
     return context.json({ travel }, 201, { "Cache-Control": "no-store" });
@@ -152,6 +164,17 @@ export function createPlanningRoutes(authenticateRequest: AuthenticateRequest) {
     ) {
       return context.json(
         validationError({ departureStopId: ["Choose destinations from this trip."] }),
+        422,
+      );
+    }
+    if (
+      !(await airportsExist(context.env.DB, [
+        merged.data.departureAirportId,
+        merged.data.arrivalAirportId,
+      ]))
+    ) {
+      return context.json(
+        validationError({ departureAirportId: ["Choose airports from the airport catalog."] }),
         422,
       );
     }

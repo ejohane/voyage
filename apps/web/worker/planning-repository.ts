@@ -1,4 +1,5 @@
 import type {
+  Airport,
   CreatePlanInput,
   CreateStayInput,
   CreateTravelInput,
@@ -23,6 +24,8 @@ type TravelRow = {
   status: ReservationStatus;
   departure_stop_id: string | null;
   arrival_stop_id: string | null;
+  departure_airport_id: number | null;
+  arrival_airport_id: number | null;
   departure_location: string;
   arrival_location: string;
   departure_at: string;
@@ -35,6 +38,28 @@ type TravelRow = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  departure_airport_catalog_id: number | null;
+  departure_airport_ident: string | null;
+  departure_airport_iata_code: string | null;
+  departure_airport_icao_code: string | null;
+  departure_airport_type: string | null;
+  departure_airport_name: string | null;
+  departure_airport_municipality: string | null;
+  departure_airport_iso_country: string | null;
+  departure_airport_iso_region: string | null;
+  departure_airport_latitude: number | null;
+  departure_airport_longitude: number | null;
+  arrival_airport_catalog_id: number | null;
+  arrival_airport_ident: string | null;
+  arrival_airport_iata_code: string | null;
+  arrival_airport_icao_code: string | null;
+  arrival_airport_type: string | null;
+  arrival_airport_name: string | null;
+  arrival_airport_municipality: string | null;
+  arrival_airport_iso_country: string | null;
+  arrival_airport_iso_region: string | null;
+  arrival_airport_latitude: number | null;
+  arrival_airport_longitude: number | null;
 };
 
 type StayRow = {
@@ -71,6 +96,44 @@ type PlanRow = {
   updated_at: string;
 };
 
+function mapJoinedAirport(row: TravelRow, prefix: "departure" | "arrival"): Airport | null {
+  const id = row[`${prefix}_airport_catalog_id`];
+  const ident = row[`${prefix}_airport_ident`];
+  const iataCode = row[`${prefix}_airport_iata_code`];
+  const type = row[`${prefix}_airport_type`];
+  const name = row[`${prefix}_airport_name`];
+  const isoCountry = row[`${prefix}_airport_iso_country`];
+  const latitude = row[`${prefix}_airport_latitude`];
+  const longitude = row[`${prefix}_airport_longitude`];
+
+  if (
+    id === null ||
+    ident === null ||
+    iataCode === null ||
+    type === null ||
+    name === null ||
+    isoCountry === null ||
+    latitude === null ||
+    longitude === null
+  ) {
+    return null;
+  }
+
+  return {
+    id,
+    ident,
+    iataCode,
+    icaoCode: row[`${prefix}_airport_icao_code`],
+    type,
+    name,
+    municipality: row[`${prefix}_airport_municipality`],
+    isoCountry,
+    isoRegion: row[`${prefix}_airport_iso_region`],
+    latitude,
+    longitude,
+  };
+}
+
 function mapTravel(row: TravelRow): Travel {
   return {
     id: row.id,
@@ -80,6 +143,10 @@ function mapTravel(row: TravelRow): Travel {
     status: row.status,
     departureStopId: row.departure_stop_id,
     arrivalStopId: row.arrival_stop_id,
+    departureAirportId: row.departure_airport_id,
+    arrivalAirportId: row.arrival_airport_id,
+    departureAirport: mapJoinedAirport(row, "departure"),
+    arrivalAirport: mapJoinedAirport(row, "arrival"),
     departureLocation: row.departure_location,
     arrivalLocation: row.arrival_location,
     departureAt: row.departure_at,
@@ -94,6 +161,34 @@ function mapTravel(row: TravelRow): Travel {
     updatedAt: row.updated_at,
   };
 }
+
+const travelSelect = `SELECT
+  travel_segments.*,
+  departure_airport.id AS departure_airport_catalog_id,
+  departure_airport.ident AS departure_airport_ident,
+  departure_airport.iata_code AS departure_airport_iata_code,
+  departure_airport.icao_code AS departure_airport_icao_code,
+  departure_airport.type AS departure_airport_type,
+  departure_airport.name AS departure_airport_name,
+  departure_airport.municipality AS departure_airport_municipality,
+  departure_airport.iso_country AS departure_airport_iso_country,
+  departure_airport.iso_region AS departure_airport_iso_region,
+  departure_airport.latitude AS departure_airport_latitude,
+  departure_airport.longitude AS departure_airport_longitude,
+  arrival_airport.id AS arrival_airport_catalog_id,
+  arrival_airport.ident AS arrival_airport_ident,
+  arrival_airport.iata_code AS arrival_airport_iata_code,
+  arrival_airport.icao_code AS arrival_airport_icao_code,
+  arrival_airport.type AS arrival_airport_type,
+  arrival_airport.name AS arrival_airport_name,
+  arrival_airport.municipality AS arrival_airport_municipality,
+  arrival_airport.iso_country AS arrival_airport_iso_country,
+  arrival_airport.iso_region AS arrival_airport_iso_region,
+  arrival_airport.latitude AS arrival_airport_latitude,
+  arrival_airport.longitude AS arrival_airport_longitude
+FROM travel_segments
+LEFT JOIN airports AS departure_airport ON departure_airport.id = travel_segments.departure_airport_id
+LEFT JOIN airports AS arrival_airport ON arrival_airport.id = travel_segments.arrival_airport_id`;
 
 function mapStay(row: StayRow): Stay {
   return {
@@ -135,7 +230,7 @@ function mapPlan(row: PlanRow): TripPlan {
 
 export async function listTravel(database: D1Database, tripId: string): Promise<Travel[]> {
   const result = await database
-    .prepare("SELECT * FROM travel_segments WHERE trip_id = ? ORDER BY departure_at, created_at")
+    .prepare(`${travelSelect} WHERE trip_id = ? ORDER BY departure_at, created_at`)
     .bind(tripId)
     .all<TravelRow>();
 
@@ -155,10 +250,10 @@ export async function createTravel(
     .prepare(
       `INSERT INTO travel_segments (
         id, trip_id, kind, type, status, departure_stop_id, arrival_stop_id,
-        departure_location, arrival_location, departure_at, arrival_at,
+        departure_airport_id, arrival_airport_id, departure_location, arrival_location, departure_at, arrival_at,
         carrier, reference_number, vehicle_description, confirmation_number, booking_url, notes,
         created_by_user_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -168,6 +263,8 @@ export async function createTravel(
       input.status,
       input.departureStopId,
       input.arrivalStopId,
+      input.departureAirportId ?? null,
+      input.arrivalAirportId ?? null,
       input.departureLocation,
       input.arrivalLocation,
       input.departureAt,
@@ -184,7 +281,9 @@ export async function createTravel(
     )
     .run();
 
-  return { id, tripId, ...input, createdAt: now, updatedAt: now };
+  const travel = await getTravel(database, tripId, id);
+  if (!travel) throw new Error("Created travel item could not be loaded.");
+  return travel;
 }
 
 export async function getTravel(
@@ -193,7 +292,7 @@ export async function getTravel(
   travelId: string,
 ): Promise<Travel | null> {
   const row = await database
-    .prepare("SELECT * FROM travel_segments WHERE id = ? AND trip_id = ?")
+    .prepare(`${travelSelect} WHERE travel_segments.id = ? AND trip_id = ?`)
     .bind(travelId, tripId)
     .first<TravelRow>();
 
@@ -212,6 +311,8 @@ export async function updateTravel(
     status: "status",
     departureStopId: "departure_stop_id",
     arrivalStopId: "arrival_stop_id",
+    departureAirportId: "departure_airport_id",
+    arrivalAirportId: "arrival_airport_id",
     departureLocation: "departure_location",
     arrivalLocation: "arrival_location",
     departureAt: "departure_at",
