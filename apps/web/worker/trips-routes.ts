@@ -10,7 +10,7 @@ import {
   type StaticMapsClient,
   StaticMapsServiceError,
 } from "./google-static-maps";
-import { createTrip, getTrip, listTrips, updateTrip } from "./trips-repository";
+import { createTrip, deleteTrip, getTrip, listTrips, updateTrip } from "./trips-repository";
 import type { WorkerEnvironment } from "./types";
 
 function validationError(fieldErrors?: Record<string, string[] | undefined>) {
@@ -197,6 +197,35 @@ export function createTripsRoutes(
     }
 
     return context.json({ trip }, 200, { "Cache-Control": "no-store" });
+  });
+
+  routes.delete("/:tripId", async (context) => {
+    const tripId = context.req.param("tripId");
+    const existingTrip = await getTrip(context.env.DB, context.var.authUserId, tripId);
+
+    if (!existingTrip) {
+      return context.json(
+        { error: { code: "not_found" as const, message: "Trip not found." } },
+        404,
+      );
+    }
+
+    if (existingTrip.accessLevel !== "owner") {
+      return context.json(
+        {
+          error: {
+            code: "forbidden" as const,
+            message: "Only the organizer can delete this trip.",
+          },
+        },
+        403,
+      );
+    }
+
+    const deleted = await deleteTrip(context.env.DB, tripId);
+    return deleted
+      ? context.body(null, 204)
+      : context.json({ error: { code: "not_found" as const, message: "Trip not found." } }, 404);
   });
 
   return routes;
