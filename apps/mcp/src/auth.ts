@@ -51,6 +51,7 @@ export async function authenticateClerkOAuthRequestWith(
     return {
       userId: claims.sub,
       subject: claims.sub,
+      clientId: oauthClaims.client_id,
       scopes,
     };
   } catch {

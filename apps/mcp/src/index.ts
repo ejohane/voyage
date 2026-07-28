@@ -8,12 +8,12 @@ type McpEnvelope = {
   method?: unknown;
 };
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(body: unknown, status = 200, cacheControl = "public, max-age=300"): Response {
   return Response.json(body, {
     status,
     headers: {
       "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "public, max-age=300",
+      "Cache-Control": cacheControl,
     },
   });
 }
@@ -46,13 +46,17 @@ export function createVoyageMcpWorker(authenticateOAuthRequest: AuthenticateOAut
       }
 
       if (request.method === "GET" && url.pathname === "/health") {
-        return jsonResponse({
-          status: "ok",
-          service: "voyage-mcp",
-          phase: 1,
-          environment: bindings.ENVIRONMENT,
-          tripDataAccess: "read-only",
-        });
+        return jsonResponse(
+          {
+            status: "ok",
+            service: "voyage-mcp",
+            phase: "2a",
+            environment: bindings.ENVIRONMENT,
+            tripDataAccess: "read-write-additive",
+          },
+          200,
+          "no-store",
+        );
       }
 
       if (url.pathname !== "/mcp") {

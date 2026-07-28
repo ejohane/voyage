@@ -1,12 +1,12 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "voyage-mcp-staging",
+  "name": "voyage-mcp",
   "main": "./src/index.ts",
   "compatibility_date": "2026-07-21",
   "compatibility_flags": ["nodejs_compat"],
   "routes": [
     {
-      "pattern": "mcp-staging.voyageplan.app",
+      "pattern": "mcp.voyageplan.app",
       "custom_domain": true
     }
   ],
@@ -19,13 +19,38 @@
     }
   ],
   "vars": {
-    "ENVIRONMENT": "staging",
+    "ENVIRONMENT": "production",
     "APP_URL": "https://voyageplan.app",
-    "MCP_RESOURCE_URL": "https://mcp-staging.voyageplan.app",
+    "MCP_RESOURCE_URL": "https://mcp.voyageplan.app",
     "CLERK_AUTHORIZATION_SERVER": "https://clerk.voyageplan.app"
   },
   "observability": {
     "enabled": true
   },
-  "upload_source_maps": true
+  "upload_source_maps": true,
+  "env": {
+    "staging": {
+      "name": "voyage-mcp-staging",
+      "routes": [
+        {
+          "pattern": "mcp-staging.voyageplan.app",
+          "custom_domain": true
+        }
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "voyage-staging",
+          "database_id": "1d861d6e-f26a-4449-95b9-2eb4a6da5008",
+          "migrations_dir": "../web/migrations"
+        }
+      ],
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "APP_URL": "https://voyageplan.app",
+        "MCP_RESOURCE_URL": "https://mcp-staging.voyageplan.app",
+        "CLERK_AUTHORIZATION_SERVER": "https://clerk.voyageplan.app"
+      }
+    }
+  }
 }

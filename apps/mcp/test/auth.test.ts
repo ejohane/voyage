@@ -10,6 +10,7 @@ const bindings: Bindings = {
   MCP_RESOURCE_URL: "https://mcp-staging.voyageplan.app",
   CLERK_AUTHORIZATION_SERVER: "https://example.clerk.accounts.dev",
   CLERK_JWT_KEY: "test-public-key",
+  MCP_CONFIRMATION_SECRET: "test-confirmation-secret",
 };
 
 function authenticatedRequest() {
@@ -36,6 +37,7 @@ describe("authenticateClerkOAuthRequestWith", () => {
     ).resolves.toEqual({
       userId: "user_123",
       subject: "user_123",
+      clientId: "dynamic_client_123",
       scopes: ["openid", "offline_access"],
     });
 

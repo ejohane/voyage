@@ -10,6 +10,7 @@
     "build": "bun run --cwd apps/web build && bun run --cwd apps/mcp build",
     "check": "bun run format:check && bun run typecheck && bun run test && bun run build",
     "deploy": "bun run --cwd apps/web deploy",
+    "deploy:mcp:production": "bun run --cwd apps/mcp deploy:production",
     "deploy:mcp:staging": "bun run --cwd apps/mcp deploy:staging",
     "dev": "bun run --cwd apps/web dev",
     "dev:mcp": "bun run --cwd apps/mcp dev",

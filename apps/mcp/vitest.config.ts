@@ -10,6 +10,7 @@ export default defineConfig({
       miniflare: {
         bindings: {
           CLERK_JWT_KEY: "test-public-key",
+          MCP_CONFIRMATION_SECRET: "test-confirmation-secret",
           TEST_MIGRATIONS: migrations,
         },
       },
