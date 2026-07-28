@@ -68,7 +68,7 @@ const callbackServer = Bun.serve({
     }
 
     resolveCallback(code);
-    return new Response("Voyage Phase 1 authorization succeeded. You can close this tab.");
+    return new Response("Voyage Phase 2A authorization succeeded. You can close this tab.");
   },
 });
 
@@ -79,7 +79,7 @@ try {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      client_name: "Voyage Phase 1 Verification",
+      client_name: "Voyage Phase 2A Verification",
       redirect_uris: [redirectUri],
       grant_types: ["authorization_code"],
       response_types: ["code"],
@@ -180,15 +180,26 @@ try {
   }
 
   const result = await callTool(1, "get_connection_status");
-  if (result?.tripDataAccess !== true || result?.tripWriteAccess !== false) {
-    throw new Error("MCP tool did not preserve the Phase 1 read-only boundary");
+  if (result?.tripDataAccess !== true || result?.tripWriteAccess !== true) {
+    throw new Error("MCP tool did not expose the Phase 2A additive write boundary");
   }
   if (result.accountSubject !== claims.sub) {
     throw new Error("MCP account subject did not match the access token subject");
   }
   const tripList = await callTool(2, "list_trips", { limit: 1 });
   if (!Array.isArray(tripList?.trips) || typeof tripList?.total !== "number") {
-    throw new Error("MCP list_trips did not return the Phase 1 result contract");
+    throw new Error("MCP list_trips did not return the Phase 2A result contract");
+  }
+  const preview = await callTool(3, "preview_trip", {
+    name: "OAuth verification preview",
+    stops: [{ name: "Chicago", arrivalDate: null, departureDate: null }],
+  });
+  if (
+    preview?.proposal?.name !== "OAuth verification preview" ||
+    !preview?.confirmationToken?.startsWith("voyage-create-trip-v1:") ||
+    typeof preview?.confirmationExpiresAt !== "string"
+  ) {
+    throw new Error("MCP preview_trip did not return the Phase 2A confirmation contract");
   }
 
   console.log(
@@ -216,6 +227,11 @@ try {
           tool: "list_trips",
           resultShapeValid: true,
           accessibleTripCount: tripList.total,
+        },
+        tripPreview: {
+          tool: "preview_trip",
+          resultShapeValid: true,
+          wroteData: false,
         },
       },
       null,

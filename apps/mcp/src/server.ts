@@ -6,6 +6,12 @@ import {
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import {
+  ConfirmationTokenError,
+  createTripFromMcp,
+  IdempotencyConflictError,
+  previewTripCreation,
+} from "./trip-mutations";
 import { getTripWorkspace, listTrips } from "./trips-repository";
 import type { AuthenticateOAuthRequest, Bindings } from "./types";
 
@@ -14,6 +20,12 @@ const readOnlyAnnotations = {
   readOnlyHint: true,
   destructiveHint: false,
   openWorldHint: false,
+} as const;
+const additiveWriteAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  openWorldHint: false,
+  idempotentHint: true,
 } as const;
 
 const nullableString = {
@@ -46,6 +58,49 @@ const tripSummarySchema = {
     stops: { type: "array" as const, items: tripStopSchema },
   },
   required: ["id", "name", "startDate", "endDate", "accessLevel", "updatedAt", "url", "stops"],
+  additionalProperties: false,
+};
+
+const tripCreationStopSchema = {
+  type: "object" as const,
+  properties: {
+    name: { type: "string" as const, minLength: 1, maxLength: 160 },
+    arrivalDate: nullableString,
+    departureDate: nullableString,
+  },
+  required: ["name", "arrivalDate", "departureDate"],
+  additionalProperties: false,
+};
+
+const tripCreationProperties = {
+  name: { type: "string" as const, minLength: 1, maxLength: 80 },
+  stops: {
+    type: "array" as const,
+    minItems: 1,
+    maxItems: 20,
+    items: tripCreationStopSchema,
+  },
+};
+
+const tripCreationPreviewSchema = {
+  type: "object" as const,
+  properties: {
+    name: { type: "string" as const },
+    startDate: nullableString,
+    endDate: nullableString,
+    stops: {
+      type: "array" as const,
+      items: {
+        ...tripCreationStopSchema,
+        properties: {
+          ...tripCreationStopSchema.properties,
+          position: { type: "integer" as const, minimum: 0 },
+        },
+        required: [...tripCreationStopSchema.required, "position"],
+      },
+    },
+  },
+  required: ["name", "startDate", "endDate", "stops"],
   additionalProperties: false,
 };
 
@@ -197,15 +252,70 @@ const connectionTool = {
     type: "object" as const,
     properties: {
       accountSubject: { type: "string" as const },
-      environment: { type: "string" as const, const: "staging" },
+      environment: { type: "string" as const, enum: ["staging", "production"] },
       tripDataAccess: { type: "boolean" as const, const: true },
-      tripWriteAccess: { type: "boolean" as const, const: false },
+      tripWriteAccess: { type: "boolean" as const, const: true },
     },
     required: ["accountSubject", "environment", "tripDataAccess", "tripWriteAccess"],
     additionalProperties: false,
   },
   securitySchemes: oauthSecuritySchemes,
   annotations: readOnlyAnnotations,
+  _meta: { securitySchemes: oauthSecuritySchemes },
+};
+
+const previewTripTool = {
+  name: "preview_trip",
+  title: "Preview a new Voyage trip",
+  description:
+    "Validate and preview an additive-only trip proposal without saving it. Show the exact returned proposal to the user and ask for explicit confirmation before calling create_trip with the same fields and confirmation token.",
+  inputSchema: {
+    type: "object" as const,
+    properties: tripCreationProperties,
+    required: ["name", "stops"],
+    additionalProperties: false,
+  },
+  outputSchema: {
+    type: "object" as const,
+    properties: {
+      proposal: tripCreationPreviewSchema,
+      confirmationToken: { type: "string" as const },
+      confirmationExpiresAt: { type: "string" as const },
+    },
+    required: ["proposal", "confirmationToken", "confirmationExpiresAt"],
+    additionalProperties: false,
+  },
+  securitySchemes: oauthSecuritySchemes,
+  annotations: readOnlyAnnotations,
+  _meta: { securitySchemes: oauthSecuritySchemes },
+};
+
+const createTripTool = {
+  name: "create_trip",
+  title: "Create a Voyage trip",
+  description:
+    "Create one new private Voyage trip for the connected account. Call only after preview_trip and the user explicitly confirms that exact proposal. Use a new UUID idempotency key for a new user-confirmed operation; reuse it only when retrying the same operation.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      ...tripCreationProperties,
+      confirmationToken: { type: "string" as const },
+      idempotencyKey: { type: "string" as const, format: "uuid" },
+    },
+    required: ["name", "stops", "confirmationToken", "idempotencyKey"],
+    additionalProperties: false,
+  },
+  outputSchema: {
+    type: "object" as const,
+    properties: {
+      trip: tripSummarySchema,
+      idempotentReplay: { type: "boolean" as const },
+    },
+    required: ["trip", "idempotentReplay"],
+    additionalProperties: false,
+  },
+  securitySchemes: oauthSecuritySchemes,
+  annotations: additiveWriteAnnotations,
   _meta: { securitySchemes: oauthSecuritySchemes },
 };
 
@@ -265,7 +375,7 @@ const getTripTool = {
   _meta: { securitySchemes: oauthSecuritySchemes },
 };
 
-const tools = [connectionTool, listTripsTool, getTripTool];
+const tools = [connectionTool, listTripsTool, getTripTool, previewTripTool, createTripTool];
 const listTripsInput = z
   .object({
     limit: z.number().int().min(1).max(100).optional(),
@@ -273,6 +383,55 @@ const listTripsInput = z
   })
   .strict();
 const getTripInput = z.object({ tripId: z.string().uuid() }).strict();
+const dateOnlyInput = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => {
+    const [year, month, day] = value.split("-").map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return (
+      date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day
+    );
+  });
+const tripCreationInput = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    stops: z
+      .array(
+        z
+          .object({
+            name: z.string().trim().min(1).max(160),
+            arrivalDate: dateOnlyInput.nullable(),
+            departureDate: dateOnlyInput.nullable(),
+          })
+          .strict()
+          .superRefine((stop, context) => {
+            if (stop.departureDate && !stop.arrivalDate) {
+              context.addIssue({
+                code: "custom",
+                path: ["departureDate"],
+                message: "Arrival date is required when departure date is set.",
+              });
+            }
+            if (stop.arrivalDate && stop.departureDate && stop.departureDate < stop.arrivalDate) {
+              context.addIssue({
+                code: "custom",
+                path: ["departureDate"],
+                message: "Departure date must be on or after arrival date.",
+              });
+            }
+          }),
+      )
+      .min(1)
+      .max(20),
+  })
+  .strict();
+const createTripInput = tripCreationInput.extend({
+  confirmationToken: z.string().min(1),
+  idempotencyKey: z.string().uuid(),
+});
 
 export function authenticationChallenge(bindings: Bindings): string {
   const metadataUrl = `${bindings.MCP_RESOURCE_URL}/.well-known/oauth-protected-resource`;
@@ -293,10 +452,10 @@ export function createVoyageMcpServer(
   authenticateOAuthRequest: AuthenticateOAuthRequest,
 ): McpServer {
   const server = new McpServer(
-    { name: "voyage-trip-planner", version: "0.2.0-phase-1" },
+    { name: "voyage-trip-planner", version: "0.3.0-phase-2a" },
     {
       instructions:
-        "Read-only Voyage trip access. Call list_trips to identify a trip, then get_trip for its full workspace. Enforce the linked user's memberships. This server cannot create, update, or delete anything; never claim a proposed change was saved.",
+        "Read Voyage trips with list_trips and get_trip. To create a trip, gather its name and ordered destinations with dates, call preview_trip, show the exact proposal to the user, and obtain explicit confirmation. Only then call create_trip with unchanged fields, the preview token, and a fresh UUID idempotency key. Creation is additive-only: this server cannot update, delete, invite collaborators, or add bookings and plans.",
     },
   );
 
@@ -312,13 +471,18 @@ export function createVoyageMcpServer(
     if (params.name === connectionTool.name) {
       const result = {
         accountSubject: identity.subject,
-        environment: "staging" as const,
+        environment: bindings.ENVIRONMENT,
         tripDataAccess: true as const,
-        tripWriteAccess: false as const,
+        tripWriteAccess: true as const,
       };
       return {
         structuredContent: result,
-        content: [{ type: "text", text: "Voyage is connected with read-only trip access." }],
+        content: [
+          {
+            type: "text",
+            text: `Voyage ${bindings.ENVIRONMENT} is connected with trip reading and additive trip creation.`,
+          },
+        ],
       };
     }
 
@@ -344,6 +508,67 @@ export function createVoyageMcpServer(
           },
         ],
       };
+    }
+
+    if (params.name === previewTripTool.name) {
+      const parsed = tripCreationInput.safeParse(params.arguments ?? {});
+      if (!parsed.success) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          "Provide a valid trip name and 1–20 ordered destinations with valid dates.",
+        );
+      }
+
+      const result = await previewTripCreation(parsed.data, bindings.MCP_CONFIRMATION_SECRET);
+      return {
+        structuredContent: result,
+        content: [
+          {
+            type: "text",
+            text: `Preview ready for ${result.proposal.name}: ${result.proposal.stops.length} destinations from ${result.proposal.startDate ?? "unscheduled"} to ${result.proposal.endDate ?? "unscheduled"}. Show this exact proposal and ask the user to confirm before saving.`,
+          },
+        ],
+      };
+    }
+
+    if (params.name === createTripTool.name) {
+      const parsed = createTripInput.safeParse(params.arguments ?? {});
+      if (!parsed.success) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          "Provide the exact previewed trip, its confirmation token, and a UUID idempotency key.",
+        );
+      }
+
+      const { confirmationToken, idempotencyKey, ...tripInput } = parsed.data;
+      try {
+        const result = await createTripFromMcp(
+          bindings.DB,
+          identity.userId,
+          identity.clientId,
+          bindings.APP_URL,
+          tripInput,
+          confirmationToken,
+          idempotencyKey,
+          bindings.MCP_CONFIRMATION_SECRET,
+        );
+        return {
+          structuredContent: result,
+          content: [
+            {
+              type: "text",
+              text: result.idempotentReplay
+                ? `This request was already completed. ${result.trip.name} is available in Voyage: ${result.trip.url}`
+                : `Created ${result.trip.name} in Voyage: ${result.trip.url}`,
+            },
+          ],
+        };
+      } catch (error) {
+        if (error instanceof ConfirmationTokenError || error instanceof IdempotencyConflictError) {
+          throw new McpError(ErrorCode.InvalidParams, error.message);
+        }
+        throw error;
+      }
     }
 
     const parsed = getTripInput.safeParse(params.arguments ?? {});

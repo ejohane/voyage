@@ -10,6 +10,7 @@ const bindings: Bindings = {
   MCP_RESOURCE_URL: "https://mcp-staging.voyageplan.app",
   CLERK_AUTHORIZATION_SERVER: "https://example.clerk.accounts.dev",
   CLERK_JWT_KEY: "test-public-key",
+  MCP_CONFIRMATION_SECRET: "test-confirmation-secret",
 };
 
 const context = {
@@ -89,9 +90,10 @@ async function seedTrips() {
   ]);
 }
 
-describe("Voyage Phase 1 MCP worker", () => {
+describe("Voyage Phase 2A MCP worker", () => {
   beforeEach(async () => {
     await env.DB.batch([
+      env.DB.prepare("DELETE FROM mcp_mutations"),
       env.DB.prepare("DELETE FROM trip_plans"),
       env.DB.prepare("DELETE FROM travel_segments"),
       env.DB.prepare("DELETE FROM stays"),
@@ -118,7 +120,7 @@ describe("Voyage Phase 1 MCP worker", () => {
     });
   });
 
-  it("initializes and advertises only read-only OAuth tools", async () => {
+  it("initializes and advertises read tools plus an additive idempotent write", async () => {
     const authenticate = vi.fn<AuthenticateOAuthRequest>(async () => null);
     const worker = createVoyageMcpWorker(authenticate);
 
@@ -151,8 +153,10 @@ describe("Voyage Phase 1 MCP worker", () => {
       "get_connection_status",
       "list_trips",
       "get_trip",
+      "preview_trip",
+      "create_trip",
     ]);
-    for (const tool of list.result.tools) {
+    for (const tool of list.result.tools.slice(0, 4)) {
       expect(tool).toMatchObject({
         annotations: {
           readOnlyHint: true,
@@ -162,6 +166,15 @@ describe("Voyage Phase 1 MCP worker", () => {
         securitySchemes: [{ type: "oauth2", scopes: ["openid"] }],
       });
     }
+    expect(list.result.tools[4]).toMatchObject({
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: false,
+        idempotentHint: true,
+      },
+      securitySchemes: [{ type: "oauth2", scopes: ["openid"] }],
+    });
     expect(authenticate).not.toHaveBeenCalled();
   });
 
@@ -207,10 +220,11 @@ describe("Voyage Phase 1 MCP worker", () => {
     );
   });
 
-  it("reports read-only trip access for the linked account", async () => {
+  it("reports additive trip creation access for the linked account", async () => {
     const worker = createVoyageMcpWorker(async () => ({
       userId: "user_123",
       subject: "user_123",
+      clientId: "dynamic_client_123",
       scopes: ["openid"],
     }));
     const response = await worker.fetch(
@@ -226,7 +240,7 @@ describe("Voyage Phase 1 MCP worker", () => {
       accountSubject: "user_123",
       environment: "staging",
       tripDataAccess: true,
-      tripWriteAccess: false,
+      tripWriteAccess: true,
     });
   });
 
@@ -235,6 +249,7 @@ describe("Voyage Phase 1 MCP worker", () => {
     const worker = createVoyageMcpWorker(async () => ({
       userId: "user_123",
       subject: "user_123",
+      clientId: "dynamic_client_123",
       scopes: ["openid"],
     }));
     const response = await worker.fetch(
@@ -267,6 +282,7 @@ describe("Voyage Phase 1 MCP worker", () => {
     const worker = createVoyageMcpWorker(async () => ({
       userId: "user_123",
       subject: "user_123",
+      clientId: "dynamic_client_123",
       scopes: ["openid"],
     }));
     const response = await worker.fetch(
@@ -293,11 +309,251 @@ describe("Voyage Phase 1 MCP worker", () => {
     });
   });
 
+  it("previews without writing, then creates and audits the confirmed trip atomically", async () => {
+    const worker = createVoyageMcpWorker(async () => ({
+      userId: "user_123",
+      subject: "user_123",
+      clientId: "dynamic_client_123",
+      scopes: ["openid"],
+    }));
+    const proposal = {
+      name: "  Portugal 2027  ",
+      stops: [
+        {
+          name: " Lisbon ",
+          arrivalDate: "2027-04-02",
+          departureDate: "2027-04-06",
+        },
+        {
+          name: "Porto",
+          arrivalDate: "2027-04-06",
+          departureDate: "2027-04-10",
+        },
+      ],
+    };
+
+    const previewResponse = await worker.fetch(
+      mcpRequest("tools/call", { name: "preview_trip", arguments: proposal }),
+      bindings,
+      context,
+    );
+    const previewBody = (await previewResponse.json()) as {
+      result: {
+        structuredContent: {
+          proposal: Record<string, unknown>;
+          confirmationToken: string;
+        };
+      };
+    };
+
+    expect(previewBody.result.structuredContent.proposal).toEqual({
+      name: "Portugal 2027",
+      startDate: "2027-04-02",
+      endDate: "2027-04-10",
+      stops: [
+        {
+          name: "Lisbon",
+          position: 0,
+          arrivalDate: "2027-04-02",
+          departureDate: "2027-04-06",
+        },
+        {
+          name: "Porto",
+          position: 1,
+          arrivalDate: "2027-04-06",
+          departureDate: "2027-04-10",
+        },
+      ],
+    });
+    expect(previewBody.result.structuredContent.confirmationToken).toMatch(
+      /^voyage-create-trip-v1:\d{13}:[a-f0-9]{64}$/,
+    );
+    await expect(env.DB.prepare("SELECT count(*) AS count FROM trips").first()).resolves.toEqual({
+      count: 0,
+    });
+
+    const createArguments = {
+      ...proposal,
+      confirmationToken: previewBody.result.structuredContent.confirmationToken,
+      idempotencyKey: "77777777-7777-4777-8777-777777777777",
+    };
+    const createResponse = await worker.fetch(
+      mcpRequest("tools/call", { name: "create_trip", arguments: createArguments }),
+      bindings,
+      context,
+    );
+    const createBody = (await createResponse.json()) as {
+      result: {
+        structuredContent: {
+          trip: { id: string; name: string; stops: Array<{ name: string }> };
+          idempotentReplay: boolean;
+        };
+      };
+    };
+    const createdTripId = createBody.result.structuredContent.trip.id;
+
+    expect(createBody.result.structuredContent).toMatchObject({
+      trip: {
+        name: "Portugal 2027",
+        startDate: "2027-04-02",
+        endDate: "2027-04-10",
+        accessLevel: "owner",
+        url: `${bindings.APP_URL}/trips/${createdTripId}`,
+        stops: [{ name: "Lisbon" }, { name: "Porto" }],
+      },
+      idempotentReplay: false,
+    });
+    await expect(
+      env.DB.prepare(
+        `SELECT user_id, access_level
+           FROM trip_memberships
+           WHERE trip_id = ?`,
+      )
+        .bind(createdTripId)
+        .first(),
+    ).resolves.toEqual({ user_id: "user_123", access_level: "owner" });
+    await expect(
+      env.DB.prepare(
+        `SELECT user_id, oauth_client_id, tool_name, idempotency_key, status,
+                  resource_type, resource_id
+           FROM mcp_mutations
+           WHERE resource_id = ?`,
+      )
+        .bind(createdTripId)
+        .first(),
+    ).resolves.toEqual({
+      user_id: "user_123",
+      oauth_client_id: "dynamic_client_123",
+      tool_name: "create_trip",
+      idempotency_key: createArguments.idempotencyKey,
+      status: "succeeded",
+      resource_type: "trip",
+      resource_id: createdTripId,
+    });
+
+    const replayResponse = await worker.fetch(
+      mcpRequest("tools/call", { name: "create_trip", arguments: createArguments }),
+      bindings,
+      context,
+    );
+    const replayBody = (await replayResponse.json()) as {
+      result: {
+        structuredContent: {
+          trip: { id: string };
+          idempotentReplay: boolean;
+        };
+      };
+    };
+    expect(replayBody.result.structuredContent).toEqual({
+      trip: createBody.result.structuredContent.trip,
+      idempotentReplay: true,
+    });
+    await expect(env.DB.prepare("SELECT count(*) AS count FROM trips").first()).resolves.toEqual({
+      count: 1,
+    });
+    await expect(
+      env.DB.prepare("SELECT count(*) AS count FROM mcp_mutations").first(),
+    ).resolves.toEqual({ count: 1 });
+  });
+
+  it("rejects a changed proposal token and an idempotency key reused for another trip", async () => {
+    const worker = createVoyageMcpWorker(async () => ({
+      userId: "user_123",
+      subject: "user_123",
+      clientId: "dynamic_client_123",
+      scopes: ["openid"],
+    }));
+    const firstProposal = {
+      name: "Iceland",
+      stops: [
+        {
+          name: "Reykjavik",
+          arrivalDate: "2027-06-01",
+          departureDate: "2027-06-05",
+        },
+      ],
+    };
+    const firstPreviewResponse = await worker.fetch(
+      mcpRequest("tools/call", { name: "preview_trip", arguments: firstProposal }),
+      bindings,
+      context,
+    );
+    const firstPreview = (await firstPreviewResponse.json()) as {
+      result: { structuredContent: { confirmationToken: string } };
+    };
+    const idempotencyKey = "88888888-8888-4888-8888-888888888888";
+
+    const tamperedResponse = await worker.fetch(
+      mcpRequest("tools/call", {
+        name: "create_trip",
+        arguments: {
+          ...firstProposal,
+          name: "Changed after preview",
+          confirmationToken: firstPreview.result.structuredContent.confirmationToken,
+          idempotencyKey,
+        },
+      }),
+      bindings,
+      context,
+    );
+    const tamperedBody = (await tamperedResponse.json()) as { error: { message: string } };
+    expect(tamperedBody.error.message).toContain("no longer matches");
+    await expect(env.DB.prepare("SELECT count(*) AS count FROM trips").first()).resolves.toEqual({
+      count: 0,
+    });
+
+    await worker.fetch(
+      mcpRequest("tools/call", {
+        name: "create_trip",
+        arguments: {
+          ...firstProposal,
+          confirmationToken: firstPreview.result.structuredContent.confirmationToken,
+          idempotencyKey,
+        },
+      }),
+      bindings,
+      context,
+    );
+
+    const secondProposal = {
+      ...firstProposal,
+      name: "Norway",
+      stops: [{ ...firstProposal.stops[0], name: "Oslo" }],
+    };
+    const secondPreviewResponse = await worker.fetch(
+      mcpRequest("tools/call", { name: "preview_trip", arguments: secondProposal }),
+      bindings,
+      context,
+    );
+    const secondPreview = (await secondPreviewResponse.json()) as {
+      result: { structuredContent: { confirmationToken: string } };
+    };
+    const conflictResponse = await worker.fetch(
+      mcpRequest("tools/call", {
+        name: "create_trip",
+        arguments: {
+          ...secondProposal,
+          confirmationToken: secondPreview.result.structuredContent.confirmationToken,
+          idempotencyKey,
+        },
+      }),
+      bindings,
+      context,
+    );
+    const conflictBody = (await conflictResponse.json()) as { error: { message: string } };
+
+    expect(conflictBody.error.message).toContain("already used for a different trip");
+    await expect(env.DB.prepare("SELECT count(*) AS count FROM trips").first()).resolves.toEqual({
+      count: 1,
+    });
+  });
+
   it("does not reveal whether an inaccessible trip exists", async () => {
     await seedTrips();
     const worker = createVoyageMcpWorker(async () => ({
       userId: "user_123",
       subject: "user_123",
+      clientId: "dynamic_client_123",
       scopes: ["openid"],
     }));
     const response = await worker.fetch(
