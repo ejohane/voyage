@@ -15,7 +15,7 @@ function LegalPage({ title, children }: LegalPageProps) {
         </div>
       </header>
       <main className="mx-auto w-full max-w-4xl px-5 py-12 sm:px-8 sm:py-16">
-        <p className="text-sm text-muted-foreground">Last updated July 25, 2026</p>
+        <p className="text-sm text-muted-foreground">Last updated July 28, 2026</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">{title}</h1>
         <div className="mt-10 space-y-8 text-sm leading-7 text-muted-foreground">{children}</div>
       </main>

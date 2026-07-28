@@ -6,6 +6,8 @@ export interface Bindings {
   CLERK_AUTHORIZATION_SERVER: string;
   CLERK_JWT_KEY: string;
   MCP_CONFIRMATION_SECRET: string;
+  MCP_RATE_LIMITER: RateLimit;
+  OPENAI_APPS_CHALLENGE?: string;
 }
 
 export interface LinkedVoyageIdentity {

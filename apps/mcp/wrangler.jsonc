@@ -18,6 +18,13 @@
       "migrations_dir": "../web/migrations"
     }
   ],
+  "ratelimits": [
+    {
+      "name": "MCP_RATE_LIMITER",
+      "namespace_id": "6453001",
+      "simple": { "limit": 120, "period": 60 }
+    }
+  ],
   "vars": {
     "ENVIRONMENT": "production",
     "APP_URL": "https://voyageplan.app",
@@ -43,6 +50,13 @@
           "database_name": "voyage-staging",
           "database_id": "1d861d6e-f26a-4449-95b9-2eb4a6da5008",
           "migrations_dir": "../web/migrations"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "MCP_RATE_LIMITER",
+          "namespace_id": "6453002",
+          "simple": { "limit": 120, "period": 60 }
         }
       ],
       "vars": {

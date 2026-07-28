@@ -42,6 +42,20 @@ function PrivacyPage() {
         </p>
       </LegalSection>
 
+      <LegalSection title="ChatGPT and Codex connection">
+        <p>
+          If you connect Voyage to ChatGPT or Codex, OpenAI receives the trip information needed to
+          answer your request, such as trip names, destinations, dates, transportation, stays,
+          plans, booking metadata, and your access level. The connection can create or change Voyage
+          data only through the tools you invoke and the confirmation steps shown to you.
+        </p>
+        <p>
+          Voyage uses your connected account identity to enforce trip membership and does not send
+          your Voyage password, authentication token, or internal audit records in tool results.
+          OpenAI processes connected-app data under its own terms and privacy notice.
+        </p>
+      </LegalSection>
+
       <LegalSection title="Data choices and security">
         <p>
           You control the trip information you add. Voyage uses access controls and encrypted

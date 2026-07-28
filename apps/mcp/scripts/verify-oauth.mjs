@@ -90,7 +90,7 @@ const callbackServer = Bun.serve({
     }
 
     resolveCallback(code);
-    return new Response("Voyage Phase 2C authorization succeeded. You can close this tab.");
+    return new Response("Voyage Phase 3 authorization succeeded. You can close this tab.");
   },
 });
 
@@ -101,7 +101,7 @@ try {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      client_name: "Voyage Phase 2C Verification",
+      client_name: "Voyage Phase 3 Verification",
       redirect_uris: [redirectUri],
       grant_types: ["authorization_code"],
       response_types: ["code"],
@@ -170,7 +170,7 @@ try {
   const claims = decodeJwtPayload(token.access_token);
   const grantedScopes = parseScopes(token.scope, claims.scope, claims.scp);
   if (!requestedScopes.every((scope) => grantedScopes.has(scope))) {
-    throw new Error(`OAuth token did not grant the Phase 2C scopes: ${requestedScope}`);
+    throw new Error(`OAuth token did not grant the Phase 3 scopes: ${requestedScope}`);
   }
   if ([...sensitiveScopes].some((scope) => grantedScopes.has(scope))) {
     throw new Error("OAuth token granted a sensitive Clerk metadata scope");
@@ -238,16 +238,18 @@ try {
   if (
     result?.tripDataAccess !== true ||
     result?.tripWriteAccess !== true ||
-    result?.itineraryWriteAccess !== true
+    result?.itineraryWriteAccess !== true ||
+    result?.tripUpdateAccess !== true ||
+    result?.itineraryUpdateAccess !== true
   ) {
-    throw new Error("MCP tool did not expose the Phase 2C additive write boundary");
+    throw new Error("MCP tool did not expose the Phase 3 controlled update boundary");
   }
-  if (result.accountSubject !== claims.sub) {
-    throw new Error("MCP account subject did not match the access token subject");
+  if (result.connected !== true) {
+    throw new Error("MCP did not report the Voyage account as connected");
   }
   const tripList = await callTool(2, "list_trips", { limit: 10 });
   if (!Array.isArray(tripList?.trips) || typeof tripList?.total !== "number") {
-    throw new Error("MCP list_trips did not return the Phase 2C result contract");
+    throw new Error("MCP list_trips did not return the Phase 3 result contract");
   }
   const preview = await callTool(3, "preview_trip", {
     name: "OAuth verification preview",
@@ -258,7 +260,7 @@ try {
     !preview?.confirmationToken?.startsWith("voyage-create-trip-v1:") ||
     typeof preview?.confirmationExpiresAt !== "string"
   ) {
-    throw new Error("MCP preview_trip did not return the Phase 2C confirmation contract");
+    throw new Error("MCP preview_trip did not return the Phase 3 confirmation contract");
   }
   const editableTrip = tripList.trips.find(
     (trip) => trip.accessLevel !== "viewer" && Array.isArray(trip.stops) && trip.stops.length > 0,
@@ -291,9 +293,7 @@ try {
       !itineraryPreview.confirmationToken?.startsWith("voyage-add-itinerary-items-v1:") ||
       typeof itineraryPreview.confirmationExpiresAt !== "string")
   ) {
-    throw new Error(
-      "MCP preview_itinerary_items did not return the Phase 2C confirmation contract",
-    );
+    throw new Error("MCP preview_itinerary_items did not return the Phase 3 confirmation contract");
   }
 
   console.log(
@@ -326,11 +326,13 @@ try {
         },
         mcp: {
           tool: "get_connection_status",
-          accountSubjectMatches: true,
+          connected: true,
           environment: result.environment,
           tripDataAccess: result.tripDataAccess,
           tripWriteAccess: result.tripWriteAccess,
           itineraryWriteAccess: result.itineraryWriteAccess,
+          tripUpdateAccess: result.tripUpdateAccess,
+          itineraryUpdateAccess: result.itineraryUpdateAccess,
         },
         tripRead: {
           tool: "list_trips",

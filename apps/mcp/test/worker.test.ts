@@ -11,6 +11,7 @@ const bindings: Bindings = {
   CLERK_AUTHORIZATION_SERVER: "https://example.clerk.accounts.dev",
   CLERK_JWT_KEY: "test-public-key",
   MCP_CONFIRMATION_SECRET: "test-confirmation-secret",
+  MCP_RATE_LIMITER: env.MCP_RATE_LIMITER,
 };
 
 const context = {
@@ -90,7 +91,7 @@ async function seedTrips() {
   ]);
 }
 
-describe("Voyage Phase 2C MCP worker", () => {
+describe("Voyage Phase 3 MCP worker", () => {
   beforeEach(async () => {
     await env.DB.batch([
       env.DB.prepare("DELETE FROM mcp_mutations"),
@@ -120,7 +121,7 @@ describe("Voyage Phase 2C MCP worker", () => {
     });
   });
 
-  it("reports the uncached Phase 2C production boundary", async () => {
+  it("reports the uncached Phase 3 production boundary", async () => {
     const worker = createVoyageMcpWorker(async () => null);
     const response = await worker.fetch(
       new Request("https://mcp-staging.voyageplan.app/health"),
@@ -133,10 +134,23 @@ describe("Voyage Phase 2C MCP worker", () => {
     await expect(response.json()).resolves.toEqual({
       status: "ok",
       service: "voyage-mcp",
-      phase: "2c",
+      phase: "3",
       environment: "staging",
-      tripDataAccess: "read-write-additive-itinerary",
+      tripDataAccess: "read-write-controlled-updates",
     });
+  });
+
+  it("serves only the configured OpenAI domain challenge token", async () => {
+    const worker = createVoyageMcpWorker(async () => null);
+    const response = await worker.fetch(
+      new Request(`${bindings.MCP_RESOURCE_URL}/.well-known/openai-apps-challenge`),
+      { ...bindings, OPENAI_APPS_CHALLENGE: "review-token-123" },
+      context,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toContain("text/plain");
+    await expect(response.text()).resolves.toBe("review-token-123");
   });
 
   it("initializes and advertises read tools plus additive idempotent writes", async () => {
@@ -176,6 +190,10 @@ describe("Voyage Phase 2C MCP worker", () => {
       "create_trip",
       "preview_itinerary_items",
       "add_itinerary_items",
+      "preview_trip_update",
+      "update_trip",
+      "preview_itinerary_updates",
+      "update_itinerary_items",
     ]);
     for (const tool of list.result.tools.filter((tool) => tool.annotations.readOnlyHint)) {
       expect(tool).toMatchObject({
@@ -187,11 +205,24 @@ describe("Voyage Phase 2C MCP worker", () => {
         securitySchemes: [{ type: "oauth2", scopes: ["openid"] }],
       });
     }
-    for (const tool of list.result.tools.filter((tool) => !tool.annotations.readOnlyHint)) {
+    for (const tool of list.result.tools.filter(
+      (tool) => !tool.annotations.readOnlyHint && !tool.annotations.destructiveHint,
+    )) {
       expect(tool).toMatchObject({
         annotations: {
           readOnlyHint: false,
           destructiveHint: false,
+          openWorldHint: false,
+          idempotentHint: true,
+        },
+        securitySchemes: [{ type: "oauth2", scopes: ["openid"] }],
+      });
+    }
+    for (const tool of list.result.tools.filter((tool) => tool.annotations.destructiveHint)) {
+      expect(tool).toMatchObject({
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: true,
           openWorldHint: false,
           idempotentHint: true,
         },
@@ -243,7 +274,7 @@ describe("Voyage Phase 2C MCP worker", () => {
     );
   });
 
-  it("reports additive trip and itinerary creation access for the linked account", async () => {
+  it("reports write and update access without echoing the internal account subject", async () => {
     const worker = createVoyageMcpWorker(async () => ({
       userId: "user_123",
       subject: "user_123",
@@ -260,12 +291,41 @@ describe("Voyage Phase 2C MCP worker", () => {
     };
 
     expect(body.result.structuredContent).toEqual({
-      accountSubject: "user_123",
+      connected: true,
       environment: "staging",
       tripDataAccess: true,
       tripWriteAccess: true,
       itineraryWriteAccess: true,
+      tripUpdateAccess: true,
+      itineraryUpdateAccess: true,
     });
+    expect(body.result.structuredContent).not.toHaveProperty("accountSubject");
+  });
+
+  it("rate limits authenticated tool calls without returning account identifiers", async () => {
+    const worker = createVoyageMcpWorker(async () => ({
+      userId: "user_123",
+      subject: "user_123",
+      clientId: "dynamic_client_123",
+      scopes: ["openid"],
+    }));
+    const response = await worker.fetch(
+      mcpRequest("tools/call", { name: "get_connection_status", arguments: {} }),
+      {
+        ...bindings,
+        MCP_RATE_LIMITER: {
+          limit: async () => ({ success: false }),
+        } as RateLimit,
+      },
+      context,
+    );
+    const body = (await response.json()) as {
+      result: { isError: boolean; content: Array<{ text: string }> };
+    };
+
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0]?.text).toContain("too many requests");
+    expect(JSON.stringify(body)).not.toContain("user_123");
   });
 
   it("lists only trips where the linked account is a member", async () => {

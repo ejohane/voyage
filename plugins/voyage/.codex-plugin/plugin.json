@@ -1,0 +1,31 @@
+{
+  "name": "voyage",
+  "version": "0.6.0",
+  "description": "Plan, read, create, and safely correct trips in Voyage.",
+  "author": {
+    "name": "Erik Johansson",
+    "url": "https://voyageplan.app"
+  },
+  "homepage": "https://voyageplan.app",
+  "repository": "https://github.com/ejohane/voyage",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Voyage",
+    "shortDescription": "Plan and safely update trips with Voyage.",
+    "longDescription": "Connect your Voyage account to review trip workspaces, create trips, add itinerary items, and apply explicitly confirmed corrections without leaving the conversation.",
+    "developerName": "Erik Johansson",
+    "category": "Travel",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://voyageplan.app",
+    "privacyPolicyURL": "https://voyageplan.app/privacy",
+    "termsOfServiceURL": "https://voyageplan.app/terms",
+    "defaultPrompt": [
+      "Show me my upcoming Voyage trips.",
+      "Help me plan a new trip in Voyage.",
+      "Review my itinerary and correct any changes I confirm."
+    ],
+    "composerIcon": "./assets/voyage-logo.png",
+    "logo": "./assets/voyage-logo.png"
+  }
+}

@@ -1,0 +1,15 @@
+interface:
+  display_name: "Plan with Voyage"
+  short_description: "Plan and safely update Voyage trips"
+  default_prompt: "Use $plan-with-voyage to review and update my trip safely."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "voyage"
+      description: "Read and safely update the connected Voyage account"
+      transport: "streamable_http"
+      url: "https://mcp.voyageplan.app/mcp"
+
+policy:
+  allow_implicit_invocation: true
