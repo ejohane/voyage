@@ -1,5 +1,6 @@
 import { createMcpHandler } from "agents/mcp";
 import { authenticateClerkOAuthRequest } from "./auth";
+import { requiredOAuthScopes } from "./oauth-scopes";
 import { authenticationChallenge, createVoyageMcpServer } from "./server";
 import type { AuthenticateOAuthRequest, Bindings } from "./types";
 
@@ -22,7 +23,7 @@ function protectedResourceMetadata(bindings: Bindings): Response {
   return jsonResponse({
     resource: bindings.MCP_RESOURCE_URL,
     authorization_servers: [bindings.CLERK_AUTHORIZATION_SERVER],
-    scopes_supported: ["openid"],
+    scopes_supported: requiredOAuthScopes,
     bearer_methods_supported: ["header"],
     resource_documentation: "https://voyageplan.app",
   });
@@ -50,7 +51,7 @@ export function createVoyageMcpWorker(authenticateOAuthRequest: AuthenticateOAut
           {
             status: "ok",
             service: "voyage-mcp",
-            phase: "2b",
+            phase: "2c",
             environment: bindings.ENVIRONMENT,
             tripDataAccess: "read-write-additive-itinerary",
           },

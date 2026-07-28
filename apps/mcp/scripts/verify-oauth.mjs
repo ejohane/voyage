@@ -1,6 +1,20 @@
 const resource = process.env.MCP_RESOURCE_URL ?? "https://mcp-staging.voyageplan.app";
 const authorizationServer =
   process.env.CLERK_AUTHORIZATION_SERVER ?? "https://clerk.voyageplan.app";
+const configuredDefaultScopes = ["openid", "profile", "email"];
+const requestedScopes = [...configuredDefaultScopes, "offline_access"];
+const requestedScope = requestedScopes.join(" ");
+const sensitiveScopes = new Set(["public_metadata", "private_metadata"]);
+
+function parseScopes(...values) {
+  return new Set(
+    values
+      .flatMap((value) =>
+        Array.isArray(value) ? value : typeof value === "string" ? value.trim().split(/\s+/) : [],
+      )
+      .filter(Boolean),
+  );
+}
 
 function base64Url(bytes) {
   return Buffer.from(bytes)
@@ -38,6 +52,14 @@ if (!metadataResponse.ok) {
   throw new Error(`Authorization metadata failed: ${metadataResponse.status}`);
 }
 const metadata = await metadataResponse.json();
+const oidcMetadataResponse = await fetch(`${authorizationServer}/.well-known/openid-configuration`);
+if (!oidcMetadataResponse.ok) {
+  throw new Error(`OIDC metadata failed: ${oidcMetadataResponse.status}`);
+}
+const oidcMetadata = await oidcMetadataResponse.json();
+if (typeof oidcMetadata.userinfo_endpoint !== "string" || !oidcMetadata.userinfo_endpoint) {
+  throw new Error("OIDC metadata did not advertise a user-info endpoint");
+}
 
 let resolveCallback;
 let rejectCallback;
@@ -68,7 +90,7 @@ const callbackServer = Bun.serve({
     }
 
     resolveCallback(code);
-    return new Response("Voyage Phase 2B authorization succeeded. You can close this tab.");
+    return new Response("Voyage Phase 2C authorization succeeded. You can close this tab.");
   },
 });
 
@@ -79,12 +101,11 @@ try {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      client_name: "Voyage Phase 2B Verification",
+      client_name: "Voyage Phase 2C Verification",
       redirect_uris: [redirectUri],
       grant_types: ["authorization_code"],
       response_types: ["code"],
       token_endpoint_auth_method: "none",
-      scope: "openid",
     }),
   });
   if (!registrationResponse.ok) {
@@ -93,6 +114,15 @@ try {
     );
   }
   const registration = await registrationResponse.json();
+  const registeredScopes = parseScopes(registration.scope);
+  if (
+    registeredScopes.size !== requestedScopes.length ||
+    !requestedScopes.every((scope) => registeredScopes.has(scope))
+  ) {
+    throw new Error(
+      `Dynamic client registration returned scopes [${[...registeredScopes].sort().join(", ")}], expected [${[...requestedScopes].sort().join(", ")}]`,
+    );
+  }
 
   const verifier = randomUrlSafeBytes(64);
   const challenge = base64Url(
@@ -103,7 +133,7 @@ try {
     response_type: "code",
     client_id: registration.client_id,
     redirect_uri: redirectUri,
-    scope: "openid",
+    scope: requestedScope,
     state,
     code_challenge: challenge,
     code_challenge_method: "S256",
@@ -138,6 +168,29 @@ try {
   const token = await tokenResponse.json();
   const tokenHeader = decodeJwtHeader(token.access_token);
   const claims = decodeJwtPayload(token.access_token);
+  const grantedScopes = parseScopes(token.scope, claims.scope, claims.scp);
+  if (!requestedScopes.every((scope) => grantedScopes.has(scope))) {
+    throw new Error(`OAuth token did not grant the Phase 2C scopes: ${requestedScope}`);
+  }
+  if ([...sensitiveScopes].some((scope) => grantedScopes.has(scope))) {
+    throw new Error("OAuth token granted a sensitive Clerk metadata scope");
+  }
+
+  const userInfoResponse = await fetch(oidcMetadata.userinfo_endpoint, {
+    headers: { authorization: `Bearer ${token.access_token}` },
+  });
+  if (!userInfoResponse.ok) {
+    throw new Error(`OIDC user info failed (${userInfoResponse.status})`);
+  }
+  const userInfo = await userInfoResponse.json();
+  const oidcIdentity = {
+    subjectMatches: userInfo.sub === claims.sub,
+    emailPresent: typeof userInfo.email === "string" && userInfo.email.length > 0,
+    profileScopeGranted: grantedScopes.has("profile"),
+  };
+  if (!oidcIdentity.subjectMatches || !oidcIdentity.emailPresent) {
+    throw new Error("OIDC user info did not return the linked Voyage identity and email claim");
+  }
   const tokenDiagnostics = {
     header: { alg: tokenHeader.alg, typ: tokenHeader.typ, keyIdPresent: Boolean(tokenHeader.kid) },
     claimNames: Object.keys(claims).sort(),
@@ -150,6 +203,8 @@ try {
     scopeClaim: claims.scope,
     scopesClaim: claims.scp,
     subjectPresent: typeof claims.sub === "string" && claims.sub.length > 0,
+    safeScopesGranted: requestedScopes.every((scope) => grantedScopes.has(scope)),
+    sensitiveScopesGranted: [...sensitiveScopes].some((scope) => grantedScopes.has(scope)),
   };
 
   console.log(JSON.stringify({ tokenDiagnostics }, null, 2));
@@ -185,14 +240,14 @@ try {
     result?.tripWriteAccess !== true ||
     result?.itineraryWriteAccess !== true
   ) {
-    throw new Error("MCP tool did not expose the Phase 2B additive write boundary");
+    throw new Error("MCP tool did not expose the Phase 2C additive write boundary");
   }
   if (result.accountSubject !== claims.sub) {
     throw new Error("MCP account subject did not match the access token subject");
   }
   const tripList = await callTool(2, "list_trips", { limit: 10 });
   if (!Array.isArray(tripList?.trips) || typeof tripList?.total !== "number") {
-    throw new Error("MCP list_trips did not return the Phase 2B result contract");
+    throw new Error("MCP list_trips did not return the Phase 2C result contract");
   }
   const preview = await callTool(3, "preview_trip", {
     name: "OAuth verification preview",
@@ -203,7 +258,7 @@ try {
     !preview?.confirmationToken?.startsWith("voyage-create-trip-v1:") ||
     typeof preview?.confirmationExpiresAt !== "string"
   ) {
-    throw new Error("MCP preview_trip did not return the Phase 2B confirmation contract");
+    throw new Error("MCP preview_trip did not return the Phase 2C confirmation contract");
   }
   const editableTrip = tripList.trips.find(
     (trip) => trip.accessLevel !== "viewer" && Array.isArray(trip.stops) && trip.stops.length > 0,
@@ -237,7 +292,7 @@ try {
       typeof itineraryPreview.confirmationExpiresAt !== "string")
   ) {
     throw new Error(
-      "MCP preview_itinerary_items did not return the Phase 2B confirmation contract",
+      "MCP preview_itinerary_items did not return the Phase 2C confirmation contract",
     );
   }
 
@@ -246,6 +301,13 @@ try {
       {
         dcr: true,
         pkce: "S256",
+        registration: {
+          configuredDefaultsApplied: configuredDefaultScopes.every((scope) =>
+            registeredScopes.has(scope),
+          ),
+          offlineAccessAdded: registeredScopes.has("offline_access"),
+          sensitiveScopesGranted: [...sensitiveScopes].some((scope) => registeredScopes.has(scope)),
+        },
         accessToken: {
           jwt: true,
           issuerMatches: tokenDiagnostics.issuerMatches,
@@ -254,6 +316,13 @@ try {
             token.scope?.split(" ").includes("openid") ||
             claims.scp?.includes?.("openid") ||
             claims.scope?.split?.(" ").includes("openid"),
+          safeScopesGranted: tokenDiagnostics.safeScopesGranted,
+          sensitiveScopesGranted: tokenDiagnostics.sensitiveScopesGranted,
+        },
+        oidcIdentity: {
+          subjectMatches: oidcIdentity.subjectMatches,
+          emailPresent: oidcIdentity.emailPresent,
+          profileScopeGranted: oidcIdentity.profileScopeGranted,
         },
         mcp: {
           tool: "get_connection_status",
