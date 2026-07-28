@@ -56,10 +56,10 @@ committed production app URL and sender address live in `wrangler.jsonc`.
 The local app is available at the URL printed by Vite. The frontend calls `/api/health` through the
 same Workers runtime used by production.
 
-The separate MCP Worker gives linked ChatGPT accounts read-only access to their Voyage trips. See
-the [MCP Phase 1 runbook](docs/MCP_PHASE_1.md) for its tool contract, authorization boundary,
-staging configuration, and verification steps. The [Phase 0 runbook](docs/MCP_PHASE_0.md) preserves
-the original account-linking proof.
+The separate MCP Worker lets linked ChatGPT and Codex accounts read, create, and safely correct
+their membership-scoped Voyage trips. See the [MCP Phase 3 runbook](docs/MCP_PHASE_3.md) for the
+current tool and safety contract and the [public submission guide](docs/MCP_PUBLIC_SUBMISSION.md)
+for the non-secret release materials.
 
 Before committing:
 
@@ -81,4 +81,6 @@ bun run deploy
 - [Gmail OAuth infrastructure](docs/GMAIL_OAUTH.md)
 - [MCP Phase 0](docs/MCP_PHASE_0.md)
 - [MCP Phase 1](docs/MCP_PHASE_1.md)
+- [MCP Phase 3](docs/MCP_PHASE_3.md)
+- [MCP public submission](docs/MCP_PUBLIC_SUBMISSION.md)
 - [Brand direction](design/brand/README.md)

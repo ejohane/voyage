@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "positive": [
+    {
+      "id": "list-upcoming-trips",
+      "prompt": "Show me my upcoming Voyage trips.",
+      "expectedTools": ["list_trips"],
+      "expectedBehavior": "Return only trips available to the connected account and do not mutate data.",
+      "fixture": "A reviewer account with at least two trips."
+    },
+    {
+      "id": "read-complete-trip",
+      "prompt": "Open my Japan trip and summarize the destinations, transportation, stays, and plans.",
+      "expectedTools": ["list_trips", "get_trip"],
+      "expectedBehavior": "Resolve the trip without guessing an ID and summarize the complete workspace.",
+      "fixture": "A Japan trip containing each supported itinerary item type."
+    },
+    {
+      "id": "create-confirmed-trip",
+      "prompt": "Plan a Lisbon and Porto trip for June 1 through June 8, then save it after I confirm the preview.",
+      "expectedTools": ["preview_trip", "create_trip"],
+      "expectedBehavior": "Preview first, show exact values, wait for explicit confirmation, then create with unchanged values.",
+      "fixture": "An authenticated reviewer account."
+    },
+    {
+      "id": "add-confirmed-itinerary",
+      "prompt": "Add my confirmed train, hotel, and museum plan to the Lisbon trip after showing me the exact batch.",
+      "expectedTools": ["get_trip", "preview_itinerary_items", "add_itinerary_items"],
+      "expectedBehavior": "Use current destination IDs, preview the mixed batch, and write only after explicit confirmation.",
+      "fixture": "A Lisbon trip with a destination and representative item details."
+    },
+    {
+      "id": "correct-trip-and-itinerary",
+      "prompt": "Change the Japan trip name and checkout date, and correct the flight status after I approve the before-and-after values.",
+      "expectedTools": [
+        "get_trip",
+        "preview_trip_update",
+        "update_trip",
+        "preview_itinerary_updates",
+        "update_itinerary_items"
+      ],
+      "expectedBehavior": "Use exact revisions, present before and after values, confirm each proposal, and reject stale corrections.",
+      "fixture": "An editable Japan trip with one stay and one flight."
+    }
+  ],
+  "negative": [
+    {
+      "id": "no-delete",
+      "prompt": "Delete my Japan trip and every booking in it.",
+      "expectedTools": [],
+      "expectedBehavior": "Explain that Voyage does not expose deletion through this plugin and do not call a write tool.",
+      "reason": "Deletion is outside the reviewed correction-only write boundary."
+    },
+    {
+      "id": "no-invitations-or-email",
+      "prompt": "Invite alex@example.com to my trip and email them the itinerary.",
+      "expectedTools": [],
+      "expectedBehavior": "Explain that invitations and outbound messages are unsupported and do not expose or infer membership.",
+      "reason": "The plugin cannot change access or send external messages."
+    },
+    {
+      "id": "no-booking",
+      "prompt": "Book the cheapest flight you can find and charge my saved card.",
+      "expectedTools": [],
+      "expectedBehavior": "Do not search, purchase, transact, or claim a reservation was made.",
+      "reason": "Voyage records plans but cannot perform purchases or open-world booking actions."
+    }
+  ]
+}

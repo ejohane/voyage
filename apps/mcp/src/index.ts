@@ -51,13 +51,25 @@ export function createVoyageMcpWorker(authenticateOAuthRequest: AuthenticateOAut
           {
             status: "ok",
             service: "voyage-mcp",
-            phase: "2c",
+            phase: "3",
             environment: bindings.ENVIRONMENT,
-            tripDataAccess: "read-write-additive-itinerary",
+            tripDataAccess: "read-write-controlled-updates",
           },
           200,
           "no-store",
         );
+      }
+
+      if (request.method === "GET" && url.pathname === "/.well-known/openai-apps-challenge") {
+        if (!bindings.OPENAI_APPS_CHALLENGE) {
+          return new Response("Not found", {
+            status: 404,
+            headers: { "Cache-Control": "no-store" },
+          });
+        }
+        return new Response(bindings.OPENAI_APPS_CHALLENGE, {
+          headers: { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" },
+        });
       }
 
       if (url.pathname !== "/mcp") {
@@ -104,6 +116,7 @@ export function createVoyageMcpWorker(authenticateOAuthRequest: AuthenticateOAut
         .json<McpEnvelope | McpEnvelope[]>()
         .catch(() => null);
       const envelopes = Array.isArray(payload) ? payload : payload ? [payload] : [];
+      const startedAt = Date.now();
       const response = await createMcpHandler(server, {
         route: "/mcp",
         enableJsonResponse: true,
@@ -123,6 +136,7 @@ export function createVoyageMcpWorker(authenticateOAuthRequest: AuthenticateOAut
           status: response.status,
           responseType: response.headers.get("content-type"),
           sessionCreated: response.headers.has("mcp-session-id"),
+          durationMs: Date.now() - startedAt,
         }),
       );
 

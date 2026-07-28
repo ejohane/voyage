@@ -94,6 +94,9 @@ function LandingPage() {
             <Link className="hover:text-foreground" to="/terms">
               Terms
             </Link>
+            <Link className="hover:text-foreground" to="/support">
+              Support
+            </Link>
           </span>
         </div>
       </footer>

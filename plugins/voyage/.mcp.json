@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "voyage": {
+      "type": "http",
+      "url": "https://mcp.voyageplan.app/mcp"
+    }
+  }
+}

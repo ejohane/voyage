@@ -11,6 +11,7 @@ const bindings: Bindings = {
   CLERK_AUTHORIZATION_SERVER: "https://example.clerk.accounts.dev",
   CLERK_JWT_KEY: "test-public-key",
   MCP_CONFIRMATION_SECRET: "test-confirmation-secret",
+  MCP_RATE_LIMITER: env.MCP_RATE_LIMITER,
 };
 
 function authenticatedRequest() {

@@ -26,6 +26,26 @@ import {
 } from "./trip-mutations";
 import { getTripWorkspace, listTrips } from "./trips-repository";
 import type { AuthenticateOAuthRequest, Bindings } from "./types";
+import {
+  NoChangesError,
+  previewItineraryUpdates,
+  previewTripUpdate,
+  StaleRevisionError,
+  UpdateAccessError,
+  UpdateReferenceError,
+  updateItineraryItemsFromMcp,
+  updateTripFromMcp,
+} from "./update-mutations";
+import {
+  applyItineraryUpdatesInput,
+  applyTripUpdateInput,
+  itineraryUpdatesInput,
+  previewItineraryUpdatesTool,
+  previewTripUpdateTool,
+  tripUpdateInput,
+  updateItineraryItemsTool,
+  updateTripTool,
+} from "./update-tools";
 
 const oauthSecuritySchemes = [{ type: "oauth2" as const, scopes: requiredOAuthScopes }];
 const readOnlyAnnotations = {
@@ -455,18 +475,22 @@ const connectionTool = {
   outputSchema: {
     type: "object" as const,
     properties: {
-      accountSubject: { type: "string" as const },
+      connected: { type: "boolean" as const, const: true },
       environment: { type: "string" as const, enum: ["staging", "production"] },
       tripDataAccess: { type: "boolean" as const, const: true },
       tripWriteAccess: { type: "boolean" as const, const: true },
       itineraryWriteAccess: { type: "boolean" as const, const: true },
+      tripUpdateAccess: { type: "boolean" as const, const: true },
+      itineraryUpdateAccess: { type: "boolean" as const, const: true },
     },
     required: [
-      "accountSubject",
+      "connected",
       "environment",
       "tripDataAccess",
       "tripWriteAccess",
       "itineraryWriteAccess",
+      "tripUpdateAccess",
+      "itineraryUpdateAccess",
     ],
     additionalProperties: false,
   },
@@ -669,6 +693,10 @@ const tools = [
   createTripTool,
   previewItineraryItemsTool,
   addItineraryItemsTool,
+  previewTripUpdateTool,
+  updateTripTool,
+  previewItineraryUpdatesTool,
+  updateItineraryItemsTool,
 ];
 const listTripsInput = z
   .object({
@@ -788,10 +816,10 @@ export function createVoyageMcpServer(
   authenticateOAuthRequest: AuthenticateOAuthRequest,
 ): McpServer {
   const server = new McpServer(
-    { name: "voyage-trip-planner", version: "0.5.0-phase-2c" },
+    { name: "voyage-trip-planner", version: "0.6.0-phase-3" },
     {
       instructions:
-        "Read Voyage trips with list_trips and get_trip. For a new trip, call preview_trip, show its exact proposal, obtain explicit confirmation, then call create_trip with unchanged fields, the token, and a fresh UUID idempotency key. To add transportation, stays, or plans to an existing editable trip, first call get_trip for current destination IDs, then preview_itinerary_items, show the exact mixed batch, obtain explicit confirmation, and call add_itinerary_items with unchanged fields, the token, and a fresh UUID idempotency key. All writes are additive-only; this server cannot update, delete, invite collaborators, or import Gmail data.",
+        "Read Voyage trips with list_trips and get_trip. For any write, first use its preview tool, show the exact returned proposal, obtain explicit user confirmation, then call the paired write tool with unchanged fields, the token, and a fresh UUID idempotency key. Corrections must start from get_trip and include its exact updatedAt revisions; stale corrections are rejected atomically. Voyage supports private trip creation, additive itinerary batches, and correction-only updates to existing trip, destination, transportation, stay, and plan fields. It cannot delete, add or remove destinations through corrections, invite collaborators, import Gmail data, send messages, or book travel.",
     },
   );
 
@@ -803,21 +831,38 @@ export function createVoyageMcpServer(
 
     const identity = await authenticateOAuthRequest(request, bindings);
     if (!identity) return authenticationError(bindings);
+    const rateLimit = await bindings.MCP_RATE_LIMITER.limit({ key: identity.userId });
+    if (!rateLimit.success) {
+      console.warn(
+        JSON.stringify({ event: "mcp_rate_limited", environment: bindings.ENVIRONMENT }),
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Voyage is receiving too many requests for this account. Wait a minute and try again.",
+          },
+        ],
+        isError: true,
+      };
+    }
 
     if (params.name === connectionTool.name) {
       const result = {
-        accountSubject: identity.subject,
+        connected: true as const,
         environment: bindings.ENVIRONMENT,
         tripDataAccess: true as const,
         tripWriteAccess: true as const,
         itineraryWriteAccess: true as const,
+        tripUpdateAccess: true as const,
+        itineraryUpdateAccess: true as const,
       };
       return {
         structuredContent: result,
         content: [
           {
             type: "text",
-            text: `Voyage ${bindings.ENVIRONMENT} is connected with trip reading, trip creation, and additive itinerary writing.`,
+            text: `Voyage ${bindings.ENVIRONMENT} is connected with trip reading, creation, additive itinerary writing, and controlled corrections.`,
           },
         ],
       };
@@ -987,6 +1032,186 @@ export function createVoyageMcpServer(
         }
         if (
           error instanceof ItineraryReferenceError ||
+          error instanceof ConfirmationTokenError ||
+          error instanceof IdempotencyConflictError
+        ) {
+          throw new McpError(ErrorCode.InvalidParams, error.message);
+        }
+        throw error;
+      }
+    }
+
+    if (params.name === previewTripUpdateTool.name) {
+      const parsed = tripUpdateInput.safeParse(params.arguments ?? {});
+      if (!parsed.success) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          "Provide an editable trip, its exact updatedAt revision, and a trip or destination correction.",
+        );
+      }
+      try {
+        const result = await previewTripUpdate(
+          bindings.DB,
+          identity.userId,
+          bindings.APP_URL,
+          parsed.data,
+          bindings.MCP_CONFIRMATION_SECRET,
+        );
+        return {
+          structuredContent: result,
+          content: [
+            {
+              type: "text",
+              text: `Correction preview ready for ${result.proposal.trip.name}. Nothing was saved. Show the exact before/after proposal and ask the user to confirm before updating.`,
+            },
+          ],
+        };
+      } catch (error) {
+        if (error instanceof UpdateAccessError) {
+          return { content: [{ type: "text", text: error.message }], isError: true };
+        }
+        if (
+          error instanceof UpdateReferenceError ||
+          error instanceof StaleRevisionError ||
+          error instanceof NoChangesError
+        ) {
+          throw new McpError(ErrorCode.InvalidParams, error.message);
+        }
+        throw error;
+      }
+    }
+
+    if (params.name === updateTripTool.name) {
+      const parsed = applyTripUpdateInput.safeParse(params.arguments ?? {});
+      if (!parsed.success) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          "Provide the exact previewed trip correction, confirmation token, revision, and UUID idempotency key.",
+        );
+      }
+      const { confirmationToken, idempotencyKey, ...updateInput } = parsed.data;
+      try {
+        const result = await updateTripFromMcp(
+          bindings.DB,
+          identity.userId,
+          identity.clientId,
+          bindings.APP_URL,
+          updateInput,
+          confirmationToken,
+          idempotencyKey,
+          bindings.MCP_CONFIRMATION_SECRET,
+        );
+        return {
+          structuredContent: result,
+          content: [
+            {
+              type: "text",
+              text: result.idempotentReplay
+                ? `This correction was already completed. ${result.trip.name} is current in Voyage: ${result.trip.url}`
+                : `Updated ${result.trip.name} in Voyage: ${result.trip.url}`,
+            },
+          ],
+        };
+      } catch (error) {
+        if (error instanceof UpdateAccessError) {
+          return { content: [{ type: "text", text: error.message }], isError: true };
+        }
+        if (
+          error instanceof UpdateReferenceError ||
+          error instanceof StaleRevisionError ||
+          error instanceof NoChangesError ||
+          error instanceof ConfirmationTokenError ||
+          error instanceof IdempotencyConflictError
+        ) {
+          throw new McpError(ErrorCode.InvalidParams, error.message);
+        }
+        throw error;
+      }
+    }
+
+    if (params.name === previewItineraryUpdatesTool.name) {
+      const parsed = itineraryUpdatesInput.safeParse(params.arguments ?? {});
+      if (!parsed.success) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          "Provide an editable trip and 1–50 itinerary corrections with exact updatedAt revisions.",
+        );
+      }
+      try {
+        const result = await previewItineraryUpdates(
+          bindings.DB,
+          identity.userId,
+          bindings.APP_URL,
+          parsed.data,
+          bindings.MCP_CONFIRMATION_SECRET,
+        );
+        return {
+          structuredContent: result,
+          content: [
+            {
+              type: "text",
+              text: `Correction preview ready for ${result.proposal.trip.name}: ${result.proposal.counts.total} itinerary items. Nothing was saved. Show the exact before/after proposal and ask the user to confirm before updating.`,
+            },
+          ],
+        };
+      } catch (error) {
+        if (error instanceof UpdateAccessError) {
+          return { content: [{ type: "text", text: error.message }], isError: true };
+        }
+        if (
+          error instanceof UpdateReferenceError ||
+          error instanceof StaleRevisionError ||
+          error instanceof NoChangesError
+        ) {
+          throw new McpError(ErrorCode.InvalidParams, error.message);
+        }
+        throw error;
+      }
+    }
+
+    if (params.name === updateItineraryItemsTool.name) {
+      const parsed = applyItineraryUpdatesInput.safeParse(params.arguments ?? {});
+      if (!parsed.success) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          "Provide the exact previewed itinerary corrections, confirmation token, revisions, and UUID idempotency key.",
+        );
+      }
+      const { confirmationToken, idempotencyKey, ...updateInput } = parsed.data;
+      try {
+        const result = await updateItineraryItemsFromMcp(
+          bindings.DB,
+          identity.userId,
+          identity.clientId,
+          bindings.APP_URL,
+          updateInput,
+          confirmationToken,
+          idempotencyKey,
+          bindings.MCP_CONFIRMATION_SECRET,
+        );
+        const total =
+          result.updated.transportation.length +
+          result.updated.stays.length +
+          result.updated.plans.length;
+        return {
+          structuredContent: result,
+          content: [
+            {
+              type: "text",
+              text: result.idempotentReplay
+                ? `These ${total} corrections were already completed in ${result.trip.name}: ${result.trip.url}`
+                : `Updated ${total} itinerary items in ${result.trip.name}: ${result.trip.url}`,
+            },
+          ],
+        };
+      } catch (error) {
+        if (error instanceof UpdateAccessError) {
+          return { content: [{ type: "text", text: error.message }], isError: true };
+        }
+        if (
+          error instanceof UpdateReferenceError ||
+          error instanceof StaleRevisionError ||
+          error instanceof NoChangesError ||
           error instanceof ConfirmationTokenError ||
           error instanceof IdempotencyConflictError
         ) {

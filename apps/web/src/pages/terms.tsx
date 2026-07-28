@@ -53,6 +53,15 @@ function TermsPage() {
         </p>
       </LegalSection>
 
+      <LegalSection title="Connected AI tools">
+        <p>
+          When you connect Voyage to ChatGPT or Codex, you are responsible for reviewing proposed
+          trip changes before confirming them. Voyage does not use the connection to purchase
+          travel, make reservations, send messages, or guarantee that generated plans are accurate
+          or available.
+        </p>
+      </LegalSection>
+
       <LegalSection title="Availability and changes">
         <p>
           Voyage may change, suspend, or discontinue features and does not promise uninterrupted

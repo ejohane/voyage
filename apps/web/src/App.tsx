@@ -10,6 +10,7 @@ const LandingPage = lazy(() => import("@/pages/landing"));
 const PrivacyPage = lazy(() => import("@/pages/privacy"));
 const SignInPage = lazy(() => import("@/pages/sign-in"));
 const SignUpPage = lazy(() => import("@/pages/sign-up"));
+const SupportPage = lazy(() => import("@/pages/support"));
 const TermsPage = lazy(() => import("@/pages/terms"));
 const InvitationPage = lazy(() => import("@/pages/invitation"));
 const TripPage = lazy(() => import("@/pages/trip"));
@@ -69,6 +70,7 @@ function App() {
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/sign-in/*" element={<SignInPage />} />
         <Route path="/sign-up/*" element={<SignUpPage />} />
+        <Route path="/support" element={<SupportPage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/invitations/:token" element={<InvitationPage />} />
         <Route element={<RequireAuth />}>
