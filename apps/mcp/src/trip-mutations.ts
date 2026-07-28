@@ -1,4 +1,13 @@
+import {
+  ConfirmationTokenError,
+  createConfirmationToken,
+  hashJson,
+  IdempotencyConflictError,
+  verifyConfirmationToken,
+} from "./confirmed-mutation";
 import type { TripSummary } from "./trips-repository";
+
+export { ConfirmationTokenError, IdempotencyConflictError } from "./confirmed-mutation";
 
 export type TripCreationStop = {
   name: string;
@@ -28,10 +37,7 @@ type MutationRow = {
   result_json: string;
 };
 
-export class ConfirmationTokenError extends Error {}
-export class IdempotencyConflictError extends Error {}
-
-const confirmationLifetimeMilliseconds = 30 * 60 * 1000;
+const confirmationPrefix = "voyage-create-trip-v1";
 
 function deriveTripDates(stops: TripCreationStop[]) {
   let startDate: string | null = null;
@@ -58,62 +64,8 @@ function previewFor(input: TripCreationInput): TripCreationPreview {
   };
 }
 
-async function sha256(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
 async function requestHash(input: TripCreationInput): Promise<string> {
-  return sha256(JSON.stringify(previewFor(input)));
-}
-
-async function hmacKey(secret: string) {
-  return crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign", "verify"],
-  );
-}
-
-function bytesToHex(bytes: ArrayBuffer): string {
-  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function hexToBytes(hex: string): Uint8Array<ArrayBuffer> | null {
-  if (!/^[a-f0-9]{64}$/.test(hex)) return null;
-  return Uint8Array.from(hex.match(/.{2}/g) ?? [], (byte) => Number.parseInt(byte, 16));
-}
-
-async function signConfirmation(secret: string, expiresAt: number, hash: string) {
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    await hmacKey(secret),
-    new TextEncoder().encode(`${expiresAt}:${hash}`),
-  );
-  return bytesToHex(signature);
-}
-
-async function verifyConfirmation(
-  token: string,
-  secret: string,
-  hash: string,
-  now: number,
-): Promise<boolean> {
-  const match = token.match(/^voyage-create-trip-v1:(\d{13}):([a-f0-9]{64})$/);
-  if (!match) return false;
-
-  const expiresAt = Number(match[1]);
-  const signature = hexToBytes(match[2]);
-  if (!signature || !Number.isSafeInteger(expiresAt) || expiresAt < now) return false;
-
-  return crypto.subtle.verify(
-    "HMAC",
-    await hmacKey(secret),
-    signature,
-    new TextEncoder().encode(`${expiresAt}:${hash}`),
-  );
+  return hashJson(previewFor(input));
 }
 
 export async function previewTripCreation(
@@ -123,12 +75,9 @@ export async function previewTripCreation(
 ) {
   const proposal = previewFor(input);
   const hash = await requestHash(input);
-  const expiresAt = now + confirmationLifetimeMilliseconds;
-  const signature = await signConfirmation(confirmationSecret, expiresAt, hash);
   return {
     proposal,
-    confirmationToken: `voyage-create-trip-v1:${expiresAt}:${signature}`,
-    confirmationExpiresAt: new Date(expiresAt).toISOString(),
+    ...(await createConfirmationToken(confirmationPrefix, hash, confirmationSecret, now)),
   };
 }
 
@@ -174,7 +123,14 @@ export async function createTripFromMcp(
   const existing = await findMutation(database, userId, idempotencyKey);
   if (existing) return replayMutation(existing, hash);
 
-  if (!(await verifyConfirmation(confirmationToken, confirmationSecret, hash, Date.now()))) {
+  if (
+    !(await verifyConfirmationToken(
+      confirmationToken,
+      confirmationPrefix,
+      confirmationSecret,
+      hash,
+    ))
+  ) {
     throw new ConfirmationTokenError(
       "The preview is invalid, expired, or no longer matches this trip. Preview it again before saving.",
     );

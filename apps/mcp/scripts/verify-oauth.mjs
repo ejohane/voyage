@@ -68,7 +68,7 @@ const callbackServer = Bun.serve({
     }
 
     resolveCallback(code);
-    return new Response("Voyage Phase 2A authorization succeeded. You can close this tab.");
+    return new Response("Voyage Phase 2B authorization succeeded. You can close this tab.");
   },
 });
 
@@ -79,7 +79,7 @@ try {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      client_name: "Voyage Phase 2A Verification",
+      client_name: "Voyage Phase 2B Verification",
       redirect_uris: [redirectUri],
       grant_types: ["authorization_code"],
       response_types: ["code"],
@@ -180,15 +180,19 @@ try {
   }
 
   const result = await callTool(1, "get_connection_status");
-  if (result?.tripDataAccess !== true || result?.tripWriteAccess !== true) {
-    throw new Error("MCP tool did not expose the Phase 2A additive write boundary");
+  if (
+    result?.tripDataAccess !== true ||
+    result?.tripWriteAccess !== true ||
+    result?.itineraryWriteAccess !== true
+  ) {
+    throw new Error("MCP tool did not expose the Phase 2B additive write boundary");
   }
   if (result.accountSubject !== claims.sub) {
     throw new Error("MCP account subject did not match the access token subject");
   }
-  const tripList = await callTool(2, "list_trips", { limit: 1 });
+  const tripList = await callTool(2, "list_trips", { limit: 10 });
   if (!Array.isArray(tripList?.trips) || typeof tripList?.total !== "number") {
-    throw new Error("MCP list_trips did not return the Phase 2A result contract");
+    throw new Error("MCP list_trips did not return the Phase 2B result contract");
   }
   const preview = await callTool(3, "preview_trip", {
     name: "OAuth verification preview",
@@ -199,7 +203,42 @@ try {
     !preview?.confirmationToken?.startsWith("voyage-create-trip-v1:") ||
     typeof preview?.confirmationExpiresAt !== "string"
   ) {
-    throw new Error("MCP preview_trip did not return the Phase 2A confirmation contract");
+    throw new Error("MCP preview_trip did not return the Phase 2B confirmation contract");
+  }
+  const editableTrip = tripList.trips.find(
+    (trip) => trip.accessLevel !== "viewer" && Array.isArray(trip.stops) && trip.stops.length > 0,
+  );
+  const itineraryPreview = editableTrip
+    ? await callTool(4, "preview_itinerary_items", {
+        tripId: editableTrip.id,
+        transportation: [],
+        stays: [],
+        plans: [
+          {
+            tripStopId: editableTrip.stops[0].id,
+            title: "OAuth verification idea",
+            category: "other",
+            status: "idea",
+            scheduledDate: null,
+            startTime: null,
+            endTime: null,
+            location: null,
+            confirmationNumber: null,
+            bookingUrl: null,
+            notes: null,
+          },
+        ],
+      })
+    : null;
+  if (
+    itineraryPreview &&
+    (itineraryPreview.proposal?.counts?.total !== 1 ||
+      !itineraryPreview.confirmationToken?.startsWith("voyage-add-itinerary-items-v1:") ||
+      typeof itineraryPreview.confirmationExpiresAt !== "string")
+  ) {
+    throw new Error(
+      "MCP preview_itinerary_items did not return the Phase 2B confirmation contract",
+    );
   }
 
   console.log(
@@ -222,6 +261,7 @@ try {
           environment: result.environment,
           tripDataAccess: result.tripDataAccess,
           tripWriteAccess: result.tripWriteAccess,
+          itineraryWriteAccess: result.itineraryWriteAccess,
         },
         tripRead: {
           tool: "list_trips",
@@ -231,6 +271,12 @@ try {
         tripPreview: {
           tool: "preview_trip",
           resultShapeValid: true,
+          wroteData: false,
+        },
+        itineraryPreview: {
+          tool: "preview_itinerary_items",
+          resultShapeValid: itineraryPreview !== null,
+          skipped: itineraryPreview === null,
           wroteData: false,
         },
       },

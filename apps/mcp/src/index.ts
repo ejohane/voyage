@@ -50,9 +50,9 @@ export function createVoyageMcpWorker(authenticateOAuthRequest: AuthenticateOAut
           {
             status: "ok",
             service: "voyage-mcp",
-            phase: "2a",
+            phase: "2b",
             environment: bindings.ENVIRONMENT,
-            tripDataAccess: "read-write-additive",
+            tripDataAccess: "read-write-additive-itinerary",
           },
           200,
           "no-store",

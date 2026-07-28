@@ -90,7 +90,7 @@ async function seedTrips() {
   ]);
 }
 
-describe("Voyage Phase 2A MCP worker", () => {
+describe("Voyage Phase 2B MCP worker", () => {
   beforeEach(async () => {
     await env.DB.batch([
       env.DB.prepare("DELETE FROM mcp_mutations"),
@@ -120,7 +120,26 @@ describe("Voyage Phase 2A MCP worker", () => {
     });
   });
 
-  it("initializes and advertises read tools plus an additive idempotent write", async () => {
+  it("reports the uncached Phase 2B production boundary", async () => {
+    const worker = createVoyageMcpWorker(async () => null);
+    const response = await worker.fetch(
+      new Request("https://mcp-staging.voyageplan.app/health"),
+      bindings,
+      context,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({
+      status: "ok",
+      service: "voyage-mcp",
+      phase: "2b",
+      environment: "staging",
+      tripDataAccess: "read-write-additive-itinerary",
+    });
+  });
+
+  it("initializes and advertises read tools plus additive idempotent writes", async () => {
     const authenticate = vi.fn<AuthenticateOAuthRequest>(async () => null);
     const worker = createVoyageMcpWorker(authenticate);
 
@@ -155,8 +174,10 @@ describe("Voyage Phase 2A MCP worker", () => {
       "get_trip",
       "preview_trip",
       "create_trip",
+      "preview_itinerary_items",
+      "add_itinerary_items",
     ]);
-    for (const tool of list.result.tools.slice(0, 4)) {
+    for (const tool of list.result.tools.filter((tool) => tool.annotations.readOnlyHint)) {
       expect(tool).toMatchObject({
         annotations: {
           readOnlyHint: true,
@@ -166,15 +187,17 @@ describe("Voyage Phase 2A MCP worker", () => {
         securitySchemes: [{ type: "oauth2", scopes: ["openid"] }],
       });
     }
-    expect(list.result.tools[4]).toMatchObject({
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: false,
-        openWorldHint: false,
-        idempotentHint: true,
-      },
-      securitySchemes: [{ type: "oauth2", scopes: ["openid"] }],
-    });
+    for (const tool of list.result.tools.filter((tool) => !tool.annotations.readOnlyHint)) {
+      expect(tool).toMatchObject({
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          openWorldHint: false,
+          idempotentHint: true,
+        },
+        securitySchemes: [{ type: "oauth2", scopes: ["openid"] }],
+      });
+    }
     expect(authenticate).not.toHaveBeenCalled();
   });
 
@@ -220,7 +243,7 @@ describe("Voyage Phase 2A MCP worker", () => {
     );
   });
 
-  it("reports additive trip creation access for the linked account", async () => {
+  it("reports additive trip and itinerary creation access for the linked account", async () => {
     const worker = createVoyageMcpWorker(async () => ({
       userId: "user_123",
       subject: "user_123",
@@ -241,6 +264,7 @@ describe("Voyage Phase 2A MCP worker", () => {
       environment: "staging",
       tripDataAccess: true,
       tripWriteAccess: true,
+      itineraryWriteAccess: true,
     });
   });
 
@@ -546,6 +570,513 @@ describe("Voyage Phase 2A MCP worker", () => {
     await expect(env.DB.prepare("SELECT count(*) AS count FROM trips").first()).resolves.toEqual({
       count: 1,
     });
+  });
+
+  it("previews, atomically adds, audits, and idempotently replays a mixed itinerary batch", async () => {
+    await seedTrips();
+    const worker = createVoyageMcpWorker(async () => ({
+      userId: "user_123",
+      subject: "user_123",
+      clientId: "dynamic_client_123",
+      scopes: ["openid"],
+    }));
+    const proposal = {
+      tripId,
+      transportation: [
+        {
+          kind: "journey",
+          type: "train",
+          status: "booked",
+          departureStopId: null,
+          arrivalStopId: stopId,
+          departureLocation: " Kyoto Station ",
+          arrivalLocation: "Tokyo Station",
+          departureAt: "2026-10-04T09:00",
+          arrivalAt: "2026-10-04T11:15",
+          carrier: "JR Central",
+          referenceNumber: null,
+          vehicleDescription: null,
+          confirmationNumber: "TRAIN-123",
+          bookingUrl: null,
+          notes: null,
+        },
+      ],
+      stays: [
+        {
+          status: "booked",
+          tripStopId: stopId,
+          propertyName: "  Ginza Hotel  ",
+          address: "2 Ginza Way",
+          checkInDate: "2026-10-04",
+          checkOutDate: "2026-10-07",
+          confirmationNumber: "HOTEL-456",
+          bookingUrl: null,
+          notes: "Late arrival",
+        },
+      ],
+      plans: [
+        {
+          tripStopId: stopId,
+          title: "  TeamLab visit  ",
+          category: "sightseeing",
+          status: "planned",
+          scheduledDate: "2026-10-05",
+          startTime: "10:00",
+          endTime: "12:00",
+          location: "Azabudai Hills",
+          confirmationNumber: null,
+          bookingUrl: null,
+          notes: null,
+        },
+      ],
+    };
+
+    const previewResponse = await worker.fetch(
+      mcpRequest("tools/call", { name: "preview_itinerary_items", arguments: proposal }),
+      bindings,
+      context,
+    );
+    const previewBody = (await previewResponse.json()) as {
+      result: {
+        structuredContent: {
+          proposal: {
+            trip: { id: string; name: string };
+            destinations: Array<{ id: string; name: string }>;
+            items: {
+              transportation: Array<{ departureLocation: string }>;
+              stays: Array<{ propertyName: string }>;
+              plans: Array<{ title: string }>;
+            };
+            counts: Record<string, number>;
+          };
+          confirmationToken: string;
+        };
+      };
+    };
+
+    expect(previewBody.result.structuredContent.proposal).toMatchObject({
+      trip: { id: tripId, name: "Japan" },
+      destinations: [{ id: stopId, name: "Tokyo" }],
+      items: {
+        transportation: [{ departureLocation: "Kyoto Station" }],
+        stays: [{ propertyName: "Ginza Hotel" }],
+        plans: [{ title: "TeamLab visit" }],
+      },
+      counts: { transportation: 1, stays: 1, plans: 1, total: 3 },
+    });
+    expect(previewBody.result.structuredContent.confirmationToken).toMatch(
+      /^voyage-add-itinerary-items-v1:\d{13}:[a-f0-9]{64}$/,
+    );
+    await expect(
+      env.DB.prepare("SELECT count(*) AS count FROM travel_segments").first(),
+    ).resolves.toEqual({ count: 1 });
+    await expect(env.DB.prepare("SELECT count(*) AS count FROM stays").first()).resolves.toEqual({
+      count: 1,
+    });
+    await expect(
+      env.DB.prepare("SELECT count(*) AS count FROM trip_plans").first(),
+    ).resolves.toEqual({ count: 1 });
+
+    const createArguments = {
+      ...proposal,
+      confirmationToken: previewBody.result.structuredContent.confirmationToken,
+      idempotencyKey: "99999999-9999-4999-8999-999999999999",
+    };
+    const createResponse = await worker.fetch(
+      mcpRequest("tools/call", { name: "add_itinerary_items", arguments: createArguments }),
+      bindings,
+      context,
+    );
+    const createBody = (await createResponse.json()) as {
+      result: {
+        structuredContent: {
+          trip: { id: string; name: string; url: string };
+          created: {
+            transportation: Array<{ id: string; label: string }>;
+            stays: Array<{ id: string; label: string }>;
+            plans: Array<{ id: string; label: string }>;
+          };
+          idempotentReplay: boolean;
+        };
+      };
+    };
+
+    expect(createBody.result.structuredContent).toMatchObject({
+      trip: { id: tripId, name: "Japan", url: `${bindings.APP_URL}/trips/${tripId}` },
+      created: {
+        transportation: [{ label: "Kyoto Station to Tokyo Station" }],
+        stays: [{ label: "Ginza Hotel" }],
+        plans: [{ label: "TeamLab visit" }],
+      },
+      idempotentReplay: false,
+    });
+    await expect(
+      env.DB.prepare("SELECT count(*) AS count FROM travel_segments").first(),
+    ).resolves.toEqual({ count: 2 });
+    await expect(env.DB.prepare("SELECT count(*) AS count FROM stays").first()).resolves.toEqual({
+      count: 2,
+    });
+    await expect(
+      env.DB.prepare("SELECT count(*) AS count FROM trip_plans").first(),
+    ).resolves.toEqual({ count: 2 });
+    await expect(
+      env.DB.prepare(
+        `SELECT user_id, oauth_client_id, tool_name, idempotency_key, status,
+                resource_type, resource_id
+         FROM mcp_mutations WHERE tool_name = 'add_itinerary_items'`,
+      ).first(),
+    ).resolves.toEqual({
+      user_id: "user_123",
+      oauth_client_id: "dynamic_client_123",
+      tool_name: "add_itinerary_items",
+      idempotency_key: createArguments.idempotencyKey,
+      status: "succeeded",
+      resource_type: "trip_itinerary_batch",
+      resource_id: tripId,
+    });
+
+    const readResponse = await worker.fetch(
+      mcpRequest("tools/call", { name: "get_trip", arguments: { tripId } }),
+      bindings,
+      context,
+    );
+    const readBody = (await readResponse.json()) as {
+      result: {
+        structuredContent: {
+          transportation: Array<{ referenceNumber: string | null }>;
+          stays: Array<{ propertyName: string }>;
+          plans: Array<{ title: string }>;
+        };
+      };
+    };
+    expect(readBody.result.structuredContent.transportation).toContainEqual(
+      expect.objectContaining({ confirmationNumber: "TRAIN-123" }),
+    );
+    expect(readBody.result.structuredContent.stays).toContainEqual(
+      expect.objectContaining({ propertyName: "Ginza Hotel" }),
+    );
+    expect(readBody.result.structuredContent.plans).toContainEqual(
+      expect.objectContaining({ title: "TeamLab visit" }),
+    );
+
+    const replayResponse = await worker.fetch(
+      mcpRequest("tools/call", { name: "add_itinerary_items", arguments: createArguments }),
+      bindings,
+      context,
+    );
+    const replayBody = (await replayResponse.json()) as {
+      result: { structuredContent: typeof createBody.result.structuredContent };
+    };
+    expect(replayBody.result.structuredContent).toEqual({
+      ...createBody.result.structuredContent,
+      idempotentReplay: true,
+    });
+    await expect(
+      env.DB.prepare("SELECT count(*) AS count FROM travel_segments").first(),
+    ).resolves.toEqual({ count: 2 });
+    await expect(
+      env.DB.prepare("SELECT count(*) AS count FROM mcp_mutations").first(),
+    ).resolves.toEqual({ count: 1 });
+  });
+
+  it("rejects changed itinerary previews, stale destinations, and reused idempotency keys", async () => {
+    await seedTrips();
+    const worker = createVoyageMcpWorker(async () => ({
+      userId: "user_123",
+      subject: "user_123",
+      clientId: "dynamic_client_123",
+      scopes: ["openid"],
+    }));
+    const proposal = {
+      tripId,
+      transportation: [],
+      stays: [],
+      plans: [
+        {
+          tripStopId: stopId,
+          title: "Ramen lunch",
+          category: "food",
+          status: "idea",
+          scheduledDate: null,
+          startTime: null,
+          endTime: null,
+          location: null,
+          confirmationNumber: null,
+          bookingUrl: null,
+          notes: null,
+        },
+      ],
+    };
+    const previewResponse = await worker.fetch(
+      mcpRequest("tools/call", { name: "preview_itinerary_items", arguments: proposal }),
+      bindings,
+      context,
+    );
+    const preview = (await previewResponse.json()) as {
+      result: { structuredContent: { confirmationToken: string } };
+    };
+    const idempotencyKey = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+    const tamperedResponse = await worker.fetch(
+      mcpRequest("tools/call", {
+        name: "add_itinerary_items",
+        arguments: {
+          ...proposal,
+          plans: [{ ...proposal.plans[0], title: "Changed after preview" }],
+          confirmationToken: preview.result.structuredContent.confirmationToken,
+          idempotencyKey,
+        },
+      }),
+      bindings,
+      context,
+    );
+    const tampered = (await tamperedResponse.json()) as { error: { message: string } };
+    expect(tampered.error.message).toContain("no longer matches");
+    await expect(
+      env.DB.prepare("SELECT count(*) AS count FROM trip_plans").first(),
+    ).resolves.toEqual({ count: 1 });
+
+    await worker.fetch(
+      mcpRequest("tools/call", {
+        name: "add_itinerary_items",
+        arguments: {
+          ...proposal,
+          confirmationToken: preview.result.structuredContent.confirmationToken,
+          idempotencyKey,
+        },
+      }),
+      bindings,
+      context,
+    );
+
+    const secondProposal = {
+      ...proposal,
+      plans: [{ ...proposal.plans[0], title: "Coffee tasting" }],
+    };
+    const secondPreviewResponse = await worker.fetch(
+      mcpRequest("tools/call", { name: "preview_itinerary_items", arguments: secondProposal }),
+      bindings,
+      context,
+    );
+    const secondPreview = (await secondPreviewResponse.json()) as {
+      result: { structuredContent: { confirmationToken: string } };
+    };
+    const conflictResponse = await worker.fetch(
+      mcpRequest("tools/call", {
+        name: "add_itinerary_items",
+        arguments: {
+          ...secondProposal,
+          confirmationToken: secondPreview.result.structuredContent.confirmationToken,
+          idempotencyKey,
+        },
+      }),
+      bindings,
+      context,
+    );
+    const conflict = (await conflictResponse.json()) as { error: { message: string } };
+    expect(conflict.error.message).toContain("already used for a different itinerary");
+
+    const invalidStopResponse = await worker.fetch(
+      mcpRequest("tools/call", {
+        name: "preview_itinerary_items",
+        arguments: {
+          ...proposal,
+          plans: [
+            {
+              ...proposal.plans[0],
+              tripStopId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            },
+          ],
+        },
+      }),
+      bindings,
+      context,
+    );
+    const invalidStop = (await invalidStopResponse.json()) as { error: { message: string } };
+    expect(invalidStop.error.message).toContain("destination reference");
+    await expect(
+      env.DB.prepare("SELECT count(*) AS count FROM trip_plans").first(),
+    ).resolves.toEqual({ count: 2 });
+  });
+
+  it("invalidates a preview when its destination context changes before saving", async () => {
+    await seedTrips();
+    const worker = createVoyageMcpWorker(async () => ({
+      userId: "user_123",
+      subject: "user_123",
+      clientId: "dynamic_client_123",
+      scopes: ["openid"],
+    }));
+    const proposal = {
+      tripId,
+      transportation: [],
+      stays: [],
+      plans: [
+        {
+          tripStopId: stopId,
+          title: "Garden walk",
+          category: "activity",
+          status: "idea",
+          scheduledDate: null,
+          startTime: null,
+          endTime: null,
+          location: null,
+          confirmationNumber: null,
+          bookingUrl: null,
+          notes: null,
+        },
+      ],
+    };
+    const previewResponse = await worker.fetch(
+      mcpRequest("tools/call", { name: "preview_itinerary_items", arguments: proposal }),
+      bindings,
+      context,
+    );
+    const preview = (await previewResponse.json()) as {
+      result: { structuredContent: { confirmationToken: string } };
+    };
+    await env.DB.prepare("UPDATE trip_stops SET name = 'Renamed Tokyo' WHERE id = ?")
+      .bind(stopId)
+      .run();
+
+    const response = await worker.fetch(
+      mcpRequest("tools/call", {
+        name: "add_itinerary_items",
+        arguments: {
+          ...proposal,
+          confirmationToken: preview.result.structuredContent.confirmationToken,
+          idempotencyKey: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        },
+      }),
+      bindings,
+      context,
+    );
+    const body = (await response.json()) as { error: { message: string } };
+    expect(body.error.message).toContain("no longer matches");
+    await expect(
+      env.DB.prepare("SELECT count(*) AS count FROM trip_plans").first(),
+    ).resolves.toEqual({ count: 1 });
+    await expect(
+      env.DB.prepare("SELECT count(*) AS count FROM mcp_mutations").first(),
+    ).resolves.toEqual({ count: 0 });
+  });
+
+  it("rechecks edit access after preview and before every write", async () => {
+    await seedTrips();
+    const worker = createVoyageMcpWorker(async () => ({
+      userId: "user_123",
+      subject: "user_123",
+      clientId: "dynamic_client_123",
+      scopes: ["openid"],
+    }));
+    const proposal = {
+      tripId,
+      transportation: [],
+      stays: [],
+      plans: [
+        {
+          tripStopId: stopId,
+          title: "Temporary idea",
+          category: "other",
+          status: "idea",
+          scheduledDate: null,
+          startTime: null,
+          endTime: null,
+          location: null,
+          confirmationNumber: null,
+          bookingUrl: null,
+          notes: null,
+        },
+      ],
+    };
+    const previewResponse = await worker.fetch(
+      mcpRequest("tools/call", { name: "preview_itinerary_items", arguments: proposal }),
+      bindings,
+      context,
+    );
+    const preview = (await previewResponse.json()) as {
+      result: { structuredContent: { confirmationToken: string } };
+    };
+    await env.DB.prepare(
+      "UPDATE trip_memberships SET access_level = 'viewer' WHERE trip_id = ? AND user_id = 'user_123'",
+    )
+      .bind(tripId)
+      .run();
+
+    const response = await worker.fetch(
+      mcpRequest("tools/call", {
+        name: "add_itinerary_items",
+        arguments: {
+          ...proposal,
+          confirmationToken: preview.result.structuredContent.confirmationToken,
+          idempotencyKey: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        },
+      }),
+      bindings,
+      context,
+    );
+    const body = (await response.json()) as {
+      result: { isError: boolean; content: Array<{ text: string }> };
+    };
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0]?.text).toBe(
+      "Trip not found or the connected account does not have editing access.",
+    );
+    await expect(
+      env.DB.prepare("SELECT count(*) AS count FROM trip_plans").first(),
+    ).resolves.toEqual({ count: 1 });
+  });
+
+  it("does not allow viewers or non-members to preview itinerary writes", async () => {
+    await seedTrips();
+    await env.DB.prepare(
+      "INSERT INTO trip_memberships (trip_id, user_id, access_level, joined_at) VALUES (?, 'user_viewer', 'viewer', ?)",
+    )
+      .bind(tripId, "2026-07-27T12:00:00.000Z")
+      .run();
+    const proposal = {
+      tripId,
+      transportation: [],
+      stays: [],
+      plans: [
+        {
+          tripStopId: stopId,
+          title: "Private plan",
+          category: "other",
+          status: "idea",
+          scheduledDate: null,
+          startTime: null,
+          endTime: null,
+          location: null,
+          confirmationNumber: null,
+          bookingUrl: null,
+          notes: null,
+        },
+      ],
+    };
+    for (const userId of ["user_viewer", "user_outsider"]) {
+      const worker = createVoyageMcpWorker(async () => ({
+        userId,
+        subject: userId,
+        clientId: "dynamic_client_123",
+        scopes: ["openid"],
+      }));
+      const response = await worker.fetch(
+        mcpRequest("tools/call", { name: "preview_itinerary_items", arguments: proposal }),
+        bindings,
+        context,
+      );
+      const body = (await response.json()) as {
+        result: { isError: boolean; content: Array<{ text: string }> };
+      };
+      expect(body.result.isError).toBe(true);
+      expect(body.result.content[0]?.text).toBe(
+        "Trip not found or the connected account does not have editing access.",
+      );
+    }
+    await expect(
+      env.DB.prepare("SELECT count(*) AS count FROM trip_plans").first(),
+    ).resolves.toEqual({ count: 1 });
   });
 
   it("does not reveal whether an inaccessible trip exists", async () => {
