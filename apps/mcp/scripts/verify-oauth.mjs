@@ -1,6 +1,6 @@
 const resource = process.env.MCP_RESOURCE_URL ?? "https://mcp-staging.voyageplan.app";
 const authorizationServer =
-  process.env.CLERK_AUTHORIZATION_SERVER ?? "https://special-bullfrog-79.clerk.accounts.dev";
+  process.env.CLERK_AUTHORIZATION_SERVER ?? "https://clerk.voyageplan.app";
 
 function base64Url(bytes) {
   return Buffer.from(bytes)

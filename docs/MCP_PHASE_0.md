@@ -3,6 +3,9 @@
 This is the historical account-linking proof. The current read-only implementation is documented
 in [MCP Phase 1](MCP_PHASE_1.md).
 
+Phase 0 intentionally used the Clerk development instance. That configuration must not be reused
+for trip access because production D1 memberships use production Clerk user IDs.
+
 Phase 0 proves the public MCP transport and Clerk OAuth boundary without granting the Worker access
 to Voyage trip data. The staging server exposes one diagnostic tool,
 `get_connection_status`, which returns the linked Clerk subject and an explicit
