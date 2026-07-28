@@ -17,6 +17,7 @@ import {
   ItineraryReferenceError,
   previewItineraryItems,
 } from "./itinerary-mutations";
+import { requiredOAuthScopes } from "./oauth-scopes";
 import {
   ConfirmationTokenError,
   createTripFromMcp,
@@ -26,7 +27,7 @@ import {
 import { getTripWorkspace, listTrips } from "./trips-repository";
 import type { AuthenticateOAuthRequest, Bindings } from "./types";
 
-const oauthSecuritySchemes = [{ type: "oauth2" as const, scopes: ["openid"] }];
+const oauthSecuritySchemes = [{ type: "oauth2" as const, scopes: requiredOAuthScopes }];
 const readOnlyAnnotations = {
   readOnlyHint: true,
   destructiveHint: false,
@@ -787,7 +788,7 @@ export function createVoyageMcpServer(
   authenticateOAuthRequest: AuthenticateOAuthRequest,
 ): McpServer {
   const server = new McpServer(
-    { name: "voyage-trip-planner", version: "0.4.0-phase-2b" },
+    { name: "voyage-trip-planner", version: "0.5.0-phase-2c" },
     {
       instructions:
         "Read Voyage trips with list_trips and get_trip. For a new trip, call preview_trip, show its exact proposal, obtain explicit confirmation, then call create_trip with unchanged fields, the token, and a fresh UUID idempotency key. To add transportation, stays, or plans to an existing editable trip, first call get_trip for current destination IDs, then preview_itinerary_items, show the exact mixed batch, obtain explicit confirmation, and call add_itinerary_items with unchanged fields, the token, and a fresh UUID idempotency key. All writes are additive-only; this server cannot update, delete, invite collaborators, or import Gmail data.",

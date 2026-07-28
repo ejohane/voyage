@@ -90,7 +90,7 @@ async function seedTrips() {
   ]);
 }
 
-describe("Voyage Phase 2B MCP worker", () => {
+describe("Voyage Phase 2C MCP worker", () => {
   beforeEach(async () => {
     await env.DB.batch([
       env.DB.prepare("DELETE FROM mcp_mutations"),
@@ -120,7 +120,7 @@ describe("Voyage Phase 2B MCP worker", () => {
     });
   });
 
-  it("reports the uncached Phase 2B production boundary", async () => {
+  it("reports the uncached Phase 2C production boundary", async () => {
     const worker = createVoyageMcpWorker(async () => null);
     const response = await worker.fetch(
       new Request("https://mcp-staging.voyageplan.app/health"),
@@ -133,7 +133,7 @@ describe("Voyage Phase 2B MCP worker", () => {
     await expect(response.json()).resolves.toEqual({
       status: "ok",
       service: "voyage-mcp",
-      phase: "2b",
+      phase: "2c",
       environment: "staging",
       tripDataAccess: "read-write-additive-itinerary",
     });

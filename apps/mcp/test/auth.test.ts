@@ -20,12 +20,12 @@ function authenticatedRequest() {
 }
 
 describe("authenticateClerkOAuthRequestWith", () => {
-  it("accepts a verified OpenID OAuth JWT from the Voyage Clerk instance", async () => {
+  it("accepts ChatGPT's safe OIDC identity scopes from the Voyage Clerk instance", async () => {
     const verifyClerkToken = vi.fn(async () => ({
       iss: bindings.CLERK_AUTHORIZATION_SERVER,
       sub: "user_123",
       client_id: "dynamic_client_123",
-      scope: "openid offline_access",
+      scope: "openid profile email offline_access",
     }));
 
     await expect(
@@ -38,7 +38,7 @@ describe("authenticateClerkOAuthRequestWith", () => {
       userId: "user_123",
       subject: "user_123",
       clientId: "dynamic_client_123",
-      scopes: ["openid", "offline_access"],
+      scopes: ["openid", "profile", "email", "offline_access"],
     });
 
     expect(verifyClerkToken).toHaveBeenCalledWith("signed-token", {

@@ -1,4 +1,5 @@
 import { verifyToken } from "@clerk/backend";
+import { requiredOAuthScopes } from "./oauth-scopes";
 import type { AuthenticateOAuthRequest, Bindings, LinkedVoyageIdentity } from "./types";
 
 const clerkOAuthJwtTypes = ["at+jwt", "application/at+jwt"];
@@ -43,7 +44,7 @@ export async function authenticateClerkOAuthRequestWith(
       !claims.sub.startsWith("user_") ||
       typeof oauthClaims.client_id !== "string" ||
       oauthClaims.client_id.length === 0 ||
-      !scopes.includes("openid")
+      !requiredOAuthScopes.every((scope) => scopes.includes(scope))
     ) {
       return null;
     }
