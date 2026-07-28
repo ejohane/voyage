@@ -22,7 +22,7 @@
     "ENVIRONMENT": "staging",
     "APP_URL": "https://voyageplan.app",
     "MCP_RESOURCE_URL": "https://mcp-staging.voyageplan.app",
-    "CLERK_AUTHORIZATION_SERVER": "https://special-bullfrog-79.clerk.accounts.dev"
+    "CLERK_AUTHORIZATION_SERVER": "https://clerk.voyageplan.app"
   },
   "observability": {
     "enabled": true
