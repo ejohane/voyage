@@ -14,7 +14,7 @@ keeps the native implementation, App Store disclosures, and that public policy a
 
 | Data | Source and purpose | On-device handling |
 | --- | --- | --- |
-| Clerk account and session | Sign-in and authenticated API access | Session material uses Clerk's Keychain-backed storage. Never log or place it in the trip cache. |
+| Clerk account identity, name, email, and session | Sign-in and authenticated API access | Session material uses Clerk's Keychain-backed storage. Never log or place it in the trip cache. |
 | Trip, destination, travel, stay, and scheduled-plan data | Present and coordinate accessible trips | Last-known-good values may be stored in a per-account offline snapshot. |
 | Member names, roles, and policy-visible emails | Show who is traveling | Treat as personal data; cache only if the people feature explicitly requires offline access. |
 | Booking URLs, confirmation numbers, and notes | Show details the user stored in Voyage | Treat as sensitive user content. Never log, index globally, or include in diagnostics. |

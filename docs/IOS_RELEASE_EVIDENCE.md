@@ -57,6 +57,8 @@ Both environments reported no pending migrations after the July 28 deployment.
 - [x] Mobile callback allowlisted as `app.voyage.native://callback`.
 - [x] Clerk AASA readback contains `TRA7965NM5.app.voyage.native` at
       `https://clerk.voyageplan.app/.well-known/apple-app-site-association`.
+- [x] Production native sign-in surface currently exposes Google only; the privacy manifest declares
+      linked name, email address, user ID, and trip content for app functionality, with no tracking.
 - [ ] Production native sign-in completed and its bearer token accepted by Voyage.
 - [ ] Membership-scoped production list/workspace/people payloads decoded by the candidate models.
 
