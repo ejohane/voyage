@@ -3,6 +3,9 @@
   "name": "voyage",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-07-18",
+  "triggers": {
+    "crons": ["17 3 * * *"]
+  },
   "routes": [
     {
       "pattern": "voyageplan.app",
@@ -35,5 +38,31 @@
   "observability": {
     "enabled": true
   },
-  "upload_source_maps": true
+  "upload_source_maps": true,
+  "env": {
+    "staging": {
+      "name": "voyage-staging",
+      "routes": [
+        {
+          "pattern": "staging.voyageplan.app",
+          "custom_domain": true
+        }
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "voyage-staging",
+          "database_id": "1d861d6e-f26a-4449-95b9-2eb4a6da5008",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "APP_URL": "https://staging.voyageplan.app",
+        "INVITATION_FROM_EMAIL": "Voyage <invites@voyageplan.app>",
+        "CLERK_AUTHORIZED_PARTIES": "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,https://staging.voyageplan.app",
+        "CLERK_JWT_KEY": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA00ZSAZSdjDTZ237GmmvK\nNwdNhxJYa3mTd4IQAvDuWkJ6L1jjAyChY7gJvPyZZVqTYtX0JSKKI5IXqgUZXrKG\nVDD+/TIGG4c22A+SLXeIF2jF5epwWZQ7QrEvcVjKm28DjxcPGec23Bn/AWnD1ryB\nfJ4pYKFr39gGYotVjn0nMZ6ROmH/jM6PB7lwP3scgyd4OEvK1OBCQFjUzd/ZGWmx\n+IFTySkVQxzBLJqFpfkIujGeZKABbhZQ8taZU78jo8WVJh88MtQPFBlT3GBz7alU\ng1g3yoxQBD6KTe5rNb/aTx8PNPN2qxbOh7n4/7Yp0rQxtTd0w267EcQcDLw0fqon\nMQIDAQAB\n-----END PUBLIC KEY-----"
+      }
+    }
+  }
 }

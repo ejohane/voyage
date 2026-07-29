@@ -14,6 +14,12 @@ The selected Voyage logo is a wordmark built around an orbital **O**:
 
 This PNG is the approved concept reference. A production pass should recreate it as precise vector artwork and derive the primary lockup, standalone orbital-O mark, app icon, monochrome variants, and light/dark background treatments from the same geometry.
 
+## Native app icon
+
+![Voyage app icon](voyage-app-icon.png)
+
+The iOS icon isolates the approved orbital-O mark for small, square system surfaces while keeping the same globe, ring, arrow, and brand palette.
+
 ## Status
 
 **Concept approved July 18, 2026.**

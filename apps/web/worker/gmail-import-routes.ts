@@ -6,6 +6,7 @@ import {
 } from "@voyage/contracts";
 import { Hono } from "hono";
 import { type AuthenticateRequest, createAuthMiddleware } from "./auth";
+import { backendRequestId, logBackendFailure } from "./backend-logging";
 import { gmailCandidateSources } from "./gmail-candidates";
 import { decryptSecret, encryptSecret } from "./gmail-crypto";
 import { importGmailCandidate } from "./gmail-import-repository";
@@ -135,6 +136,7 @@ export function createGmailImportRoutes(
   });
 
   routes.post("/:tripId/imports/gmail", async (context) => {
+    const requestId = backendRequestId(context.req.raw);
     const trip = await getTrip(context.env.DB, context.var.authUserId, context.req.param("tripId"));
     if (!trip) {
       return context.json(
@@ -192,8 +194,13 @@ export function createGmailImportRoutes(
           if (propertyRef) {
             candidate = { ...candidate, input: { ...candidate.input, propertyRef } };
           }
-        } catch (error) {
-          console.error("Gmail stay property match failed", error);
+        } catch {
+          logBackendFailure({
+            requestId,
+            operation: "gmail_stay_property_match",
+            status: 200,
+            category: "dependency_error",
+          });
         }
       }
       const result = await importGmailCandidate(

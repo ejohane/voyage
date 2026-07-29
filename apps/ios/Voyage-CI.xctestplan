@@ -1,0 +1,29 @@
+{
+  "configurations" : [
+    {
+      "id" : "A1F30A2B-A15A-42A0-8240-2B668F440EC8",
+      "name" : "CI",
+      "options" : {
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:Voyage.xcodeproj",
+      "identifier" : "040000000000000000000001",
+      "name" : "Voyage"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:Voyage.xcodeproj",
+        "identifier" : "040000000000000000000002",
+        "name" : "VoyageTests"
+      }
+    }
+  ],
+  "version" : 1
+}

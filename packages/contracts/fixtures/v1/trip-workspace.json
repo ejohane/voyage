@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-01T12:00:00.000Z",
+  "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "trip": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "name": "Autumn in Lisbon",
+    "startDate": "2026-10-04",
+    "endDate": "2026-10-12",
+    "stops": [
+      {
+        "id": "22222222-2222-4222-8222-222222222222",
+        "name": "Lisbon, Portugal",
+        "arrivalDate": "2026-10-04",
+        "departureDate": "2026-10-12",
+        "location": {
+          "provider": "google",
+          "placeId": "ChIJO_PkYRozGQ0R0DaQ5L3rAAQ"
+        },
+        "position": 0
+      }
+    ],
+    "accessLevel": "owner",
+    "createdAt": "2026-07-20T14:00:00.000Z",
+    "updatedAt": "2026-07-28T16:30:00.000Z"
+  },
+  "travel": [
+    {
+      "id": "33333333-3333-4333-8333-333333333333",
+      "tripId": "11111111-1111-4111-8111-111111111111",
+      "kind": "journey",
+      "type": "flight",
+      "status": "booked",
+      "departureStopId": null,
+      "arrivalStopId": "22222222-2222-4222-8222-222222222222",
+      "departureAirportId": null,
+      "arrivalAirportId": null,
+      "departureAirport": null,
+      "arrivalAirport": null,
+      "departureLocation": "ORD · Chicago",
+      "arrivalLocation": "LIS · Lisbon",
+      "departureAt": "2026-10-04T18:30",
+      "arrivalAt": "2026-10-05T08:10",
+      "carrier": "United Airlines",
+      "referenceNumber": "UA 942",
+      "vehicleDescription": null,
+      "confirmationNumber": "ABC123",
+      "bookingUrl": "https://travel.example.com/booking/ABC123",
+      "notes": "Overnight flight",
+      "createdAt": "2026-07-21T10:00:00.000Z",
+      "updatedAt": "2026-07-25T11:00:00.000Z"
+    },
+    {
+      "id": "33333333-3333-4333-8333-333333333334",
+      "tripId": "11111111-1111-4111-8111-111111111111",
+      "kind": "rental",
+      "type": "car",
+      "status": "planning",
+      "departureStopId": "22222222-2222-4222-8222-222222222222",
+      "arrivalStopId": "22222222-2222-4222-8222-222222222222",
+      "departureAirportId": null,
+      "arrivalAirportId": null,
+      "departureAirport": null,
+      "arrivalAirport": null,
+      "departureLocation": "Lisbon Airport",
+      "arrivalLocation": "Lisbon Airport",
+      "departureAt": "2026-10-06T09:00",
+      "arrivalAt": "2026-10-09T18:00",
+      "carrier": "Europcar",
+      "referenceNumber": null,
+      "vehicleDescription": "Economy car · automatic",
+      "confirmationNumber": null,
+      "bookingUrl": null,
+      "notes": null,
+      "createdAt": "2026-07-24T08:00:00.000Z",
+      "updatedAt": "2026-07-24T08:00:00.000Z"
+    }
+  ],
+  "stays": [
+    {
+      "id": "44444444-4444-4444-8444-444444444444",
+      "tripId": "11111111-1111-4111-8111-111111111111",
+      "status": "booked",
+      "tripStopId": "22222222-2222-4222-8222-222222222222",
+      "propertyName": "Memmo Alfama",
+      "address": "Travessa das Merceeiras 27, Lisbon",
+      "checkInDate": "2026-10-05",
+      "checkOutDate": "2026-10-12",
+      "confirmationNumber": "STAY123",
+      "bookingUrl": "https://lodging.example.com/STAY123",
+      "notes": "Late arrival",
+      "propertyRef": {
+        "provider": "google",
+        "placeId": "place-memmo"
+      },
+      "bookingDetails": {
+        "checkInWindow": "15:00 – midnight",
+        "checkOutWindow": "By 11:00",
+        "roomType": "Deluxe double room",
+        "guestSummary": "2 adults",
+        "mealPlan": "Breakfast included",
+        "cancellationSummary": "Free cancellation until September 28",
+        "cancellationDeadline": "2026-09-28",
+        "totalPriceText": "EUR 1240.00",
+        "amenities": ["wifi", "breakfast"]
+      },
+      "createdAt": "2026-07-21T10:15:00.000Z",
+      "updatedAt": "2026-07-26T12:00:00.000Z"
+    }
+  ],
+  "plans": [
+    {
+      "id": "55555555-5555-4555-8555-555555555555",
+      "tripId": "11111111-1111-4111-8111-111111111111",
+      "tripStopId": "22222222-2222-4222-8222-222222222222",
+      "title": "Visit the MAAT",
+      "category": "sightseeing",
+      "status": "planned",
+      "scheduledDate": "2026-10-07",
+      "startTime": "10:30",
+      "endTime": "12:00",
+      "location": "Av. Brasília, Lisbon",
+      "confirmationNumber": null,
+      "bookingUrl": "https://tickets.example.com/maat",
+      "notes": "Walk along the river afterward",
+      "revision": 3,
+      "createdAt": "2026-07-23T15:00:00.000Z",
+      "updatedAt": "2026-07-28T16:30:00.000Z"
+    }
+  ]
+}

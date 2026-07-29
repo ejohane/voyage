@@ -10,6 +10,12 @@ function PrivacyPage() {
           memberships. When someone is invited, Voyage stores their email address and invitation
           status so the organizer can manage access.
         </p>
+        <p>
+          The Voyage iOS app keeps a local copy of previously opened trip information so it remains
+          available when your device is offline. Local copies are separated by signed-in account,
+          replaced after a successful refresh, and removed when you sign out. Property photos and
+          other Google Maps content are requested for display and are not kept in this offline copy.
+        </p>
       </LegalSection>
 
       <LegalSection title="Google Maps features">

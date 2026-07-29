@@ -18,6 +18,7 @@
       "!!**/bun.lock",
       "!!**/dist",
       "!!**/node_modules",
+      "!!**/.artifacts",
       "!!**/.playwright-cli",
       "!!**/.wrangler",
       "!!**/worker-configuration.d.ts"
