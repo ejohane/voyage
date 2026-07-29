@@ -196,6 +196,30 @@ function consolidateStays(candidates: GmailStayCandidate[]): GmailStayCandidate 
     (candidate) => candidate.input.confirmationNumber,
     (value) => (value ? 1 : 0),
   );
+  const newest = [...candidates].sort((left, right) =>
+    right.source.receivedAt.localeCompare(left.source.receivedAt),
+  );
+  const detailValue = <
+    Key extends keyof NonNullable<GmailStayCandidate["input"]["bookingDetails"]>,
+  >(
+    key: Key,
+  ) => newest.map((candidate) => candidate.input.bookingDetails?.[key]).find(Boolean) ?? null;
+  const amenities = [
+    ...new Set(candidates.flatMap((candidate) => candidate.input.bookingDetails?.amenities ?? [])),
+  ];
+  const bookingDetails = candidates.some((candidate) => candidate.input.bookingDetails)
+    ? {
+        checkInWindow: detailValue("checkInWindow") as string | null,
+        checkOutWindow: detailValue("checkOutWindow") as string | null,
+        roomType: detailValue("roomType") as string | null,
+        guestSummary: detailValue("guestSummary") as string | null,
+        mealPlan: detailValue("mealPlan") as string | null,
+        cancellationSummary: detailValue("cancellationSummary") as string | null,
+        cancellationDeadline: detailValue("cancellationDeadline") as string | null,
+        totalPriceText: detailValue("totalPriceText") as string | null,
+        amenities,
+      }
+    : null;
   const merged = {
     ...representative,
     sources: uniqueSources(candidates),
@@ -205,6 +229,7 @@ function consolidateStays(candidates: GmailStayCandidate[]): GmailStayCandidate 
       address: address.input.address,
       confirmationNumber: confirmation.input.confirmationNumber,
       bookingUrl: booking.input.bookingUrl,
+      bookingDetails,
     },
   };
   return {

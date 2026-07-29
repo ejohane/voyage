@@ -117,6 +117,55 @@ function sourceStatement(
     .bind(userId, tripId, source.key, source.messageId, source.threadId, kind, itemId, now);
 }
 
+function bookingDetailsStatement(
+  database: D1Database,
+  stayId: string,
+  details: NonNullable<Extract<GmailImportCandidate, { kind: "stay" }>["input"]["bookingDetails"]>,
+  now: string,
+  fillMissingOnly: boolean,
+) {
+  const value = (column: string) =>
+    fillMissingOnly
+      ? `${column} = COALESCE(stay_booking_details.${column}, excluded.${column})`
+      : `${column} = excluded.${column}`;
+  return database
+    .prepare(
+      `INSERT INTO stay_booking_details (
+        stay_id, check_in_window, check_out_window, room_type, guest_summary, meal_plan,
+        cancellation_summary, cancellation_deadline, total_price_text, amenities_json,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(stay_id) DO UPDATE SET
+        ${value("check_in_window")},
+        ${value("check_out_window")},
+        ${value("room_type")},
+        ${value("guest_summary")},
+        ${value("meal_plan")},
+        ${value("cancellation_summary")},
+        ${value("cancellation_deadline")},
+        ${value("total_price_text")},
+        amenities_json = CASE
+          WHEN stay_booking_details.amenities_json = '[]' THEN excluded.amenities_json
+          ELSE stay_booking_details.amenities_json
+        END,
+        updated_at = excluded.updated_at`,
+    )
+    .bind(
+      stayId,
+      details.checkInWindow,
+      details.checkOutWindow,
+      details.roomType,
+      details.guestSummary,
+      details.mealPlan,
+      details.cancellationSummary,
+      details.cancellationDeadline,
+      details.totalPriceText,
+      JSON.stringify(details.amenities),
+      now,
+      now,
+    );
+}
+
 export async function importGmailCandidate(
   database: D1Database,
   userId: string,
@@ -135,11 +184,45 @@ export async function importGmailCandidate(
   const duplicate = await duplicateItem(database, tripId, candidate);
   const now = new Date().toISOString();
   if (duplicate) {
-    await database.batch(
-      newSources.map((source) =>
-        sourceStatement(database, userId, tripId, source, candidate.kind, duplicate.id, now),
-      ),
+    const statements = newSources.map((source) =>
+      sourceStatement(database, userId, tripId, source, candidate.kind, duplicate.id, now),
     );
+    if (candidate.kind === "stay") {
+      if (candidate.input.propertyRef) {
+        statements.push(
+          database
+            .prepare(
+              `UPDATE stays SET
+                property_place_provider = COALESCE(property_place_provider, ?),
+                property_place_id = COALESCE(property_place_id, ?),
+                property_match_method = COALESCE(property_match_method, 'gmail_auto'),
+                property_matched_at = COALESCE(property_matched_at, ?),
+                updated_at = ?
+               WHERE id = ? AND trip_id = ?`,
+            )
+            .bind(
+              candidate.input.propertyRef.provider,
+              candidate.input.propertyRef.placeId,
+              now,
+              now,
+              duplicate.id,
+              tripId,
+            ),
+        );
+      }
+      if (candidate.input.bookingDetails) {
+        statements.push(
+          bookingDetailsStatement(
+            database,
+            duplicate.id,
+            candidate.input.bookingDetails,
+            now,
+            true,
+          ),
+        );
+      }
+    }
+    await database.batch(statements);
     return { result: "duplicate" };
   }
 
@@ -185,8 +268,9 @@ export async function importGmailCandidate(
         .prepare(
           `INSERT INTO stays (
             id, trip_id, status, trip_stop_id, property_name, address, check_in_date, check_out_date,
-            confirmation_number, booking_url, notes, created_by_user_id, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            confirmation_number, booking_url, notes, property_place_provider, property_place_id,
+            property_match_method, property_matched_at, created_by_user_id, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           itemId,
@@ -200,11 +284,20 @@ export async function importGmailCandidate(
           candidate.input.confirmationNumber,
           candidate.input.bookingUrl,
           candidate.input.notes,
+          candidate.input.propertyRef?.provider ?? null,
+          candidate.input.propertyRef?.placeId ?? null,
+          candidate.input.propertyRef ? "gmail_auto" : null,
+          candidate.input.propertyRef ? now : null,
           userId,
           now,
           now,
         ),
     );
+    if (candidate.input.bookingDetails) {
+      statements.push(
+        bookingDetailsStatement(database, itemId, candidate.input.bookingDetails, now, false),
+      );
+    }
   }
   statements.push(
     ...newSources.map((source) =>

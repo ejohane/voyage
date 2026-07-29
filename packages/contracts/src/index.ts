@@ -90,8 +90,20 @@ export function tripStaysEndpoint(tripId: string) {
   return `${tripEndpoint(tripId)}/stays` as const;
 }
 
+export function stayPropertyBackfillEndpoint(tripId: string) {
+  return `${tripStaysEndpoint(tripId)}/property-backfill` as const;
+}
+
 export function stayEndpoint(tripId: string, stayId: string) {
   return `${tripStaysEndpoint(tripId)}/${stayId}` as const;
+}
+
+export function stayPropertyEndpoint(tripId: string, stayId: string) {
+  return `${stayEndpoint(tripId, stayId)}/property` as const;
+}
+
+export function stayPropertyPhotoEndpoint(tripId: string, stayId: string) {
+  return `${stayPropertyEndpoint(tripId, stayId)}/photo` as const;
 }
 
 export function tripPlansEndpoint(tripId: string) {
@@ -471,25 +483,60 @@ export const travelSchema = travelBaseFieldsSchema
 export const travelResponseSchema = z.object({ travel: travelSchema });
 export const travelListResponseSchema = z.object({ travel: z.array(travelSchema) });
 
-const stayBaseFieldsSchema = z.object({
-  status: reservationStatusSchema,
-  tripStopId: z.string().uuid().nullable(),
-  propertyName: z
-    .string()
-    .trim()
-    .min(1, "Enter the property name.")
-    .max(160, "Keep the property name under 160 characters."),
-  address: z
-    .string()
-    .trim()
-    .min(1, "Enter the address.")
-    .max(300, "Keep the address under 300 characters."),
-  checkInDate: dateOnlySchema,
-  checkOutDate: dateOnlySchema,
-  confirmationNumber: nullableText(120, "Keep the confirmation number under 120 characters."),
-  bookingUrl: nullableUrlSchema,
-  notes: nullableText(2_000, "Keep notes under 2,000 characters."),
+export const stayPropertyRefSchema = z.object({
+  provider: z.literal("google"),
+  placeId: z.string().trim().min(1).max(300),
 });
+
+export const stayAmenitySchema = z.enum([
+  "wifi",
+  "breakfast",
+  "parking",
+  "pool",
+  "spa",
+  "gym",
+  "pets",
+  "restaurant",
+]);
+
+export const stayBookingDetailsSchema = z.object({
+  checkInWindow: nullableText(120, "Keep the check-in window under 120 characters."),
+  checkOutWindow: nullableText(120, "Keep the checkout window under 120 characters."),
+  roomType: nullableText(200, "Keep the room type under 200 characters."),
+  guestSummary: nullableText(200, "Keep the guest summary under 200 characters."),
+  mealPlan: nullableText(200, "Keep the meal plan under 200 characters."),
+  cancellationSummary: nullableText(500, "Keep the cancellation summary under 500 characters."),
+  cancellationDeadline: nullableDateSchema,
+  totalPriceText: nullableText(120, "Keep the total price under 120 characters."),
+  amenities: z.array(stayAmenitySchema).max(8),
+});
+
+const optionalStayEnrichmentSchema = z.object({
+  propertyRef: stayPropertyRefSchema.nullable().optional(),
+  bookingDetails: stayBookingDetailsSchema.nullable().optional(),
+});
+
+const stayBaseFieldsSchema = z
+  .object({
+    status: reservationStatusSchema,
+    tripStopId: z.string().uuid().nullable(),
+    propertyName: z
+      .string()
+      .trim()
+      .min(1, "Enter the property name.")
+      .max(160, "Keep the property name under 160 characters."),
+    address: z
+      .string()
+      .trim()
+      .min(1, "Enter the address.")
+      .max(300, "Keep the address under 300 characters."),
+    checkInDate: dateOnlySchema,
+    checkOutDate: dateOnlySchema,
+    confirmationNumber: nullableText(120, "Keep the confirmation number under 120 characters."),
+    bookingUrl: nullableUrlSchema,
+    notes: nullableText(2_000, "Keep notes under 2,000 characters."),
+  })
+  .extend(optionalStayEnrichmentSchema.shape);
 
 export const stayFieldsSchema = stayBaseFieldsSchema.refine(
   (value) => value.checkOutDate >= value.checkInDate,
@@ -507,15 +554,61 @@ export const updateStayInputSchema = stayBaseFieldsSchema
   .partial()
   .refine((value) => Object.keys(value).length > 0, "Provide at least one field to update.");
 
-export const staySchema = stayBaseFieldsSchema.extend({
-  id: z.string().uuid(),
-  tripId: z.string().uuid(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
+export const staySchema = stayBaseFieldsSchema
+  .omit({ propertyRef: true, bookingDetails: true })
+  .extend({
+    propertyRef: stayPropertyRefSchema.nullable(),
+    bookingDetails: stayBookingDetailsSchema.nullable(),
+    id: z.string().uuid(),
+    tripId: z.string().uuid(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  });
 
 export const stayResponseSchema = z.object({ stay: staySchema });
 export const stayListResponseSchema = z.object({ stays: z.array(staySchema) });
+
+export const stayPropertyPhotoSchema = z.object({
+  attributionDisplayName: z.string().nullable(),
+  attributionUri: z.string().url().nullable(),
+  googleMapsUri: z.string().url(),
+});
+
+export const stayPropertySchema = z.object({
+  provider: z.literal("google"),
+  placeId: z.string().min(1),
+  displayName: z.string().min(1),
+  formattedAddress: z.string().min(1),
+  primaryType: z.string().nullable(),
+  primaryTypeDisplayName: z.string().nullable(),
+  websiteUri: z.string().url().nullable(),
+  nationalPhoneNumber: z.string().nullable(),
+  internationalPhoneNumber: z.string().nullable(),
+  rating: z.number().min(0).max(5).nullable(),
+  userRatingCount: z.number().int().nonnegative().nullable(),
+  googleMapsUri: z.string().url(),
+  hasPhoto: z.boolean(),
+  photo: stayPropertyPhotoSchema.nullable(),
+});
+
+export const stayPropertyResponseSchema = z.object({ property: stayPropertySchema });
+
+export const stayPropertyBackfillInputSchema = z.object({ apply: z.boolean().default(false) });
+export const stayPropertyBackfillResultSchema = z.object({
+  stayId: z.string().uuid(),
+  propertyName: z.string(),
+  address: z.string(),
+  status: z.enum(["matched", "unmatched", "failed"]),
+  placeId: z.string().nullable(),
+});
+export const stayPropertyBackfillResponseSchema = z.object({
+  mode: z.enum(["dry-run", "apply"]),
+  scanned: z.number().int().nonnegative(),
+  matched: z.number().int().nonnegative(),
+  unmatched: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  results: z.array(stayPropertyBackfillResultSchema).max(50),
+});
 
 export const planCategorySchema = z.enum(["activity", "food", "event", "sightseeing", "other"]);
 export const planStatusSchema = z.enum(["idea", "planned", "booked"]);
@@ -750,9 +843,16 @@ export type TravelResponse = z.infer<typeof travelResponseSchema>;
 export type TravelListResponse = z.infer<typeof travelListResponseSchema>;
 export type CreateStayInput = z.infer<typeof createStayInputSchema>;
 export type UpdateStayInput = z.infer<typeof updateStayInputSchema>;
+export type StayPropertyRef = z.infer<typeof stayPropertyRefSchema>;
+export type StayAmenity = z.infer<typeof stayAmenitySchema>;
+export type StayBookingDetails = z.infer<typeof stayBookingDetailsSchema>;
 export type Stay = z.infer<typeof staySchema>;
 export type StayResponse = z.infer<typeof stayResponseSchema>;
 export type StayListResponse = z.infer<typeof stayListResponseSchema>;
+export type StayProperty = z.infer<typeof stayPropertySchema>;
+export type StayPropertyResponse = z.infer<typeof stayPropertyResponseSchema>;
+export type StayPropertyBackfillInput = z.infer<typeof stayPropertyBackfillInputSchema>;
+export type StayPropertyBackfillResponse = z.infer<typeof stayPropertyBackfillResponseSchema>;
 export type PlanCategory = z.infer<typeof planCategorySchema>;
 export type PlanStatus = z.infer<typeof planStatusSchema>;
 export type CreatePlanInput = z.infer<typeof createPlanInputSchema>;

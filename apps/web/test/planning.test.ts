@@ -3,7 +3,11 @@ import {
   type PlanListResponse,
   type PlanResponse,
   type StayListResponse,
+  type StayPropertyBackfillResponse,
   type StayResponse,
+  stayPropertyBackfillEndpoint,
+  stayPropertyEndpoint,
+  stayPropertyPhotoEndpoint,
   type TravelListResponse,
   type TravelResponse,
   type TripResponse,
@@ -14,9 +18,40 @@ import {
 } from "@voyage/contracts";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../worker";
+import type { PlacesClient } from "../worker/google-places";
+
+const placesClient: PlacesClient = {
+  suggest: async () => [],
+  resolve: async (placeId) => ({ provider: "google", placeId }),
+  matchStay: async (propertyName) =>
+    propertyName === "Memmo Alfama" ? { provider: "google", placeId: "place-memmo" } : null,
+  getStayProperty: async (placeId) => ({
+    provider: "google",
+    placeId,
+    displayName: "Memmo Alfama",
+    formattedAddress: "Travessa das Merceeiras 27, Lisbon, Portugal",
+    primaryType: "hotel",
+    primaryTypeDisplayName: "Hotel",
+    websiteUri: "https://memmoalfama.example/",
+    nationalPhoneNumber: null,
+    internationalPhoneNumber: "+351 210 495 660",
+    rating: 4.7,
+    userRatingCount: 420,
+    googleMapsUri: "https://maps.google.com/?cid=memmo",
+    hasPhoto: true,
+    photo: {
+      attributionDisplayName: "Memmo Alfama",
+      attributionUri: "https://maps.google.com/author/memmo",
+      googleMapsUri: "https://maps.google.com/photo/memmo",
+    },
+  }),
+  renderStayPhoto: async () =>
+    new Response(new Uint8Array([1, 2, 3]), { headers: { "Content-Type": "image/jpeg" } }),
+};
 
 const testApp = createApp({
   authenticateRequest: async (request) => request.headers.get("x-test-user"),
+  placesClient,
 });
 
 async function request(
@@ -74,6 +109,18 @@ const stayInput = {
   confirmationNumber: "STAY123",
   bookingUrl: "https://example.com/stay",
   notes: "Late arrival",
+  propertyRef: { provider: "google", placeId: "place-memmo" },
+  bookingDetails: {
+    checkInWindow: "15:00 – midnight",
+    checkOutWindow: "By 11:00",
+    roomType: "Deluxe double room",
+    guestSummary: "2 adults",
+    mealPlan: "Breakfast included",
+    cancellationSummary: "Free cancellation until September 28",
+    cancellationDeadline: "2026-09-28",
+    totalPriceText: "EUR 1240.00",
+    amenities: ["wifi", "breakfast"],
+  },
 } as const;
 
 function planInput(tripStopId: string) {
@@ -256,6 +303,11 @@ describe("trip planning API", () => {
     expect(createResponse.status).toBe(201);
     expect(created.stay.propertyName).toBe("Memmo Alfama");
     expect(created.stay.tripStopId).toBe(trip.stops[0].id);
+    expect(created.stay.propertyRef).toEqual({ provider: "google", placeId: "place-memmo" });
+    expect(created.stay.bookingDetails).toMatchObject({
+      roomType: "Deluxe double room",
+      amenities: ["wifi", "breakfast"],
+    });
     expect(list.stays).toHaveLength(1);
     expect(updated.stay.status).toBe("booked");
     expect(invalidResponse.status).toBe(422);
@@ -266,6 +318,92 @@ describe("trip planning API", () => {
       { method: "DELETE" },
     );
     expect(deleteResponse.status).toBe(204);
+  });
+
+  it("serves dynamic property details and a no-store photo only to trip members", async () => {
+    const { trip } = await createTrip();
+    const created = await (
+      await request(tripStaysEndpoint(trip.id), "user_owner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...stayInput, tripStopId: trip.stops[0].id }),
+      })
+    ).json<StayResponse>();
+    const propertyResponse = await request(
+      stayPropertyEndpoint(trip.id, created.stay.id),
+      "user_owner",
+    );
+    const photoResponse = await request(
+      stayPropertyPhotoEndpoint(trip.id, created.stay.id),
+      "user_owner",
+    );
+    const outsiderResponse = await request(
+      stayPropertyEndpoint(trip.id, created.stay.id),
+      "user_other",
+    );
+
+    expect(propertyResponse.status).toBe(200);
+    expect(propertyResponse.headers.get("Cache-Control")).toBe("no-store");
+    expect(await propertyResponse.json()).toMatchObject({
+      property: { placeId: "place-memmo", websiteUri: "https://memmoalfama.example/" },
+    });
+    expect(photoResponse.status).toBe(200);
+    expect(photoResponse.headers.get("Content-Type")).toBe("image/jpeg");
+    expect(photoResponse.headers.get("Cache-Control")).toBe("no-store");
+    expect(outsiderResponse.status).toBe(404);
+  });
+
+  it("dry-runs and idempotently applies high-confidence property backfill matches", async () => {
+    const { trip } = await createTrip();
+    const created = await (
+      await request(tripStaysEndpoint(trip.id), "user_owner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...stayInput,
+          tripStopId: trip.stops[0].id,
+          propertyRef: null,
+        }),
+      })
+    ).json<StayResponse>();
+    const endpoint = stayPropertyBackfillEndpoint(trip.id);
+    const dryRun = await (
+      await request(endpoint, "user_owner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apply: false }),
+      })
+    ).json<StayPropertyBackfillResponse>();
+    const afterDryRun = await (
+      await request(tripStaysEndpoint(trip.id), "user_owner")
+    ).json<StayListResponse>();
+    const applied = await (
+      await request(endpoint, "user_owner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apply: true }),
+      })
+    ).json<StayPropertyBackfillResponse>();
+    const afterApply = await (
+      await request(tripStaysEndpoint(trip.id), "user_owner")
+    ).json<StayListResponse>();
+    const repeated = await (
+      await request(endpoint, "user_owner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apply: true }),
+      })
+    ).json<StayPropertyBackfillResponse>();
+
+    expect(dryRun).toMatchObject({ mode: "dry-run", scanned: 1, matched: 1 });
+    expect(dryRun.results[0]).toMatchObject({ stayId: created.stay.id, placeId: "place-memmo" });
+    expect(afterDryRun.stays[0].propertyRef).toBeNull();
+    expect(applied).toMatchObject({ mode: "apply", scanned: 1, matched: 1 });
+    expect(afterApply.stays[0].propertyRef).toEqual({
+      provider: "google",
+      placeId: "place-memmo",
+    });
+    expect(repeated).toMatchObject({ mode: "apply", scanned: 0, matched: 0 });
   });
 
   it("moves ideas into the itinerary and supports full plan CRUD", async () => {

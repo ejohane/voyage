@@ -8,8 +8,12 @@ import {
   planEndpoint,
   type Stay,
   type StayListResponse,
+  type StayPropertyBackfillResponse,
+  type StayPropertyResponse,
   type StayResponse,
   stayEndpoint,
+  stayPropertyBackfillEndpoint,
+  stayPropertyEndpoint,
   type Travel,
   type TravelListResponse,
   type TravelResponse,
@@ -27,6 +31,8 @@ import { useApiRequest } from "@/lib/api";
 const planningKeys = {
   travel: (tripId: string) => ["trips", tripId, "travel"] as const,
   stays: (tripId: string) => ["trips", tripId, "stays"] as const,
+  stayProperty: (tripId: string, stayId: string) =>
+    ["trips", tripId, "stays", stayId, "property"] as const,
   plans: (tripId: string) => ["trips", tripId, "plans"] as const,
 };
 
@@ -57,6 +63,37 @@ function useStays(tripId: string) {
     queryKey: planningKeys.stays(tripId),
     queryFn: async () => (await request<StayListResponse>(tripStaysEndpoint(tripId))).stays,
     enabled: Boolean(tripId),
+  });
+}
+
+function useStayProperty(tripId: string, stayId: string, enabled: boolean) {
+  const request = useApiRequest();
+  return useQuery({
+    queryKey: planningKeys.stayProperty(tripId, stayId),
+    queryFn: async () =>
+      (await request<StayPropertyResponse>(stayPropertyEndpoint(tripId, stayId))).property,
+    enabled: Boolean(tripId && stayId && enabled),
+    staleTime: 0,
+    gcTime: 5 * 60_000,
+    retry: false,
+  });
+}
+
+function useBackfillStayProperties(tripId: string) {
+  const request = useApiRequest();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (apply: boolean) =>
+      request<StayPropertyBackfillResponse>(stayPropertyBackfillEndpoint(tripId), {
+        method: "POST",
+        body: JSON.stringify({ apply }),
+      }),
+    onSuccess: (response) => {
+      if (response.mode === "apply") {
+        void queryClient.invalidateQueries({ queryKey: planningKeys.stays(tripId) });
+      }
+    },
   });
 }
 
@@ -240,6 +277,7 @@ function useDeletePlan(tripId: string, planId: string) {
 }
 
 export {
+  useBackfillStayProperties,
   useCreatePlan,
   useCreateStay,
   useCreateTravel,
@@ -247,6 +285,7 @@ export {
   useDeleteStay,
   useDeleteTravel,
   usePlans,
+  useStayProperty,
   useStays,
   useTravel,
   useUpdatePlan,

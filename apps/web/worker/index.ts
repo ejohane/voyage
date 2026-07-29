@@ -59,14 +59,20 @@ export function createApp(dependencies: AppDependencies = {}) {
       now: dependencies.now,
     }),
   );
-  app.route(tripsEndpoint, createPlanningRoutes(authenticateRequest));
+  app.route(
+    tripsEndpoint,
+    createPlanningRoutes(authenticateRequest, { placesClient: dependencies.placesClient }),
+  );
   app.route(
     "/api/integrations/gmail",
     createGmailIntegrationRoutes(authenticateRequest, { fetcher: dependencies.gmailFetch }),
   );
   app.route(
     tripsEndpoint,
-    createGmailImportRoutes(authenticateRequest, { fetcher: dependencies.gmailFetch }),
+    createGmailImportRoutes(authenticateRequest, {
+      fetcher: dependencies.gmailFetch,
+      placesClient: dependencies.placesClient,
+    }),
   );
   app.route(
     locationsEndpoint,

@@ -25,6 +25,7 @@ import { consolidateGmailCandidates, relevantGmailCandidates } from "../worker/g
 import { extractGmailCandidates } from "../worker/gmail-extractor";
 import { importGmailCandidate } from "../worker/gmail-import-repository";
 import { findItineraryGaps, followUpGmailSearchQueries } from "../worker/gmail-query-planner";
+import type { PlacesClient } from "../worker/google-places";
 
 function encodeBody(value: string) {
   const bytes = new TextEncoder().encode(value);
@@ -78,6 +79,16 @@ const stayMarkup = `
         "url": "https://hotel.example/reservations/HOTEL456",
         "checkinTime": "2026-10-05T15:00:00+01:00",
         "checkoutTime": "2026-10-12T11:00:00+01:00",
+        "lodgingUnitType": "Deluxe double room",
+        "numAdults": 2,
+        "mealPlan": "Breakfast included",
+        "totalPrice": "1240.00",
+        "priceCurrency": "EUR",
+        "cancellationPolicy": {
+          "@type": "MerchantReturnPolicy",
+          "description": "Free cancellation until September 28",
+          "validThrough": "2026-09-28"
+        },
         "reservationFor": {
           "@type": "LodgingBusiness",
           "name": "Memmo Alfama",
@@ -86,7 +97,11 @@ const stayMarkup = `
             "streetAddress": "Travessa das Merceeiras 27",
             "addressLocality": "Lisbon",
             "addressCountry": "Portugal"
-          }
+          },
+          "amenityFeature": [
+            { "@type": "LocationFeatureSpecification", "name": "Free Wi-Fi" },
+            { "@type": "LocationFeatureSpecification", "name": "Breakfast included" }
+          ]
         }
       }
     </script>
@@ -429,9 +444,17 @@ const googleFetch: typeof fetch = async (input, init) => {
   return new Response("Unexpected Google request", { status: 500 });
 };
 
+const placesClient: PlacesClient = {
+  suggest: async () => [],
+  resolve: async (placeId) => ({ provider: "google", placeId }),
+  matchStay: async (propertyName) =>
+    propertyName === "Memmo Alfama" ? { provider: "google", placeId: "place-memmo" } : null,
+};
+
 const testApp = createApp({
   authenticateRequest: async (request) => request.headers.get("x-test-user"),
   gmailFetch: googleFetch,
+  placesClient,
 });
 
 async function request(
@@ -1349,6 +1372,93 @@ describe("Gmail import", () => {
     ]);
   });
 
+  it("fills only missing stay enrichment when a related source resolves to a duplicate", async () => {
+    const { trip } = await createTrip();
+    const source = {
+      threadId: "thread-stay-duplicate",
+      subject: "Your stay is confirmed",
+      sender: "Hotel <reservations@example.com>",
+      receivedAt: "2026-07-01T12:00:00.000Z",
+      messageUrl: "https://mail.google.com/mail/u/0/#inbox/thread-stay-duplicate",
+    };
+    const baseInput = {
+      status: "booked",
+      tripStopId: trip.stops[0].id,
+      propertyName: "Memmo Alfama",
+      address: "Travessa das Merceeiras 27, Lisbon, Portugal",
+      checkInDate: "2026-10-05",
+      checkOutDate: "2026-10-12",
+      confirmationNumber: "HOTEL-DUP",
+      bookingUrl: "https://hotel.example/manage/HOTEL-DUP",
+      notes: null,
+    } as const;
+    const first = {
+      kind: "stay",
+      confidence: "high",
+      source: { ...source, key: "stay-duplicate:first", messageId: "stay-duplicate-first" },
+      input: {
+        ...baseInput,
+        bookingDetails: {
+          checkInWindow: "15:00",
+          checkOutWindow: null,
+          roomType: "Deluxe room",
+          guestSummary: null,
+          mealPlan: null,
+          cancellationSummary: null,
+          cancellationDeadline: null,
+          totalPriceText: null,
+          amenities: ["wifi"],
+        },
+      },
+    } satisfies GmailImportCandidate;
+    const second = {
+      ...first,
+      source: {
+        ...source,
+        key: "stay-duplicate:second",
+        messageId: "stay-duplicate-second",
+        receivedAt: "2026-07-02T12:00:00.000Z",
+      },
+      input: {
+        ...baseInput,
+        propertyRef: { provider: "google", placeId: "place-memmo" },
+        bookingDetails: {
+          checkInWindow: "16:00",
+          checkOutWindow: "11:00",
+          roomType: "Should not overwrite",
+          guestSummary: "2 adults",
+          mealPlan: "Breakfast included",
+          cancellationSummary: null,
+          cancellationDeadline: null,
+          totalPriceText: "EUR 1240.00",
+          amenities: ["breakfast"],
+        },
+      },
+    } satisfies GmailImportCandidate;
+
+    expect((await importGmailCandidate(env.DB, "user_owner", trip.id, first)).result).toBe(
+      "imported",
+    );
+    expect((await importGmailCandidate(env.DB, "user_owner", trip.id, second)).result).toBe(
+      "duplicate",
+    );
+    const stays = await (
+      await request(tripStaysEndpoint(trip.id), "user_owner")
+    ).json<StayListResponse>();
+    expect(stays.stays[0]).toMatchObject({
+      propertyRef: { provider: "google", placeId: "place-memmo" },
+      bookingDetails: {
+        checkInWindow: "15:00",
+        checkOutWindow: "11:00",
+        roomType: "Deluxe room",
+        guestSummary: "2 adults",
+        mealPlan: "Breakfast included",
+        totalPriceText: "EUR 1240.00",
+        amenities: ["wifi"],
+      },
+    });
+  });
+
   it("connects with PKCE, stores an encrypted token, and consumes state once", async () => {
     const { connectResponse, authorization, callbackResponse, state } =
       await connectGmail("/trips/trip-123");
@@ -1454,6 +1564,17 @@ describe("Gmail import", () => {
     expect(stays.stays[0]).toMatchObject({
       propertyName: "Memmo Alfama",
       confirmationNumber: "HOTEL456",
+      propertyRef: { provider: "google", placeId: "place-memmo" },
+      bookingDetails: {
+        checkInWindow: "15:00",
+        checkOutWindow: "11:00",
+        roomType: "Deluxe double room",
+        guestSummary: "2 adults",
+        mealPlan: "Breakfast included",
+        cancellationDeadline: "2026-09-28",
+        totalPriceText: "EUR 1240.00",
+        amenities: expect.arrayContaining(["wifi", "breakfast"]),
+      },
     });
     expect(
       (
