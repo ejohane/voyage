@@ -26,7 +26,8 @@ production builds. `bun run check:ios` is the deterministic Xcode gate. It:
 4. resolves Swift package dependencies;
 5. enforces `swift-format` lint;
 6. runs Xcode static analysis;
-7. runs unit tests serially with code coverage and an `.xcresult` bundle;
+7. runs unit tests serially with code coverage and an `.xcresult` bundle, preserving normal
+   Simulator signing so the hosted app has the application identifier required by Keychain;
 8. shuts down only a simulator it booted and reports the evidence directory.
 
 Local evidence is written under `.artifacts/ios/<UTC timestamp>-<process id>/` and is ignored by
@@ -34,6 +35,11 @@ Git. Set `VOYAGE_IOS_DESTINATION_ID` to require a particular available simulator
 `VOYAGE_IOS_KEEP_SIMULATOR_BOOTED=1` to leave a simulator booted after the gate. Project, scheme,
 configuration, and artifact root also have explicit `VOYAGE_IOS_*` overrides for diagnostics; CI
 uses the repository defaults.
+
+`CODE_SIGNING_ALLOWED=NO` is reserved for compile-only analysis/build checks. Do not install or
+launch an unsigned Simulator product: Clerk persists its client and device token in the ordinary
+iOS Keychain, whose simulator access still requires Xcode's simulated application identifier. No
+Keychain Sharing capability or Clerk access group is needed.
 
 GitHub Actions preserves the existing Ubuntu/Bun validation and runs iOS validation independently
 on a macOS runner. The artifact step always uploads the evidence produced before the gate exits and

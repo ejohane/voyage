@@ -32,6 +32,11 @@ swift format lint --strict \
   --recursive apps/ios/Voyage apps/ios/VoyageTests
 ```
 
+The unsigned generic-Simulator build above is compile-only. Do not install or launch that artifact:
+iOS Keychain calls require the simulated application identifier that Xcode embeds when it signs a
+Simulator app. Use Xcode's Run action or omit `CODE_SIGNING_ALLOWED=NO` for any launched build. The
+repository test gate signs its hosted Simulator app for the same reason.
+
 The test target consumes the canonical sanitized API fixtures directly from `packages/contracts/fixtures/v1`.
 
 ## Fixture launch mode

@@ -220,7 +220,6 @@ NSUnbufferedIO=YES xcodebuild \
   -parallel-testing-enabled NO \
   -resultBundlePath "$RESULT_BUNDLE" \
   test \
-  CODE_SIGNING_ALLOWED=NO \
   COMPILER_INDEX_STORE_ENABLE=NO 2>&1 | tee "$RUN_DIR/test.log"
 
 echo "Reading test result summary"

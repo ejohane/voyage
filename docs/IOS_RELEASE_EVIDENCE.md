@@ -24,9 +24,9 @@ interchangeable evidence.
 - [x] Shared synthetic fixtures stored under `packages/contracts/fixtures/v1`.
 - [x] Full Bun gate passed on July 28, 2026 (America/Chicago): Biome, TypeScript, 92 web tests,
       27 MCP tests, eval/plugin verification, and both production builds.
-- [x] Native implementation passes strict Swift formatting, static analysis, and all 28 test
-      definitions (30 executed cases) with zero failures or skips. Latest repository evidence:
-      `.artifacts/ios/20260729T025736Z-89029`.
+- [x] Native implementation passes strict Swift formatting, static analysis, and all 28 reported
+      tests with zero failures or skips. The signed hosted test run contains no Clerk Keychain
+      entitlement failures. Latest repository evidence: `.artifacts/ios/20260729T031409Z-5674`.
 - [x] Debug and Staging simulator builds and an unsigned Release device archive passed. Archive
       readback confirmed production API/environment, `app.voyage.native`, live Clerk key class,
       compiled app icon, and the checked-in privacy manifest.
@@ -57,8 +57,15 @@ Both environments reported no pending migrations after the July 28 deployment.
 - [x] Mobile callback allowlisted as `app.voyage.native://callback`.
 - [x] Clerk AASA readback contains `TRA7965NM5.app.voyage.native` at
       `https://clerk.voyageplan.app/.well-known/apple-app-site-association`.
-- [x] Production native sign-in surface currently exposes Google only; the privacy manifest declares
-      linked name, email address, user ID, and trip content for app functionality, with no tracking.
+- [x] Production native sign-in surface exposes email and Google, with no phone input; the privacy
+      manifest declares linked name, email address, user ID, and trip content for app functionality,
+      with no tracking.
+- [x] Voyage's production Google OAuth client now allows Clerk's callback and Clerk has a dedicated
+      client secret. A normally signed Simulator build reaches Google's account-entry screen without
+      the prior missing-client-ID error; no OAuth secret was written to the repository or evidence.
+- [x] The earlier Clerk Keychain `-34018` diagnostic was isolated to an unsigned hosted test app.
+      The gate now preserves normal Simulator signing for tests; no Keychain Sharing entitlement is
+      required.
 - [ ] Production native sign-in completed and its bearer token accepted by Voyage.
 - [ ] Membership-scoped production list/workspace/people payloads decoded by the candidate models.
 
