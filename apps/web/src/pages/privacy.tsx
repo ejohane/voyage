@@ -12,12 +12,14 @@ function PrivacyPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="Destination search">
+      <LegalSection title="Google Maps features">
         <p>
-          When you search for a destination, Voyage sends your search text and language preference
-          to Google Places to return relevant countries, cities, addresses, and places. When you
-          select a suggestion, Voyage stores the destination text you entered and the selected
-          Google Place ID. Voyage does not persist the other Google autocomplete result details.
+          When you search for a destination or stay property, Voyage sends your search text and
+          language preference to Google Places to return relevant countries, cities, addresses, and
+          places. When you select a suggestion, Voyage stores the text you entered and the selected
+          Google Place ID. Voyage does not persist the other Google search result details. When you
+          view a linked stay, Voyage requests current property details and photos from Google Maps
+          for display without storing that content.
         </p>
         <p>
           Google processes this information under the{" "}
@@ -37,8 +39,9 @@ function PrivacyPage() {
         <p>
           Voyage relies on service providers to operate the product, including Clerk for account
           authentication, Cloudflare for hosting and data storage, Resend for trip invitation email,
-          and Google Maps Platform for destination search. These providers process information on
-          Voyage’s behalf or as described in their own terms and privacy notices.
+          and Google Maps Platform for destination and property search, maps, property details, and
+          photos. These providers process information on Voyage’s behalf or as described in their
+          own terms and privacy notices.
         </p>
       </LegalSection>
 

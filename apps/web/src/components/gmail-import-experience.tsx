@@ -221,6 +221,8 @@ function fakeStay(tripId: string, candidate: GmailImportCandidate): Stay | undef
     id: candidate.source.key,
     tripId,
     ...candidate.input,
+    propertyRef: candidate.input.propertyRef ?? null,
+    bookingDetails: candidate.input.bookingDetails ?? null,
     createdAt: candidate.source.receivedAt,
     updatedAt: candidate.source.receivedAt,
   };
@@ -300,6 +302,24 @@ function CandidateSummary({ candidate }: { candidate: GmailImportCandidate }) {
         <Fact label="Location" value={candidate.input.address} />
         {candidate.input.confirmationNumber ? (
           <Fact label="Confirmation" value={candidate.input.confirmationNumber} />
+        ) : null}
+        {candidate.input.bookingDetails?.roomType ? (
+          <Fact label="Room" value={candidate.input.bookingDetails.roomType} />
+        ) : null}
+        {candidate.input.bookingDetails?.guestSummary ? (
+          <Fact label="Guests" value={candidate.input.bookingDetails.guestSummary} />
+        ) : null}
+        {candidate.input.bookingDetails?.checkInWindow ? (
+          <Fact label="Check-in" value={candidate.input.bookingDetails.checkInWindow} />
+        ) : null}
+        {candidate.input.bookingDetails?.mealPlan ? (
+          <Fact label="Meal plan" value={candidate.input.bookingDetails.mealPlan} />
+        ) : null}
+        {candidate.input.bookingDetails?.cancellationSummary ? (
+          <Fact label="Cancellation" value={candidate.input.bookingDetails.cancellationSummary} />
+        ) : null}
+        {candidate.input.bookingDetails?.totalPriceText ? (
+          <Fact label="Total" value={candidate.input.bookingDetails.totalPriceText} />
         ) : null}
       </dl>
     </div>

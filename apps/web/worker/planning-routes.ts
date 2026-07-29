@@ -4,6 +4,9 @@ import {
   createTravelInputSchema,
   planFieldsSchema,
   stayFieldsSchema,
+  stayPropertyBackfillInputSchema,
+  stayPropertyBackfillResponseSchema,
+  stayPropertyResponseSchema,
   updatePlanInputSchema,
   updateStayInputSchema,
   updateTravelInputSchema,
@@ -11,7 +14,9 @@ import {
 import { Hono } from "hono";
 import { airportsExist } from "./airport-repository";
 import { type AuthenticateRequest, createAuthMiddleware } from "./auth";
+import { createGooglePlacesClient, type PlacesClient, PlacesServiceError } from "./google-places";
 import {
+  applyStayPropertyMatch,
   createPlan,
   createStay,
   createTravel,
@@ -57,7 +62,23 @@ function tripHasStop(trip: { stops: { id: string }[] }, stopId: string | null) {
   return stopId === null || trip.stops.some((stop) => stop.id === stopId);
 }
 
-export function createPlanningRoutes(authenticateRequest: AuthenticateRequest) {
+type PlanningRouteDependencies = {
+  placesClient?: PlacesClient;
+};
+
+function propertyUnavailableError() {
+  return {
+    error: {
+      code: "internal_error" as const,
+      message: "Property details are temporarily unavailable.",
+    },
+  };
+}
+
+export function createPlanningRoutes(
+  authenticateRequest: AuthenticateRequest,
+  dependencies: PlanningRouteDependencies = {},
+) {
   const routes = new Hono<WorkerEnvironment>();
 
   routes.use("*", createAuthMiddleware(authenticateRequest));
@@ -230,6 +251,83 @@ export function createPlanningRoutes(authenticateRequest: AuthenticateRequest) {
     });
   });
 
+  routes.post("/:tripId/stays/property-backfill", async (context) => {
+    const tripId = context.req.param("tripId");
+    const trip = await getTrip(context.env.DB, context.var.authUserId, tripId);
+    if (!trip) {
+      return context.json(
+        { error: { code: "not_found" as const, message: "Trip not found." } },
+        404,
+      );
+    }
+    if (trip.accessLevel === "viewer") {
+      return context.json(
+        { error: { code: "forbidden" as const, message: "You cannot edit this trip." } },
+        403,
+      );
+    }
+    const parsed = stayPropertyBackfillInputSchema.safeParse(
+      (await readJson(context.req.raw)) ?? {},
+    );
+    if (!parsed.success) return context.json(validationError(), 422);
+    if (!dependencies.placesClient && !context.env.GOOGLE_MAPS_API_KEY) {
+      return context.json(propertyUnavailableError(), 503);
+    }
+    const places =
+      dependencies.placesClient ?? createGooglePlacesClient(context.env.GOOGLE_MAPS_API_KEY);
+    if (!places.matchStay) return context.json(propertyUnavailableError(), 503);
+
+    const stays = (await listStays(context.env.DB, tripId))
+      .filter((stay) => !stay.propertyRef)
+      .slice(0, 50);
+    const results = [];
+    for (const stay of stays) {
+      try {
+        const propertyRef = await places.matchStay(stay.propertyName, stay.address);
+        if (!propertyRef) {
+          results.push({
+            stayId: stay.id,
+            propertyName: stay.propertyName,
+            address: stay.address,
+            status: "unmatched" as const,
+            placeId: null,
+          });
+          continue;
+        }
+        if (parsed.data.apply) {
+          await applyStayPropertyMatch(context.env.DB, tripId, stay.id, propertyRef.placeId);
+        }
+        results.push({
+          stayId: stay.id,
+          propertyName: stay.propertyName,
+          address: stay.address,
+          status: "matched" as const,
+          placeId: propertyRef.placeId,
+        });
+      } catch (error) {
+        console.error("Stay property backfill match failed", error);
+        results.push({
+          stayId: stay.id,
+          propertyName: stay.propertyName,
+          address: stay.address,
+          status: "failed" as const,
+          placeId: null,
+        });
+      }
+    }
+    const response = {
+      mode: parsed.data.apply ? ("apply" as const) : ("dry-run" as const),
+      scanned: stays.length,
+      matched: results.filter((result) => result.status === "matched").length,
+      unmatched: results.filter((result) => result.status === "unmatched").length,
+      failed: results.filter((result) => result.status === "failed").length,
+      results,
+    };
+    return context.json(stayPropertyBackfillResponseSchema.parse(response), 200, {
+      "Cache-Control": "no-store",
+    });
+  });
+
   routes.post("/:tripId/stays", async (context) => {
     const tripId = context.req.param("tripId");
     const trip = await getTrip(context.env.DB, context.var.authUserId, tripId);
@@ -328,6 +426,78 @@ export function createPlanningRoutes(authenticateRequest: AuthenticateRequest) {
     return deleted
       ? context.body(null, 204)
       : context.json({ error: { code: "not_found" as const, message: "Stay not found." } }, 404);
+  });
+
+  routes.get("/:tripId/stays/:stayId/property", async (context) => {
+    const tripId = context.req.param("tripId");
+    const trip = await getTrip(context.env.DB, context.var.authUserId, tripId);
+    if (!trip) {
+      return context.json(
+        { error: { code: "not_found" as const, message: "Trip not found." } },
+        404,
+      );
+    }
+    const stay = await getStay(context.env.DB, tripId, context.req.param("stayId"));
+    if (!stay?.propertyRef) {
+      return context.json(
+        { error: { code: "not_found" as const, message: "Property match not found." } },
+        404,
+      );
+    }
+    if (!dependencies.placesClient && !context.env.GOOGLE_MAPS_API_KEY) {
+      return context.json(propertyUnavailableError(), 503);
+    }
+    const places =
+      dependencies.placesClient ?? createGooglePlacesClient(context.env.GOOGLE_MAPS_API_KEY);
+    if (!places.getStayProperty) return context.json(propertyUnavailableError(), 503);
+
+    try {
+      const property = await places.getStayProperty(stay.propertyRef.placeId);
+      return context.json(stayPropertyResponseSchema.parse({ property }), 200, {
+        "Cache-Control": "no-store",
+      });
+    } catch (error) {
+      if (!(error instanceof PlacesServiceError)) console.error("Stay property error", error);
+      return context.json(propertyUnavailableError(), 503);
+    }
+  });
+
+  routes.get("/:tripId/stays/:stayId/property/photo", async (context) => {
+    const tripId = context.req.param("tripId");
+    const trip = await getTrip(context.env.DB, context.var.authUserId, tripId);
+    if (!trip) {
+      return context.json(
+        { error: { code: "not_found" as const, message: "Trip not found." } },
+        404,
+      );
+    }
+    const stay = await getStay(context.env.DB, tripId, context.req.param("stayId"));
+    if (!stay?.propertyRef) {
+      return context.json(
+        { error: { code: "not_found" as const, message: "Property photo not found." } },
+        404,
+      );
+    }
+    if (!dependencies.placesClient && !context.env.GOOGLE_MAPS_API_KEY) {
+      return context.json(propertyUnavailableError(), 503);
+    }
+    const places =
+      dependencies.placesClient ?? createGooglePlacesClient(context.env.GOOGLE_MAPS_API_KEY);
+    if (!places.renderStayPhoto) return context.json(propertyUnavailableError(), 503);
+
+    try {
+      const photo = await places.renderStayPhoto(stay.propertyRef.placeId);
+      return new Response(photo.body, {
+        status: 200,
+        headers: {
+          "Content-Type": photo.headers.get("Content-Type") ?? "image/jpeg",
+          "Cache-Control": "no-store",
+        },
+      });
+    } catch (error) {
+      if (!(error instanceof PlacesServiceError)) console.error("Stay photo error", error);
+      return context.json(propertyUnavailableError(), 503);
+    }
   });
 
   routes.get("/:tripId/plans", async (context) => {

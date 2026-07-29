@@ -2,6 +2,8 @@ import {
   createStayInputSchema,
   createTravelInputSchema,
   type GmailImportCandidate,
+  type StayAmenity,
+  type StayBookingDetails,
   type Trip,
 } from "@voyage/contracts";
 import type { GmailHeader, GmailMessage, GmailMessagePart } from "./gmail-api";
@@ -336,6 +338,136 @@ function bookingAddress(visibleText: string) {
   )?.[1];
   const checkIn = visibleText.match(/check-in is at\s+([^\n.]{8,180}(?:\.[^\n]{0,20})?)/i)?.[1];
   return plausibleAddress(labeled) ?? plausibleAddress(checkIn);
+}
+
+function conciseLabeledValue(value: string, labels: RegExp, maximum: number) {
+  const section = labeledSection(value, labels);
+  const candidate = section
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0 && line.length <= maximum);
+  return candidate || null;
+}
+
+function structuredTime(value: unknown) {
+  if (typeof value !== "string") return null;
+  const time = value.match(/(?:T|\s)(\d{2}:\d{2})/)?.[1];
+  return time ?? null;
+}
+
+function explicitTimeWindow(value: string, label: "in" | "out") {
+  const match = value.match(
+    new RegExp(
+      `check[ -]?${label}(?:\\s+(?:time|window))?\\s*[:\\-–—]?\\s*((?:from\\s+|by\\s+|until\\s+|between\\s+)?(?:\\d{1,2}(?::|\\.)\\d{2}|\\d{1,2}\\s*(?:am|pm))[^\\n.]{0,50})`,
+      "i",
+    ),
+  );
+  return match?.[1]?.replace(/\s+/g, " ").trim().slice(0, 120) || null;
+}
+
+function explicitAmenities(value: string, structuredValue?: unknown) {
+  const haystack = `${value}\n${objects(structuredValue)
+    .map((item) => `${text(item.name)} ${text(item.description)} ${text(item.value)}`)
+    .join("\n")}`;
+  const patterns: [StayAmenity, RegExp][] = [
+    ["wifi", /\b(?:free\s+)?wi-?fi\b/i],
+    ["breakfast", /\bbreakfast\s+(?:is\s+)?included\b/i],
+    ["parking", /\b(?:free\s+|private\s+)?parking\s+(?:is\s+)?(?:included|available)\b/i],
+    ["pool", /\b(?:swimming|outdoor|indoor)\s+pool\b/i],
+    ["spa", /\bspa\b/i],
+    ["gym", /\b(?:gym|fitness cent(?:er|re))\b/i],
+    ["pets", /\bpets?\s+(?:are\s+)?allowed\b/i],
+    ["restaurant", /\b(?:on-site\s+)?restaurant\b/i],
+  ];
+  return patterns.flatMap(([amenity, pattern]): StayAmenity[] =>
+    pattern.test(haystack) ? [amenity] : [],
+  );
+}
+
+function guestSummary(node: Record<string, unknown>, visibleText: string) {
+  const adults = Number(node.numAdults ?? node.numberOfAdults);
+  const children = Number(node.numChildren ?? node.numberOfChildren);
+  if (Number.isInteger(adults) && adults > 0) {
+    return [
+      `${adults} ${adults === 1 ? "adult" : "adults"}`,
+      Number.isInteger(children) && children > 0
+        ? `${children} ${children === 1 ? "child" : "children"}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+  }
+  return conciseLabeledValue(visibleText, /^(?:guests?|occupancy)\b/i, 200);
+}
+
+function totalPriceText(node: Record<string, unknown>, visibleText: string) {
+  const priceRecord = firstRecord(node.totalPrice ?? node.priceSpecification);
+  const amount = text(priceRecord.price) || text(node.totalPrice) || text(node.price);
+  const currency =
+    text(priceRecord.priceCurrency) || text(node.priceCurrency) || text(priceRecord.currency);
+  if (amount && (/\d/.test(amount) || Number.isFinite(Number(amount)))) {
+    return [currency, amount].filter(Boolean).join(" ").slice(0, 120);
+  }
+  const visible = conciseLabeledValue(visibleText, /^(?:total(?: price)?|price)\b/i, 120);
+  return visible && /(?:[$€£¥]|\b[A-Z]{3}\b).*\d|\d.*(?:[$€£¥]|\b[A-Z]{3}\b)/.test(visible)
+    ? visible
+    : null;
+}
+
+function stayBookingDetails(
+  node: Record<string, unknown>,
+  lodging: Record<string, unknown>,
+  visibleText: string,
+  fallbackYear?: string,
+): StayBookingDetails | null {
+  const checkInWindow =
+    structuredTime(node.checkinTime ?? node.checkInTime) ?? explicitTimeWindow(visibleText, "in");
+  const checkOutWindow =
+    structuredTime(node.checkoutTime ?? node.checkOutTime) ??
+    explicitTimeWindow(visibleText, "out");
+  const roomType =
+    text(node.lodgingUnitType) ||
+    text(lodging.lodgingUnitType) ||
+    text(firstRecord(node.reservedTicket).ticketedSeat) ||
+    conciseLabeledValue(visibleText, /^(?:room|room type|unit type)\b/i, 200);
+  const guests = guestSummary(node, visibleText);
+  const visibleMeal = conciseLabeledValue(visibleText, /^(?:meal plan|meals?)\b/i, 200);
+  const mealPlan =
+    text(node.mealPlan) ||
+    text(firstRecord(node.mealPlan).name) ||
+    visibleMeal ||
+    (/(?:^|\b)breakfast\s+(?:is\s+)?included\b/i.test(visibleText) ? "Breakfast included" : null);
+  const policy = firstRecord(node.cancellationPolicy);
+  const cancellationSummary =
+    text(node.cancellationPolicy) ||
+    text(policy.description) ||
+    text(policy.name) ||
+    conciseLabeledValue(visibleText, /^(?:cancellation|cancellation policy)\b/i, 500) ||
+    visibleText.match(/\bfree cancellation[^\n.]{0,160}/i)?.[0]?.trim() ||
+    null;
+  const cancellationDeadline = cancellationSummary
+    ? dateOnly(policy.validThrough ?? policy.endDate) ||
+      namedDates(cancellationSummary, fallbackYear)[0] ||
+      null
+    : null;
+  const total = totalPriceText(node, visibleText);
+  const amenities = explicitAmenities(visibleText, lodging.amenityFeature);
+  const details: StayBookingDetails = {
+    checkInWindow,
+    checkOutWindow,
+    roomType: roomType || null,
+    guestSummary: guests,
+    mealPlan,
+    cancellationSummary,
+    cancellationDeadline,
+    totalPriceText: total,
+    amenities,
+  };
+  return Object.entries(details).some(([key, value]) =>
+    key === "amenities" ? (value as StayAmenity[]).length > 0 : Boolean(value),
+  )
+    ? details
+    : null;
 }
 
 function confirmationNumber(value: string) {
@@ -903,6 +1035,7 @@ function extractProviderStay(
     confirmationNumber: confirmation,
     bookingUrl: bookingLink(links),
     notes: null,
+    bookingDetails: stayBookingDetails({}, {}, visibleText, fallbackYear),
   });
   if (!input.success) return [];
   return [
@@ -1023,6 +1156,7 @@ function extractStructured(
         confirmationNumber: text(node.reservationNumber) || null,
         bookingUrl: bookingLink(links, node.url ?? node.modifyReservationUrl),
         notes: null,
+        bookingDetails: stayBookingDetails(node, lodging, visibleText, trip.startDate?.slice(0, 4)),
       });
       if (input.success) {
         candidates.push({
@@ -1223,6 +1357,7 @@ function extractHeuristic(
       confirmationNumber: confirmation,
       bookingUrl: bookingLink(links),
       notes: null,
+      bookingDetails: stayBookingDetails({}, {}, visibleText, fallbackYear),
     });
     if (input.success) {
       candidates.push({

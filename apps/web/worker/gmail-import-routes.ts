@@ -16,12 +16,14 @@ import {
   saveGmailConnection,
 } from "./gmail-repository";
 import { refreshGoogleAccessToken } from "./google-oauth";
+import { createGooglePlacesClient, type PlacesClient } from "./google-places";
 import { listTravel } from "./planning-repository";
 import { getTrip } from "./trips-repository";
 import type { WorkerEnvironment } from "./types";
 
 type GmailImportDependencies = {
   fetcher?: typeof fetch;
+  placesClient?: PlacesClient;
 };
 
 async function readJson(request: Request): Promise<unknown | null> {
@@ -174,7 +176,26 @@ export function createGmailImportRoutes(
 
     const imported = [];
     const skipped = [];
-    for (const candidate of parsed.data.candidates) {
+    const places =
+      dependencies.placesClient ??
+      (context.env.GOOGLE_MAPS_API_KEY
+        ? createGooglePlacesClient(context.env.GOOGLE_MAPS_API_KEY)
+        : undefined);
+    for (const originalCandidate of parsed.data.candidates) {
+      let candidate = originalCandidate;
+      if (candidate.kind === "stay" && !candidate.input.propertyRef && places?.matchStay) {
+        try {
+          const propertyRef = await places.matchStay(
+            candidate.input.propertyName,
+            candidate.input.address,
+          );
+          if (propertyRef) {
+            candidate = { ...candidate, input: { ...candidate.input, propertyRef } };
+          }
+        } catch (error) {
+          console.error("Gmail stay property match failed", error);
+        }
+      }
       const result = await importGmailCandidate(
         context.env.DB,
         context.var.authUserId,

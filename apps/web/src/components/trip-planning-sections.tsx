@@ -2,6 +2,8 @@ import type {
   CreateStayInput,
   CreateTravelInput,
   Stay,
+  StayAmenity,
+  StayPropertyBackfillResponse,
   Travel,
   Trip,
   TripStop,
@@ -15,6 +17,7 @@ import {
   CarFront,
   ExternalLink,
   Lightbulb,
+  MapPinned,
   MoreHorizontal,
   Pencil,
   Plane,
@@ -30,13 +33,23 @@ import { type ComponentType, type ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { BookingLocationMap } from "@/components/booking-location-map";
 import { StayForm } from "@/components/stay-form";
+import { StayPropertyContext } from "@/components/stay-property-context";
 import { TravelForm } from "@/components/travel-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WorkspaceInspector } from "@/components/workspace-inspector";
 import { useTripPeople } from "@/lib/invitations";
 import {
+  useBackfillStayProperties,
   useCreateStay,
   useCreateTravel,
   useDeleteStay,
@@ -59,6 +72,17 @@ const travelIcons: Record<Travel["type"], ComponentType<{ className?: string }>>
   ferry: Ship,
   car: CarFront,
   other: Route,
+};
+
+const stayAmenityLabels: Record<StayAmenity, string> = {
+  wifi: "Wi-Fi",
+  breakfast: "Breakfast",
+  parking: "Parking",
+  pool: "Pool",
+  spa: "Spa",
+  gym: "Gym",
+  pets: "Pets",
+  restaurant: "Restaurant",
 };
 
 const travelTypePresentation: Record<
@@ -790,10 +814,12 @@ function TravelDeleteUndoToast({
 function StaysSection({ trip }: SectionProps) {
   const stays = useStays(trip.id);
   const createStay = useCreateStay(trip.id);
+  const propertyBackfill = useBackfillStayProperties(trip.id);
   const canEdit = trip.accessLevel !== "viewer";
   const [inspector, setInspector] = useState<{ mode: "new" } | { mode: "edit"; stayId: string }>();
   const [pendingDelete, setPendingDelete] = useState<Stay>();
   const [notice, setNotice] = useState<{ kind: "error" | "saved"; message: string }>();
+  const [backfillPreview, setBackfillPreview] = useState<StayPropertyBackfillResponse>();
   const visibleStays = (stays.data ?? []).filter((item) => item.id !== pendingDelete?.id);
   const selectedStay =
     inspector?.mode === "edit"
@@ -833,6 +859,30 @@ function StaysSection({ trip }: SectionProps) {
     if (inspector?.mode === "edit" && inspector.stayId === item.id) setInspector(undefined);
   }
 
+  async function previewPropertyMatches() {
+    try {
+      setBackfillPreview(await propertyBackfill.mutateAsync(false));
+    } catch {
+      setNotice({ kind: "error", message: "We couldn’t check property matches. Try again." });
+    }
+  }
+
+  async function applyPropertyMatches() {
+    try {
+      const result = await propertyBackfill.mutateAsync(true);
+      setBackfillPreview(undefined);
+      setNotice({
+        kind: "saved",
+        message: result.matched
+          ? `Added details for ${result.matched} ${result.matched === 1 ? "stay" : "stays"}.`
+          : "No new property matches were added.",
+      });
+      window.setTimeout(() => setNotice(undefined), 3_000);
+    } catch {
+      setNotice({ kind: "error", message: "We couldn’t apply property matches. Try again." });
+    }
+  }
+
   return (
     <section aria-labelledby="stays-heading">
       <div
@@ -848,10 +898,23 @@ function StaysSection({ trip }: SectionProps) {
             </p>
           </div>
           {canEdit && !inspector ? (
-            <Button size="lg" onClick={() => setInspector({ mode: "new" })}>
-              <Plus className="size-4.5" aria-hidden="true" />
-              New stay
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {(stays.data ?? []).some((stay) => !stay.propertyRef) ? (
+                <Button
+                  size="lg"
+                  variant="outline"
+                  disabled={propertyBackfill.isPending}
+                  onClick={() => void previewPropertyMatches()}
+                >
+                  <MapPinned className="size-4.5" aria-hidden="true" />
+                  {propertyBackfill.isPending ? "Checking…" : "Match properties"}
+                </Button>
+              ) : null}
+              <Button size="lg" onClick={() => setInspector({ mode: "new" })}>
+                <Plus className="size-4.5" aria-hidden="true" />
+                New stay
+              </Button>
+            </div>
           ) : null}
         </div>
 
@@ -923,6 +986,72 @@ function StaysSection({ trip }: SectionProps) {
           {notice.message}
         </div>
       ) : null}
+
+      <Dialog
+        open={Boolean(backfillPreview)}
+        onOpenChange={(open) => !open && setBackfillPreview(undefined)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Review property matches</DialogTitle>
+            <DialogDescription>
+              Voyage checked Google Maps without changing your stays. Apply only the confident
+              matches below.
+            </DialogDescription>
+          </DialogHeader>
+          {backfillPreview ? (
+            <div className="grid gap-2">
+              {backfillPreview.results.map((result) => (
+                <div
+                  key={result.stayId}
+                  className="flex items-start justify-between gap-4 rounded-md border px-3 py-2.5 text-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{result.propertyName}</p>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {result.address}
+                    </p>
+                  </div>
+                  <span
+                    className={cn(
+                      "shrink-0 text-xs font-medium",
+                      result.status === "matched"
+                        ? "text-emerald-700"
+                        : result.status === "failed"
+                          ? "text-red-700"
+                          : "text-muted-foreground",
+                    )}
+                  >
+                    {result.status === "matched"
+                      ? "Match found"
+                      : result.status === "failed"
+                        ? "Check failed"
+                        : "No confident match"}
+                  </span>
+                </div>
+              ))}
+              {backfillPreview.scanned === 0 ? (
+                <p className="rounded-md border px-3 py-4 text-sm text-muted-foreground">
+                  All stays already have a linked property.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBackfillPreview(undefined)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!backfillPreview?.matched || propertyBackfill.isPending}
+              onClick={() => void applyPropertyMatches()}
+            >
+              {propertyBackfill.isPending
+                ? "Applying…"
+                : `Apply ${backfillPreview?.matched ?? 0} ${backfillPreview?.matched === 1 ? "match" : "matches"}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
@@ -1083,10 +1212,9 @@ function StayDetails({
 }) {
   return (
     <div className="min-h-full">
-      <BookingLocationMap
-        className="-mx-5 -mt-3 mb-5"
-        label={`Map showing ${item.address}`}
-        locations={[item.address]}
+      <StayPropertyContext
+        key={`${item.id}:${item.propertyRef?.placeId ?? "unlinked"}`}
+        item={item}
         tripId={tripId}
       />
 
@@ -1101,8 +1229,22 @@ function StayDetails({
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-md border bg-border">
-        <DateBlock label="Check in" value={formatDateOnly(item.checkInDate)} />
-        <DateBlock label="Check out" value={formatDateOnly(item.checkOutDate)} />
+        <DateBlock
+          label="Check in"
+          value={
+            item.bookingDetails?.checkInWindow
+              ? `${formatDateOnly(item.checkInDate)} · ${item.bookingDetails.checkInWindow}`
+              : formatDateOnly(item.checkInDate)
+          }
+        />
+        <DateBlock
+          label="Check out"
+          value={
+            item.bookingDetails?.checkOutWindow
+              ? `${formatDateOnly(item.checkOutDate)} · ${item.bookingDetails.checkOutWindow}`
+              : formatDateOnly(item.checkOutDate)
+          }
+        />
       </div>
 
       <div className="mt-5">
@@ -1115,8 +1257,63 @@ function StayDetails({
 
       {item.confirmationNumber ? (
         <DetailList className="mt-6">
+          {item.bookingDetails?.roomType ? (
+            <DetailRow label="Room" value={item.bookingDetails.roomType} />
+          ) : null}
+          {item.bookingDetails?.guestSummary ? (
+            <DetailRow label="Guests" value={item.bookingDetails.guestSummary} />
+          ) : null}
+          {item.bookingDetails?.mealPlan ? (
+            <DetailRow label="Meal plan" value={item.bookingDetails.mealPlan} />
+          ) : null}
+          {item.bookingDetails?.cancellationSummary ? (
+            <DetailRow
+              label="Cancellation"
+              value={
+                item.bookingDetails.cancellationDeadline
+                  ? `${item.bookingDetails.cancellationSummary} · ${formatDateOnly(item.bookingDetails.cancellationDeadline)}`
+                  : item.bookingDetails.cancellationSummary
+              }
+            />
+          ) : null}
+          {item.bookingDetails?.totalPriceText ? (
+            <DetailRow label="Total" value={item.bookingDetails.totalPriceText} />
+          ) : null}
           <DetailRow label="Confirmation" value={item.confirmationNumber} mono />
         </DetailList>
+      ) : item.bookingDetails ? (
+        <DetailList className="mt-6">
+          {item.bookingDetails.roomType ? (
+            <DetailRow label="Room" value={item.bookingDetails.roomType} />
+          ) : null}
+          {item.bookingDetails.guestSummary ? (
+            <DetailRow label="Guests" value={item.bookingDetails.guestSummary} />
+          ) : null}
+          {item.bookingDetails.mealPlan ? (
+            <DetailRow label="Meal plan" value={item.bookingDetails.mealPlan} />
+          ) : null}
+          {item.bookingDetails.cancellationSummary ? (
+            <DetailRow label="Cancellation" value={item.bookingDetails.cancellationSummary} />
+          ) : null}
+          {item.bookingDetails.totalPriceText ? (
+            <DetailRow label="Total" value={item.bookingDetails.totalPriceText} />
+          ) : null}
+        </DetailList>
+      ) : null}
+
+      {item.bookingDetails?.amenities.length ? (
+        <div className="mt-6">
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Explicitly included
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {item.bookingDetails.amenities.map((amenity) => (
+              <span key={amenity} className="rounded-md border px-2 py-1 text-xs font-medium">
+                {stayAmenityLabels[amenity]}
+              </span>
+            ))}
+          </div>
+        </div>
       ) : null}
 
       {item.bookingUrl ? <BookingLink href={item.bookingUrl} /> : null}

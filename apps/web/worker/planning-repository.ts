@@ -7,6 +7,7 @@ import type {
   PlanStatus,
   ReservationStatus,
   Stay,
+  StayAmenity,
   TransportationKind,
   Travel,
   TravelType,
@@ -15,6 +16,7 @@ import type {
   UpdateStayInput,
   UpdateTravelInput,
 } from "@voyage/contracts";
+import { stayAmenitySchema } from "@voyage/contracts";
 
 type TravelRow = {
   id: string;
@@ -74,8 +76,20 @@ type StayRow = {
   confirmation_number: string | null;
   booking_url: string | null;
   notes: string | null;
+  property_place_provider: "google" | null;
+  property_place_id: string | null;
   created_at: string;
   updated_at: string;
+  details_stay_id: string | null;
+  details_check_in_window: string | null;
+  details_check_out_window: string | null;
+  details_room_type: string | null;
+  details_guest_summary: string | null;
+  details_meal_plan: string | null;
+  details_cancellation_summary: string | null;
+  details_cancellation_deadline: string | null;
+  details_total_price_text: string | null;
+  details_amenities_json: string | null;
 };
 
 type PlanRow = {
@@ -191,6 +205,19 @@ LEFT JOIN airports AS departure_airport ON departure_airport.id = travel_segment
 LEFT JOIN airports AS arrival_airport ON arrival_airport.id = travel_segments.arrival_airport_id`;
 
 function mapStay(row: StayRow): Stay {
+  let amenities: StayAmenity[] = [];
+  try {
+    const parsed = JSON.parse(row.details_amenities_json ?? "[]");
+    if (Array.isArray(parsed)) {
+      amenities = parsed.flatMap((value): StayAmenity[] => {
+        const amenity = stayAmenitySchema.safeParse(value);
+        return amenity.success ? [amenity.data] : [];
+      });
+    }
+  } catch {
+    amenities = [];
+  }
+
   return {
     id: row.id,
     tripId: row.trip_id,
@@ -203,9 +230,82 @@ function mapStay(row: StayRow): Stay {
     confirmationNumber: row.confirmation_number,
     bookingUrl: row.booking_url,
     notes: row.notes,
+    propertyRef:
+      row.property_place_provider === "google" && row.property_place_id
+        ? { provider: "google", placeId: row.property_place_id }
+        : null,
+    bookingDetails: row.details_stay_id
+      ? {
+          checkInWindow: row.details_check_in_window,
+          checkOutWindow: row.details_check_out_window,
+          roomType: row.details_room_type,
+          guestSummary: row.details_guest_summary,
+          mealPlan: row.details_meal_plan,
+          cancellationSummary: row.details_cancellation_summary,
+          cancellationDeadline: row.details_cancellation_deadline,
+          totalPriceText: row.details_total_price_text,
+          amenities,
+        }
+      : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+const staySelect = `SELECT
+  stays.*,
+  stay_booking_details.stay_id AS details_stay_id,
+  stay_booking_details.check_in_window AS details_check_in_window,
+  stay_booking_details.check_out_window AS details_check_out_window,
+  stay_booking_details.room_type AS details_room_type,
+  stay_booking_details.guest_summary AS details_guest_summary,
+  stay_booking_details.meal_plan AS details_meal_plan,
+  stay_booking_details.cancellation_summary AS details_cancellation_summary,
+  stay_booking_details.cancellation_deadline AS details_cancellation_deadline,
+  stay_booking_details.total_price_text AS details_total_price_text,
+  stay_booking_details.amenities_json AS details_amenities_json
+FROM stays
+LEFT JOIN stay_booking_details ON stay_booking_details.stay_id = stays.id`;
+
+function bookingDetailsStatement(
+  database: D1Database,
+  stayId: string,
+  details: NonNullable<CreateStayInput["bookingDetails"]>,
+  now: string,
+) {
+  return database
+    .prepare(
+      `INSERT INTO stay_booking_details (
+        stay_id, check_in_window, check_out_window, room_type, guest_summary, meal_plan,
+        cancellation_summary, cancellation_deadline, total_price_text, amenities_json,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(stay_id) DO UPDATE SET
+        check_in_window = excluded.check_in_window,
+        check_out_window = excluded.check_out_window,
+        room_type = excluded.room_type,
+        guest_summary = excluded.guest_summary,
+        meal_plan = excluded.meal_plan,
+        cancellation_summary = excluded.cancellation_summary,
+        cancellation_deadline = excluded.cancellation_deadline,
+        total_price_text = excluded.total_price_text,
+        amenities_json = excluded.amenities_json,
+        updated_at = excluded.updated_at`,
+    )
+    .bind(
+      stayId,
+      details.checkInWindow,
+      details.checkOutWindow,
+      details.roomType,
+      details.guestSummary,
+      details.mealPlan,
+      details.cancellationSummary,
+      details.cancellationDeadline,
+      details.totalPriceText,
+      JSON.stringify(details.amenities),
+      now,
+      now,
+    );
 }
 
 function mapPlan(row: PlanRow): TripPlan {
@@ -353,7 +453,7 @@ export async function deleteTravel(
 
 export async function listStays(database: D1Database, tripId: string): Promise<Stay[]> {
   const result = await database
-    .prepare("SELECT * FROM stays WHERE trip_id = ? ORDER BY check_in_date, created_at")
+    .prepare(`${staySelect} WHERE stays.trip_id = ? ORDER BY stays.check_in_date, stays.created_at`)
     .bind(tripId)
     .all<StayRow>();
 
@@ -369,32 +469,44 @@ export async function createStay(
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
-  await database
-    .prepare(
-      `INSERT INTO stays (
+  const statements = [
+    database
+      .prepare(
+        `INSERT INTO stays (
         id, trip_id, status, trip_stop_id, property_name, address, check_in_date, check_out_date,
-        confirmation_number, booking_url, notes, created_by_user_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      id,
-      tripId,
-      input.status,
-      input.tripStopId,
-      input.propertyName,
-      input.address,
-      input.checkInDate,
-      input.checkOutDate,
-      input.confirmationNumber,
-      input.bookingUrl,
-      input.notes,
-      userId,
-      now,
-      now,
-    )
-    .run();
+        confirmation_number, booking_url, notes, property_place_provider, property_place_id,
+        property_match_method, property_matched_at, created_by_user_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        id,
+        tripId,
+        input.status,
+        input.tripStopId,
+        input.propertyName,
+        input.address,
+        input.checkInDate,
+        input.checkOutDate,
+        input.confirmationNumber,
+        input.bookingUrl,
+        input.notes,
+        input.propertyRef?.provider ?? null,
+        input.propertyRef?.placeId ?? null,
+        input.propertyRef ? "user" : null,
+        input.propertyRef ? now : null,
+        userId,
+        now,
+        now,
+      ),
+  ];
+  if (input.bookingDetails) {
+    statements.push(bookingDetailsStatement(database, id, input.bookingDetails, now));
+  }
+  await database.batch(statements);
 
-  return { id, tripId, ...input, createdAt: now, updatedAt: now };
+  const created = await getStay(database, tripId, id);
+  if (!created) throw new Error("Created stay could not be read.");
+  return created;
 }
 
 export async function getStay(
@@ -403,7 +515,7 @@ export async function getStay(
   stayId: string,
 ): Promise<Stay | null> {
   const row = await database
-    .prepare("SELECT * FROM stays WHERE id = ? AND trip_id = ?")
+    .prepare(`${staySelect} WHERE stays.id = ? AND stays.trip_id = ?`)
     .bind(stayId, tripId)
     .first<StayRow>();
 
@@ -426,19 +538,72 @@ export async function updateStay(
     confirmationNumber: "confirmation_number",
     bookingUrl: "booking_url",
     notes: "notes",
+    propertyRef: "property_ref",
+    bookingDetails: "booking_details",
   };
-  const fields = Object.entries(input) as [keyof UpdateStayInput, unknown][];
+  const fields = (Object.entries(input) as [keyof UpdateStayInput, unknown][]).filter(
+    ([field]) => field !== "propertyRef" && field !== "bookingDetails",
+  );
   const updatedAt = new Date().toISOString();
+  const statements: D1PreparedStatement[] = [];
+  if (fields.length) {
+    statements.push(
+      database
+        .prepare(
+          `UPDATE stays
+           SET ${fields.map(([field]) => `${columns[field]} = ?`).join(", ")}, updated_at = ?
+           WHERE id = ? AND trip_id = ?`,
+        )
+        .bind(...fields.map(([, value]) => value), updatedAt, stayId, tripId),
+    );
+  }
+  if (input.propertyRef !== undefined) {
+    statements.push(
+      database
+        .prepare(
+          `UPDATE stays SET property_place_provider = ?, property_place_id = ?,
+           property_match_method = ?, property_matched_at = ?, updated_at = ?
+           WHERE id = ? AND trip_id = ?`,
+        )
+        .bind(
+          input.propertyRef?.provider ?? null,
+          input.propertyRef?.placeId ?? null,
+          input.propertyRef ? "user" : null,
+          input.propertyRef ? updatedAt : null,
+          updatedAt,
+          stayId,
+          tripId,
+        ),
+    );
+  }
+  if (input.bookingDetails !== undefined) {
+    statements.push(
+      input.bookingDetails
+        ? bookingDetailsStatement(database, stayId, input.bookingDetails, updatedAt)
+        : database.prepare("DELETE FROM stay_booking_details WHERE stay_id = ?").bind(stayId),
+    );
+  }
+  if (!statements.length) return getStay(database, tripId, stayId);
+  await database.batch(statements);
+  return getStay(database, tripId, stayId);
+}
+
+export async function applyStayPropertyMatch(
+  database: D1Database,
+  tripId: string,
+  stayId: string,
+  placeId: string,
+): Promise<boolean> {
+  const now = new Date().toISOString();
   const result = await database
     .prepare(
-      `UPDATE stays
-       SET ${fields.map(([field]) => `${columns[field]} = ?`).join(", ")}, updated_at = ?
-       WHERE id = ? AND trip_id = ?`,
+      `UPDATE stays SET property_place_provider = 'google', property_place_id = ?,
+       property_match_method = 'backfill', property_matched_at = ?, updated_at = ?
+       WHERE id = ? AND trip_id = ? AND property_place_id IS NULL`,
     )
-    .bind(...fields.map(([, value]) => value), updatedAt, stayId, tripId)
+    .bind(placeId, now, now, stayId, tripId)
     .run();
-
-  return result.meta.changes === 0 ? null : getStay(database, tripId, stayId);
+  return result.meta.changes > 0;
 }
 
 export async function deleteStay(

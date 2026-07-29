@@ -21,8 +21,8 @@ function TermsPage() {
 
       <LegalSection title="Google Maps features">
         <p>
-          Voyage’s destination search uses Google Maps Platform. Your use of Google Maps features
-          and content is subject to the current{" "}
+          Voyage’s destination and property search, maps, property details, and photos use Google
+          Maps Platform. Your use of Google Maps features and content is subject to the current{" "}
           <a
             className={legalLinkClassName}
             href="https://maps.google.com/help/terms_maps/"
