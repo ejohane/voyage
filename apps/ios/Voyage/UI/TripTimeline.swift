@@ -39,7 +39,27 @@ enum TripTimeline {
   static func groupedEntries(
     for workspace: TripWorkspace
   ) -> [(date: LocalDate, entries: [TripTimelineEntry])] {
-    let grouped = Dictionary(grouping: entries(for: workspace), by: \TripTimelineEntry.date)
+    groupedEntries(entries(for: workspace))
+  }
+
+  static func upcomingGroups(
+    in entries: [TripTimelineEntry],
+    after date: LocalDate,
+    limit: Int
+  ) -> [(date: LocalDate, entries: [TripTimelineEntry])] {
+    guard limit > 0 else { return [] }
+    let upcoming =
+      entries
+      .filter { $0.date > date }
+      .sorted(by: areInDisplayOrder)
+      .prefix(limit)
+    return groupedEntries(Array(upcoming))
+  }
+
+  private static func groupedEntries(
+    _ entries: [TripTimelineEntry]
+  ) -> [(date: LocalDate, entries: [TripTimelineEntry])] {
+    let grouped = Dictionary(grouping: entries, by: \TripTimelineEntry.date)
     return grouped.keys.sorted().map { date in
       (date, grouped[date] ?? [])
     }

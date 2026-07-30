@@ -56,9 +56,9 @@ private struct WorkspaceOverviewView: View {
     return timeline.filter { $0.date == today }
   }
 
-  private var comingUpEntries: [TripTimelineEntry] {
+  private var comingUpGroups: [(date: LocalDate, entries: [TripTimelineEntry])] {
     let today = LocalDate.current()
-    return timeline.filter { $0.date > today }.prefix(5).map { $0 }
+    return TripTimeline.upcomingGroups(in: timeline, after: today, limit: 5)
   }
 
   private var canEdit: Bool {
@@ -89,14 +89,21 @@ private struct WorkspaceOverviewView: View {
       }
 
       Section("Coming Up") {
-        if comingUpEntries.isEmpty {
+        if comingUpGroups.isEmpty {
           EmptySectionRow(
             title: "Nothing else scheduled",
             systemImage: "calendar"
           )
         } else {
-          ForEach(comingUpEntries) { entry in
-            TimelineNavigationRow(entry: entry, workspace: workspace, session: session)
+          ForEach(comingUpGroups, id: \.date) { group in
+            ForEach(group.entries) { entry in
+              TimelineNavigationRow(
+                entry: entry,
+                dateHeader: entry.id == group.entries.first?.id ? group.date : nil,
+                workspace: workspace,
+                session: session
+              )
+            }
           }
         }
 
@@ -261,14 +268,27 @@ private struct DetailNavigationLabel: View {
 
 struct TimelineNavigationRow: View {
   let entry: TripTimelineEntry
+  let dateHeader: LocalDate?
   let workspace: TripWorkspace
   let session: VoyageSession
+
+  init(
+    entry: TripTimelineEntry,
+    dateHeader: LocalDate? = nil,
+    workspace: TripWorkspace,
+    session: VoyageSession
+  ) {
+    self.entry = entry
+    self.dateHeader = dateHeader
+    self.workspace = workspace
+    self.session = session
+  }
 
   var body: some View {
     NavigationLink {
       TimelineDestinationView(entry: entry, workspace: workspace, session: session)
     } label: {
-      TimelineEntryRow(entry: entry)
+      TimelineEntryRow(entry: entry, dateHeader: dateHeader)
     }
     .accessibilityIdentifier("timeline.entry.\(entry.id)")
   }
@@ -276,29 +296,44 @@ struct TimelineNavigationRow: View {
 
 struct TimelineEntryRow: View {
   let entry: TripTimelineEntry
+  let dateHeader: LocalDate?
+
+  init(entry: TripTimelineEntry, dateHeader: LocalDate? = nil) {
+    self.entry = entry
+    self.dateHeader = dateHeader
+  }
 
   var body: some View {
-    HStack(alignment: .top, spacing: 12) {
-      Text(entry.time?.displayText ?? "Anytime")
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
-        .frame(width: 62, alignment: .leading)
+    VStack(alignment: .leading, spacing: 8) {
+      if let dateHeader {
+        Text(dateHeader.longDisplayText)
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(.secondary)
+          .accessibilityHidden(true)
+      }
 
-      Image(systemName: entry.systemImage)
-        .font(.subheadline)
-        .foregroundStyle(entry.accent.color)
-        .frame(width: 20, height: 20)
-        .accessibilityHidden(true)
+      HStack(alignment: .top, spacing: 12) {
+        Text(entry.time?.displayText ?? "Anytime")
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(.secondary)
+          .frame(width: 62, alignment: .leading)
 
-      VStack(alignment: .leading, spacing: 3) {
-        Text(entry.title)
-          .font(.body)
-          .foregroundStyle(.primary)
-        if let subtitle = entry.subtitle?.nilIfBlank {
-          Text(subtitle)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
+        Image(systemName: entry.systemImage)
+          .font(.subheadline)
+          .foregroundStyle(entry.accent.color)
+          .frame(width: 20, height: 20)
+          .accessibilityHidden(true)
+
+        VStack(alignment: .leading, spacing: 3) {
+          Text(entry.title)
+            .font(.body)
+            .foregroundStyle(.primary)
+          if let subtitle = entry.subtitle?.nilIfBlank {
+            Text(subtitle)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .lineLimit(2)
+          }
         }
       }
     }

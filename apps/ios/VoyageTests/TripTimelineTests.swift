@@ -31,6 +31,29 @@ struct TripTimelineTests {
     #expect(octoberFifth[1].time == nil)
   }
 
+  @Test("Upcoming preview groups five entries by day and preserves overnight boundaries")
+  func upcomingPreviewGrouping() throws {
+    let workspace = try TestFixtures.workspace()
+    let entries = Array(TripTimeline.entries(for: workspace).reversed())
+    let groups = TripTimeline.upcomingGroups(
+      in: entries,
+      after: try #require(LocalDate(rawValue: "2026-10-03")),
+      limit: 5
+    )
+    let departure = try #require(groups.first?.entries.first)
+    let arrival = try #require(groups.dropFirst().first?.entries.first)
+
+    #expect(groups.flatMap(\.entries).count == 5)
+    #expect(
+      groups.map(\.date.rawValue)
+        == ["2026-10-04", "2026-10-05", "2026-10-06", "2026-10-07"]
+    )
+    #expect(departure.source == .travel(workspace.travel[0].id))
+    #expect(arrival.source == .travel(workspace.travel[0].id))
+    #expect(departure.title == "United Airlines UA 942")
+    #expect(arrival.title == "Arrive in LIS · Lisbon")
+  }
+
   @Test("Current local day follows the supplied calendar without changing API values")
   func localDayAcrossTimeZones() throws {
     let instant = try #require(ISO8601DateFormatter().date(from: "2026-10-05T00:30:00Z"))
