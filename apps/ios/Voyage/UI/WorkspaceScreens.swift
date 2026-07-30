@@ -88,25 +88,33 @@ private struct WorkspaceOverviewView: View {
         }
       }
 
-      Section("Coming Up") {
-        if comingUpGroups.isEmpty {
+      if comingUpGroups.isEmpty {
+        Section("Coming Up") {
           EmptySectionRow(
             title: "Nothing else scheduled",
             systemImage: "calendar"
           )
-        } else {
-          ForEach(comingUpGroups, id: \.date) { group in
+        }
+      } else {
+        ForEach(comingUpGroups, id: \.date) { group in
+          Section {
             ForEach(group.entries) { entry in
               TimelineNavigationRow(
                 entry: entry,
-                dateHeader: entry.id == group.entries.first?.id ? group.date : nil,
                 workspace: workspace,
                 session: session
               )
             }
+          } header: {
+            ComingUpDayHeader(
+              date: group.date,
+              showsSectionTitle: group.date == comingUpGroups.first?.date
+            )
           }
         }
+      }
 
+      Section {
         NavigationLink {
           ItineraryView(session: session, workspace: workspace, freshness: freshness)
         } label: {
@@ -231,6 +239,29 @@ private struct EmptySectionRow: View {
   }
 }
 
+private struct ComingUpDayHeader: View {
+  let date: LocalDate
+  let showsSectionTitle: Bool
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      if showsSectionTitle {
+        Text("Coming Up")
+          .font(.subheadline)
+          .foregroundStyle(.secondary)
+      }
+
+      Text(date.longDisplayText)
+        .font(.headline)
+        .foregroundStyle(.primary)
+    }
+    .textCase(nil)
+    .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(.isHeader)
+    .accessibilityIdentifier("coming-up.day.\(date.rawValue)")
+  }
+}
+
 private struct DetailNavigationLabel: View {
   let title: String
   let valueText: String
@@ -268,27 +299,14 @@ private struct DetailNavigationLabel: View {
 
 struct TimelineNavigationRow: View {
   let entry: TripTimelineEntry
-  let dateHeader: LocalDate?
   let workspace: TripWorkspace
   let session: VoyageSession
-
-  init(
-    entry: TripTimelineEntry,
-    dateHeader: LocalDate? = nil,
-    workspace: TripWorkspace,
-    session: VoyageSession
-  ) {
-    self.entry = entry
-    self.dateHeader = dateHeader
-    self.workspace = workspace
-    self.session = session
-  }
 
   var body: some View {
     NavigationLink {
       TimelineDestinationView(entry: entry, workspace: workspace, session: session)
     } label: {
-      TimelineEntryRow(entry: entry, dateHeader: dateHeader)
+      TimelineEntryRow(entry: entry)
     }
     .accessibilityIdentifier("timeline.entry.\(entry.id)")
   }
@@ -296,44 +314,29 @@ struct TimelineNavigationRow: View {
 
 struct TimelineEntryRow: View {
   let entry: TripTimelineEntry
-  let dateHeader: LocalDate?
-
-  init(entry: TripTimelineEntry, dateHeader: LocalDate? = nil) {
-    self.entry = entry
-    self.dateHeader = dateHeader
-  }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      if let dateHeader {
-        Text(dateHeader.longDisplayText)
-          .font(.subheadline.weight(.semibold))
-          .foregroundStyle(.secondary)
-          .accessibilityHidden(true)
-      }
+    HStack(alignment: .top, spacing: 12) {
+      Text(entry.time?.displayText ?? "Anytime")
+        .font(.caption.monospacedDigit())
+        .foregroundStyle(.secondary)
+        .frame(width: 62, alignment: .leading)
 
-      HStack(alignment: .top, spacing: 12) {
-        Text(entry.time?.displayText ?? "Anytime")
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
-          .frame(width: 62, alignment: .leading)
+      Image(systemName: entry.systemImage)
+        .font(.subheadline)
+        .foregroundStyle(entry.accent.color)
+        .frame(width: 20, height: 20)
+        .accessibilityHidden(true)
 
-        Image(systemName: entry.systemImage)
-          .font(.subheadline)
-          .foregroundStyle(entry.accent.color)
-          .frame(width: 20, height: 20)
-          .accessibilityHidden(true)
-
-        VStack(alignment: .leading, spacing: 3) {
-          Text(entry.title)
-            .font(.body)
-            .foregroundStyle(.primary)
-          if let subtitle = entry.subtitle?.nilIfBlank {
-            Text(subtitle)
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .lineLimit(2)
-          }
+      VStack(alignment: .leading, spacing: 3) {
+        Text(entry.title)
+          .font(.body)
+          .foregroundStyle(.primary)
+        if let subtitle = entry.subtitle?.nilIfBlank {
+          Text(subtitle)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
         }
       }
     }
