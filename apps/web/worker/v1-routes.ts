@@ -91,7 +91,7 @@ function matchesEtag(request: Request, etag: string) {
   return (request.headers.get("If-None-Match") ?? "")
     .split(",")
     .map((value) => value.trim())
-    .some((value) => value === "*" || value === etag);
+    .some((value) => value === "*" || value === etag || value === `W/${etag}`);
 }
 
 function expectedRevision(request: Request) {

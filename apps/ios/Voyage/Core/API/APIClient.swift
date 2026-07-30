@@ -212,7 +212,7 @@ actor APIClient: VoyageAPI {
 
     let response = transportResponse.response
     let metadata = APIResponseMetadata(
-      entityTag: response.value(forHTTPHeaderField: "ETag"),
+      entityTag: Self.canonicalEntityTag(response.value(forHTTPHeaderField: "ETag")),
       requestID: response.value(forHTTPHeaderField: "X-Request-ID")
     )
     guard let requestID = metadata.requestID, !requestID.isEmpty else {
@@ -366,13 +366,18 @@ actor APIClient: VoyageAPI {
 
   private func responseMetadata(_ response: HTTPURLResponse) throws -> APIResponseMetadata {
     let metadata = APIResponseMetadata(
-      entityTag: response.value(forHTTPHeaderField: "ETag"),
+      entityTag: Self.canonicalEntityTag(response.value(forHTTPHeaderField: "ETag")),
       requestID: response.value(forHTTPHeaderField: "X-Request-ID")
     )
     guard let requestID = metadata.requestID, !requestID.isEmpty else {
       throw APIError.invalidResponse
     }
     return metadata
+  }
+
+  private static func canonicalEntityTag(_ value: String?) -> String? {
+    guard let value else { return nil }
+    return value.hasPrefix("W/") ? String(value.dropFirst(2)) : value
   }
 
   private func serverError(status: Int, data: Data, requestID: String?) -> APIError {

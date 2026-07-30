@@ -165,6 +165,9 @@ describe("Voyage API v1", () => {
     const conditional = await request(v1TripsEndpoint, "user_owner", {
       headers: { "If-None-Match": etag ?? "" },
     });
+    const weakConditional = await request(v1TripsEndpoint, "user_owner", {
+      headers: { "If-None-Match": `W/${etag ?? ""}` },
+    });
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("private, no-cache");
@@ -178,6 +181,9 @@ describe("Voyage API v1", () => {
     expect(conditional.status).toBe(304);
     expect(conditional.headers.get("ETag")).toBe(etag);
     expect(await conditional.text()).toBe("");
+    expect(weakConditional.status).toBe(304);
+    expect(weakConditional.headers.get("ETag")).toBe(etag);
+    expect(await weakConditional.text()).toBe("");
   });
 
   it("returns a complete aggregate workspace, excludes ideas, and invalidates its ETag", async () => {

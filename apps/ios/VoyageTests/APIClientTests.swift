@@ -8,13 +8,13 @@ struct APIClientTests {
   private let tripID = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
   private let planID = UUID(uuidString: "55555555-5555-4555-8555-555555555555")!
 
-  @Test("GET sends auth, version, request ID, and conditional ETag headers")
+  @Test("GET sends required headers and canonicalizes a weak response ETag")
   func getHeadersAndModifiedResponse() async throws {
     let transport = MockHTTPTransport(stubs: [
       .v1(
         statusCode: 200,
         data: try TestFixtures.data(named: "trip-list"),
-        entityTag: #""bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb""#,
+        entityTag: #"W/"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb""#,
         requestID: "request-list"
       )
     ])
@@ -222,11 +222,11 @@ struct APIClientTests {
     #expect(await transport.requestCount == 1)
   }
 
-  @Test("POST plan sends idempotency and JSON body headers")
+  @Test("POST plan sends idempotency and JSON body headers and accepts a weak ETag")
   func createPlanRequest() async throws {
     let idempotencyKey = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA")!
     let transport = MockHTTPTransport(stubs: [
-      .v1(statusCode: 201, data: makePlanResponseData(), entityTag: #""4""#)
+      .v1(statusCode: 201, data: makePlanResponseData(), entityTag: #"W/"4""#)
     ])
     let client = makeClient(transport: transport)
     let input = ScheduledPlanInput(
