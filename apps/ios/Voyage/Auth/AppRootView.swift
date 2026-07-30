@@ -33,8 +33,8 @@ private struct AuthenticatedAppRoot: View {
   init(configuration: AppConfiguration, userID: String) {
     let api = APIClient(
       baseURL: configuration.apiBaseURL,
-      tokenProvider: AuthTokenProvider {
-        try await ClerkSessionTokenSource.token()
+      tokenProvider: AuthTokenProvider { forceRefresh in
+        try await ClerkSessionTokenSource.token(forceRefresh: forceRefresh)
       }
     )
     _session = State(
@@ -58,8 +58,9 @@ private struct AuthenticatedAppRoot: View {
 
 private enum ClerkSessionTokenSource {
   @MainActor
-  static func token() async throws -> String {
-    guard let token = try await Clerk.shared.auth.getToken(), !token.isEmpty else {
+  static func token(forceRefresh: Bool) async throws -> String {
+    let options = Session.GetTokenOptions(skipCache: forceRefresh)
+    guard let token = try await Clerk.shared.auth.getToken(options), !token.isEmpty else {
       throw APIError.missingSession
     }
     return token

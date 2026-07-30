@@ -67,7 +67,9 @@ Before release:
 The native app is not release-ready merely because it builds. Before archiving a candidate, deploy
 the additive v1 backend and record production evidence for:
 
-- native Clerk sign-in and a token accepted under `CLERK_AUTHORIZED_PARTIES`;
+- native Clerk sign-in with signature/time/subject verification and the route-scoped `/api/v1`
+  policy: an absent `azp` is allowed only without a browser `Origin`, while a present `azp` must
+  satisfy `CLERK_AUTHORIZED_PARTIES`;
 - membership-scoped `GET /api/v1/trips`, workspace, and people responses;
 - `X-Voyage-API-Version`, `X-Request-ID`, `ETag`, and `304` behavior;
 - owner/editor plan creation with idempotent replay;

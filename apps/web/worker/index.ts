@@ -9,7 +9,11 @@ import {
 import { Hono } from "hono";
 import { routePath } from "hono/route";
 import { createAirportRoutes } from "./airport-routes";
-import { type AuthenticateRequest, authenticateClerkRequest } from "./auth";
+import {
+  type AuthenticateRequest,
+  authenticateClerkRequest,
+  authenticateClerkV1Request,
+} from "./auth";
 import { backendRequestId, logBackendFailure } from "./backend-logging";
 import { createGmailImportRoutes } from "./gmail-import-routes";
 import { createGmailIntegrationRoutes } from "./gmail-integration-routes";
@@ -27,6 +31,7 @@ import { createV1Routes } from "./v1-routes";
 
 type AppDependencies = {
   authenticateRequest?: AuthenticateRequest;
+  v1AuthenticateRequest?: AuthenticateRequest;
   gmailFetch?: typeof fetch;
   placesClient?: PlacesClient;
   staticMapsClient?: StaticMapsClient;
@@ -38,6 +43,10 @@ type AppDependencies = {
 export function createApp(dependencies: AppDependencies = {}) {
   const app = new Hono<WorkerEnvironment>();
   const authenticateRequest = dependencies.authenticateRequest ?? authenticateClerkRequest;
+  const v1AuthenticateRequest =
+    dependencies.v1AuthenticateRequest ??
+    dependencies.authenticateRequest ??
+    authenticateClerkV1Request;
 
   app.get(healthEndpoint, (context) => {
     const response: HealthResponse = {
@@ -54,7 +63,7 @@ export function createApp(dependencies: AppDependencies = {}) {
 
   app.route(
     apiV1Endpoint,
-    createV1Routes(authenticateRequest, {
+    createV1Routes(v1AuthenticateRequest, {
       userDirectory: dependencies.userDirectory,
       now: dependencies.now,
     }),

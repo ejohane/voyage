@@ -94,6 +94,134 @@ struct APIClientTests {
     }
   }
 
+  @Test("A 401 forces a fresh token and retries the same GET exactly once")
+  func unauthorizedGETRefreshesTokenOnce() async throws {
+    let transport = MockHTTPTransport(stubs: [
+      .v1(statusCode: 401, requestID: "request-initial"),
+      .v1(
+        statusCode: 200,
+        data: try TestFixtures.data(named: "trip-list"),
+        entityTag: #""bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb""#,
+        requestID: "request-retry"
+      ),
+    ])
+    let tokens = RecordingAuthTokenSource()
+    let client = makeClient(
+      transport: transport,
+      tokenProvider: AuthTokenProvider { forceRefresh in
+        await tokens.token(forceRefresh: forceRefresh)
+      }
+    )
+
+    _ = try await client.listTrips(ifNoneMatch: #""prior-revision""#)
+
+    #expect(await tokens.refreshRequests == [false, true])
+    #expect(await transport.requestCount == 2)
+    let initialRequest = await transport.request(at: 0)
+    let retryRequest = await transport.request(at: 1)
+    #expect(initialRequest.value(forHTTPHeaderField: "Authorization") == "Bearer token-cached")
+    #expect(retryRequest.value(forHTTPHeaderField: "Authorization") == "Bearer token-refreshed")
+    #expect(
+      retryRequest.value(forHTTPHeaderField: "X-Request-ID")
+        == initialRequest.value(forHTTPHeaderField: "X-Request-ID")
+    )
+    #expect(retryRequest.value(forHTTPHeaderField: "If-None-Match") == #""prior-revision""#)
+  }
+
+  @Test("A second 401 is returned without another token refresh")
+  func repeatedUnauthorizedStopsAfterOneRetry() async {
+    let transport = MockHTTPTransport(stubs: [
+      .v1(statusCode: 401, requestID: "request-initial"),
+      .v1(statusCode: 401, requestID: "request-retry"),
+    ])
+    let tokens = RecordingAuthTokenSource()
+    let client = makeClient(
+      transport: transport,
+      tokenProvider: AuthTokenProvider { forceRefresh in
+        await tokens.token(forceRefresh: forceRefresh)
+      }
+    )
+
+    do {
+      _ = try await client.listTrips(ifNoneMatch: nil)
+      Issue.record("Expected the retried request to remain unauthorized")
+    } catch let APIError.server(status, _, _, _, _, requestID) {
+      #expect(status == 401)
+      #expect(requestID == "request-retry")
+    } catch {
+      Issue.record("Unexpected error: \(error)")
+    }
+
+    #expect(await tokens.refreshRequests == [false, true])
+    #expect(await transport.requestCount == 2)
+  }
+
+  @Test("A retried mutation preserves its body, idempotency key, and request ID")
+  func unauthorizedPOSTPreservesRequest() async throws {
+    let idempotencyKey = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA")!
+    let transport = MockHTTPTransport(stubs: [
+      .v1(statusCode: 401, requestID: "request-initial"),
+      .v1(
+        statusCode: 201,
+        data: makePlanResponseData(),
+        entityTag: #""4""#,
+        requestID: "request-retry"
+      ),
+    ])
+    let tokens = RecordingAuthTokenSource()
+    let client = makeClient(
+      transport: transport,
+      tokenProvider: AuthTokenProvider { forceRefresh in
+        await tokens.token(forceRefresh: forceRefresh)
+      }
+    )
+
+    _ = try await client.createPlan(
+      tripID: tripID,
+      input: makePlanInput(),
+      idempotencyKey: idempotencyKey
+    )
+
+    let initialRequest = await transport.request(at: 0)
+    let retryRequest = await transport.request(at: 1)
+    #expect(await tokens.refreshRequests == [false, true])
+    #expect(await transport.requestCount == 2)
+    #expect(initialRequest.httpMethod == "POST")
+    #expect(retryRequest.httpMethod == initialRequest.httpMethod)
+    #expect(retryRequest.url == initialRequest.url)
+    #expect(retryRequest.httpBody == initialRequest.httpBody)
+    #expect(
+      retryRequest.value(forHTTPHeaderField: "Idempotency-Key")
+        == initialRequest.value(forHTTPHeaderField: "Idempotency-Key")
+    )
+    #expect(
+      retryRequest.value(forHTTPHeaderField: "X-Request-ID")
+        == initialRequest.value(forHTTPHeaderField: "X-Request-ID")
+    )
+    #expect(initialRequest.value(forHTTPHeaderField: "Authorization") == "Bearer token-cached")
+    #expect(retryRequest.value(forHTTPHeaderField: "Authorization") == "Bearer token-refreshed")
+  }
+
+  @Test("A non-401 server error does not refresh the token")
+  func nonUnauthorizedErrorDoesNotRefreshToken() async {
+    let transport = MockHTTPTransport(stubs: [
+      .v1(statusCode: 503, requestID: "request-unavailable")
+    ])
+    let tokens = RecordingAuthTokenSource()
+    let client = makeClient(
+      transport: transport,
+      tokenProvider: AuthTokenProvider { forceRefresh in
+        await tokens.token(forceRefresh: forceRefresh)
+      }
+    )
+
+    await #expect(throws: APIError.self) {
+      try await client.listTrips(ifNoneMatch: nil)
+    }
+    #expect(await tokens.refreshRequests == [false])
+    #expect(await transport.requestCount == 1)
+  }
+
   @Test("POST plan sends idempotency and JSON body headers")
   func createPlanRequest() async throws {
     let idempotencyKey = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA")!
@@ -223,11 +351,23 @@ struct APIClientTests {
     #expect(request.url?.path.hasSuffix("/plans/55555555-5555-4555-8555-555555555555") == true)
   }
 
-  private func makeClient(transport: MockHTTPTransport) -> APIClient {
+  private func makeClient(
+    transport: MockHTTPTransport,
+    tokenProvider: AuthTokenProvider = AuthTokenProvider { "token-test" }
+  ) -> APIClient {
     APIClient(
       baseURL: baseURL,
-      tokenProvider: AuthTokenProvider { "token-test" },
+      tokenProvider: tokenProvider,
       transport: transport
     )
+  }
+}
+
+private actor RecordingAuthTokenSource {
+  private(set) var refreshRequests: [Bool] = []
+
+  func token(forceRefresh: Bool) -> String {
+    refreshRequests.append(forceRefresh)
+    return forceRefresh ? "token-refreshed" : "token-cached"
   }
 }

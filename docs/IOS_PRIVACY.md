@@ -53,8 +53,10 @@ shipped feature needs it and this inventory has been updated.
 - Enforce membership on every Worker route. Hiding a button in SwiftUI is not authorization.
 - Treat `401` as expired or invalid authentication, `403` as insufficient mutation permission, and
   trip `404` as unavailable without revealing whether the trip exists.
-- Production native sign-in must be verified against the Clerk authorized-party configuration
-  before external TestFlight distribution.
+- Production native sign-in must verify the token signature, expiry, and subject. Enforce the Clerk
+  authorized-party allowlist whenever an `azp` claim is present; native tokens may omit `azp`
+  because the native flow does not send a browser Origin. This route-scoped exception authenticates
+  the Voyage session but does not attest the device; D1 membership remains mandatory.
 
 ## Logging and diagnostics
 

@@ -29,14 +29,18 @@ protocol VoyageAPI: Sendable {
 }
 
 struct AuthTokenProvider: Sendable {
-  private let operation: @Sendable () async throws -> String
+  private let operation: @Sendable (_ forceRefresh: Bool) async throws -> String
 
   init(operation: @escaping @Sendable () async throws -> String) {
+    self.operation = { _ in try await operation() }
+  }
+
+  init(operation: @escaping @Sendable (_ forceRefresh: Bool) async throws -> String) {
     self.operation = operation
   }
 
-  func token() async throws -> String {
-    try await operation()
+  func token(forceRefresh: Bool = false) async throws -> String {
+    try await operation(forceRefresh)
   }
 }
 
@@ -199,33 +203,12 @@ actor APIClient: VoyageAPI {
     path: String,
     ifNoneMatch: String?
   ) async throws -> APIReadResult<Response> {
-    let token = try await tokenProvider.token()
-    guard !token.isEmpty else { throw APIError.missingSession }
-
-    var request = URLRequest(
-      url: endpoint(path: path),
-      cachePolicy: .reloadIgnoringLocalCacheData,
-      timeoutInterval: 30
-    )
-    request.httpMethod = "GET"
-    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-    request.setValue("application/json", forHTTPHeaderField: "Accept")
-    request.setValue(String(Self.version), forHTTPHeaderField: "X-Voyage-API-Version")
-    request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Request-ID")
+    var request = try await authorizedRequest(path: path, method: "GET")
     if let ifNoneMatch {
       request.setValue(ifNoneMatch, forHTTPHeaderField: "If-None-Match")
     }
 
-    let transportResponse: HTTPTransportResponse
-    do {
-      transportResponse = try await transport.send(request)
-    } catch let error as APIError {
-      throw error
-    } catch is CancellationError {
-      throw CancellationError()
-    } catch {
-      throw APIError.transport(message: String(describing: error))
-    }
+    let transportResponse = try await performAuthorized(request)
 
     let response = transportResponse.response
     let metadata = APIResponseMetadata(
@@ -274,7 +257,7 @@ actor APIClient: VoyageAPI {
       request.setValue(header.value, forHTTPHeaderField: header.key)
     }
 
-    let transportResponse = try await perform(request)
+    let transportResponse = try await performAuthorized(request)
     let metadata = try responseMetadata(transportResponse.response)
     try validateVersionHeader(transportResponse.response)
     guard transportResponse.response.statusCode == expectedStatus else {
@@ -305,7 +288,7 @@ actor APIClient: VoyageAPI {
       request.setValue(header.value, forHTTPHeaderField: header.key)
     }
 
-    let transportResponse = try await perform(request)
+    let transportResponse = try await performAuthorized(request)
     let metadata = try responseMetadata(transportResponse.response)
     try validateVersionHeader(transportResponse.response)
     guard transportResponse.response.statusCode == 204 else {
@@ -347,6 +330,18 @@ actor APIClient: VoyageAPI {
     } catch {
       throw APIError.transport(message: String(describing: error))
     }
+  }
+
+  private func performAuthorized(_ request: URLRequest) async throws -> HTTPTransportResponse {
+    let response = try await perform(request)
+    guard response.response.statusCode == 401 else { return response }
+
+    let token = try await tokenProvider.token(forceRefresh: true)
+    guard !token.isEmpty else { throw APIError.missingSession }
+
+    var retry = request
+    retry.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    return try await perform(retry)
   }
 
   private func encode<Value: Encodable>(_ value: Value) throws -> Data {

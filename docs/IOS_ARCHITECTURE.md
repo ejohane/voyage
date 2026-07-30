@@ -91,13 +91,20 @@ request missing its precondition.
   storage, never in `UserDefaults` or the offline snapshot.
 - Each API request asks the session adapter for a current token immediately before sending. A
   refresh may replace an expired token, but an authentication retry is bounded to one attempt.
-- The Worker continues to verify issuer, signature, expiry, and authorized party before consulting
-  D1 membership.
+- The Worker continues to verify the token signature with the production Clerk instance's pinned
+  public key, along with its issued-at, activation, expiry, and subject claims, before consulting D1
+  membership. Browser and legacy API tokens must include an `azp` claim matching
+  `CLERK_AUTHORIZED_PARTIES`. Native `/api/v1` tokens may omit `azp` because Clerk's native flow
+  does not send an Origin; if `azp` is present, it must still match the allowlist.
+- An azp-less Clerk token proves an authenticated Voyage session, not that the caller is an iOS
+  binary. Voyage deliberately limits this exception to the Bearer-only `/api/v1` surface and rejects
+  azp-less requests carrying a browser `Origin`; all v1 reads and writes still require D1 membership.
+  If the API must become platform-exclusive, add App Attest or another cryptographic client
+  attestation rather than treating a missing claim as device identity.
 - D1 remains the authorization source of truth. UI role checks are affordances only; every mutation
   is enforced again by the Worker.
-- A production token issued by the native Clerk flow must be exercised before TestFlight. Its
-  `azp` claim must satisfy production `CLERK_AUTHORIZED_PARTIES`; this cannot be inferred from a web
-  token or simulator-only sign-in.
+- A production token issued by the native Clerk flow must be exercised on a physical device before
+  distribution; this cannot be inferred from a web token or simulator-only sign-in.
 
 ## Data and time semantics
 
