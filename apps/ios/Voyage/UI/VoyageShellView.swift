@@ -1,5 +1,28 @@
 import SwiftUI
 
+enum VoyagePalette {
+  static let canvas = Color(red: 0.93, green: 0.92, blue: 0.90)
+  static let surface = Color(red: 0.98, green: 0.97, blue: 0.95)
+  static let ink = Color(red: 0.14, green: 0.14, blue: 0.13)
+  static let accent = Color(red: 0.18, green: 0.43, blue: 0.45)
+  static let accentSoft = accent.opacity(0.12)
+}
+
+extension View {
+  func voyagePageSurface() -> some View {
+    self
+      .background(VoyagePalette.canvas.ignoresSafeArea())
+      .preferredColorScheme(.light)
+  }
+
+  func voyageListSurface() -> some View {
+    self
+      .scrollContentBackground(.hidden)
+      .listRowBackground(VoyagePalette.surface)
+      .voyagePageSurface()
+  }
+}
+
 @MainActor
 struct VoyageShellView: View {
   let session: VoyageSession
@@ -31,6 +54,8 @@ struct VoyageShellView: View {
         }
       }
     }
+    .tint(VoyagePalette.accent)
+    .preferredColorScheme(.light)
   }
 }
 
@@ -43,6 +68,7 @@ private struct TripsView: View {
       .refreshable {
         await session.refreshTrips()
       }
+      .voyagePageSurface()
       .accessibilityIdentifier("trips.screen")
   }
 
@@ -89,6 +115,7 @@ private struct TripsView: View {
           }
         }
         .listStyle(.insetGrouped)
+        .voyageListSurface()
         .accessibilityIdentifier("trips.list")
       }
     }
@@ -106,18 +133,18 @@ private struct TripRow: View {
     VStack(alignment: .leading, spacing: 7) {
       HStack(alignment: .firstTextBaseline) {
         Text(trip.name)
-          .font(.headline)
-          .foregroundStyle(.primary)
+          .font(.title3.weight(.semibold))
+          .foregroundStyle(VoyagePalette.ink)
 
         Spacer(minLength: 8)
 
         if status == .now {
           Text("Now")
             .font(.caption.weight(.semibold))
-            .foregroundStyle(.green)
+            .foregroundStyle(VoyagePalette.accent)
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
-            .background(.green.opacity(0.12), in: Capsule())
+            .background(VoyagePalette.accentSoft, in: Capsule())
         }
       }
 
@@ -201,11 +228,14 @@ private struct SettingsView: View {
         Text("Signing out removes this account’s offline trip snapshots from this iPhone.")
       }
     }
+    .listStyle(.insetGrouped)
+    .voyageListSurface()
     .overlay {
       if isSigningOut {
         ProgressView("Signing out…")
           .padding()
-          .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+          .background(VoyagePalette.surface, in: RoundedRectangle(cornerRadius: 16))
+          .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
       }
     }
     .alert(

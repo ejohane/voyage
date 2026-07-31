@@ -191,6 +191,7 @@ struct PlanEditorView: View {
           }
         }
       }
+      .voyageListSurface()
       .navigationTitle(mode.plan == nil ? "New Plan" : "Edit Plan")
       .navigationBarTitleDisplayMode(.inline)
       .interactiveDismissDisabled(isWorking || isAmbiguousCreateRetry)
@@ -214,7 +215,8 @@ struct PlanEditorView: View {
             session.planMutationState == .deleting ? "Deleting…" : "Saving…"
           )
           .padding()
-          .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+          .background(VoyagePalette.surface, in: RoundedRectangle(cornerRadius: 16))
+          .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
         }
       }
       .alert(item: $presentedAlert) { alert in

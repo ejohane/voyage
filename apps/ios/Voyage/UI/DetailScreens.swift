@@ -52,8 +52,10 @@ struct ItineraryView: View {
           }
         }
         .listStyle(.insetGrouped)
+        .voyageListSurface()
       }
     }
+    .voyagePageSurface()
     .navigationTitle("Itinerary")
     .toolbar {
       if canEdit {
@@ -95,8 +97,10 @@ struct TravelListView: View {
           .accessibilityIdentifier("travel.row.\(travel.id.uuidString.lowercased())")
         }
         .listStyle(.insetGrouped)
+        .voyageListSurface()
       }
     }
+    .voyagePageSurface()
     .navigationTitle("Transportation")
     .accessibilityIdentifier("travel.list")
   }
@@ -108,7 +112,7 @@ private struct TravelRow: View {
   var body: some View {
     HStack(alignment: .top, spacing: 12) {
       Image(systemName: travel.type.systemImage)
-        .foregroundStyle(travel.type == .flight ? .blue : .teal)
+        .foregroundStyle(VoyagePalette.accent)
         .frame(width: 24)
         .accessibilityHidden(true)
 
@@ -186,6 +190,7 @@ struct TravelDetailView: View {
         }
       }
     }
+    .voyageListSurface()
     .navigationTitle(travel.type.displayName)
     .navigationBarTitleDisplayMode(.inline)
     .accessibilityIdentifier("travel.detail")
@@ -213,8 +218,10 @@ struct StayListView: View {
           .accessibilityIdentifier("stay.row.\(stay.id.uuidString.lowercased())")
         }
         .listStyle(.insetGrouped)
+        .voyageListSurface()
       }
     }
+    .voyagePageSurface()
     .navigationTitle("Stays")
     .accessibilityIdentifier("stay.list")
   }
@@ -226,7 +233,7 @@ private struct StayRow: View {
   var body: some View {
     HStack(alignment: .top, spacing: 12) {
       Image(systemName: "bed.double.fill")
-        .foregroundStyle(.purple)
+        .foregroundStyle(VoyagePalette.accent)
         .frame(width: 24)
         .accessibilityHidden(true)
 
@@ -322,6 +329,7 @@ struct StayDetailView: View {
         }
       }
     }
+    .voyageListSurface()
     .navigationTitle(stay.propertyName)
     .navigationBarTitleDisplayMode(.inline)
     .accessibilityIdentifier("stay.detail")
@@ -353,6 +361,7 @@ struct PeopleView: View {
             PersonRow(member: member)
           }
           .listStyle(.insetGrouped)
+          .voyageListSurface()
         }
       } else if isLoading {
         ProgressView("Loading people…")
@@ -367,6 +376,7 @@ struct PeopleView: View {
         }
       }
     }
+    .voyagePageSurface()
     .navigationTitle("People")
     .task(id: trip.id) {
       await loadPeople()
