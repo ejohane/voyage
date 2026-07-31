@@ -22,11 +22,10 @@ struct TripWorkspaceView: View {
           await session.loadWorkspace(tripID: tripID, forceRefresh: true)
         }
         .accessibilityIdentifier("workspace.error")
-      case .loaded(let workspace, let savedAt, let freshness):
+      case .loaded(let workspace, _, let freshness):
         WorkspaceOverviewView(
           session: session,
           workspace: workspace,
-          savedAt: savedAt,
           freshness: freshness
         )
       }
@@ -42,7 +41,6 @@ struct TripWorkspaceView: View {
 private struct WorkspaceOverviewView: View {
   let session: VoyageSession
   let workspace: TripWorkspace
-  let savedAt: Date
   let freshness: ContentFreshness
 
   @State private var editorMode: PlanEditorMode?
@@ -62,10 +60,6 @@ private struct WorkspaceOverviewView: View {
 
   var body: some View {
     List {
-      if freshness == .stale {
-        OfflineSnapshotRow(savedAt: savedAt)
-      }
-
       Section {
         TripSummaryView(trip: workspace.trip, travel: workspace.travel)
       }

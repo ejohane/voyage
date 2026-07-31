@@ -89,7 +89,7 @@ private struct TripsView: View {
         await session.refreshTrips()
       }
       .accessibilityIdentifier("trips.error")
-    case .loaded(let index, let savedAt, let freshness):
+    case .loaded(let index, _, let freshness):
       if index.trips.isEmpty {
         ContentUnavailableView(
           "No trips yet",
@@ -103,10 +103,6 @@ private struct TripsView: View {
         .accessibilityIdentifier("trips.empty")
       } else {
         List {
-          if freshness == .stale {
-            OfflineSnapshotRow(savedAt: savedAt)
-          }
-
           ForEach(index.trips) { trip in
             NavigationLink(value: AppRoute.workspace(tripID: trip.id)) {
               TripRow(trip: trip)
@@ -260,27 +256,6 @@ private struct SettingsView: View {
       try await onSignOut()
     } catch {
       errorMessage = error.localizedDescription
-    }
-  }
-}
-
-struct OfflineSnapshotRow: View {
-  let savedAt: Date
-
-  var body: some View {
-    Section {
-      Label {
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Offline snapshot")
-          Text("Saved \(savedAt.formatted(date: .abbreviated, time: .shortened))")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-      } icon: {
-        Image(systemName: "wifi.slash")
-          .foregroundStyle(.orange)
-      }
-      .accessibilityIdentifier("content.offline-snapshot")
     }
   }
 }
