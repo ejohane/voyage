@@ -19,7 +19,12 @@ enum FixtureFactory {
         name: "Rome, Italy",
         arrivalDate: LocalDate(rawValue: "2026-07-28"),
         departureDate: LocalDate(rawValue: "2026-08-01"),
-        location: TripStopLocation(provider: "google_places", placeID: "fixture-rome")
+        location: TripStopLocation(
+          provider: "google_places",
+          placeID: "fixture-rome",
+          latitude: 41.9028,
+          longitude: 12.4964
+        )
       ),
       TripStop(
         id: florenceStopID,
@@ -27,7 +32,12 @@ enum FixtureFactory {
         name: "Florence, Italy",
         arrivalDate: LocalDate(rawValue: "2026-08-01"),
         departureDate: LocalDate(rawValue: "2026-08-05"),
-        location: TripStopLocation(provider: "google_places", placeID: "fixture-florence")
+        location: TripStopLocation(
+          provider: "google_places",
+          placeID: "fixture-florence",
+          latitude: 43.7696,
+          longitude: 11.2558
+        )
       ),
     ],
     accessLevel: .owner,

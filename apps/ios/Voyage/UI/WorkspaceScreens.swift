@@ -67,7 +67,7 @@ private struct WorkspaceOverviewView: View {
       }
 
       Section {
-        TripSummaryView(trip: workspace.trip)
+        TripSummaryView(trip: workspace.trip, travel: workspace.travel)
       }
 
       if comingUpGroups.isEmpty {
@@ -185,28 +185,10 @@ private struct WorkspaceOverviewView: View {
 
 private struct TripSummaryView: View {
   let trip: Trip
+  let travel: [Travel]
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      if !trip.stops.isEmpty {
-        Text(trip.stops.sorted(by: { $0.position < $1.position }).map(\.name).joined(separator: " → "))
-          .font(.headline)
-      }
-
-      HStack(spacing: 8) {
-        if let dateRange = trip.dateRangeText {
-          Label(dateRange, systemImage: "calendar")
-        }
-        Spacer(minLength: 8)
-        Text(trip.accessLevel.displayName)
-          .font(.caption.weight(.medium))
-          .foregroundStyle(.secondary)
-      }
-      .font(.subheadline)
-      .foregroundStyle(.secondary)
-    }
-    .padding(.vertical, 2)
-    .accessibilityElement(children: .combine)
+    TripMapCardView(trip: trip, travel: travel)
   }
 }
 

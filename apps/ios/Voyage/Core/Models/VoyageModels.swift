@@ -87,6 +87,28 @@ struct StayAmenity: OpenStringValue {
 struct TripStopLocation: Codable, Equatable, Sendable {
   let provider: String
   let placeID: String
+  let latitude: Double?
+  let longitude: Double?
+
+  init(
+    provider: String,
+    placeID: String,
+    latitude: Double? = nil,
+    longitude: Double? = nil
+  ) {
+    self.provider = provider
+    self.placeID = placeID
+    self.latitude = latitude
+    self.longitude = longitude
+  }
+
+  var coordinate: (latitude: Double, longitude: Double)? {
+    guard let latitude, let longitude else { return nil }
+    guard (-90...90).contains(latitude), (-180...180).contains(longitude) else {
+      return nil
+    }
+    return (latitude, longitude)
+  }
 }
 
 struct TripStop: Identifiable, Codable, Equatable, Sendable {
