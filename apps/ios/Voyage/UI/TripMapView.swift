@@ -115,6 +115,7 @@ private final class TripMapSnapshotRenderer {
     options.size = size
     options.scale = UIScreen.main.scale
     options.showsBuildings = true
+    options.traitCollection = UITraitCollection(userInterfaceStyle: .light)
 
     do {
       let snapshot = try await MKMapSnapshotter(options: options).start()
@@ -146,7 +147,7 @@ private final class TripMapSnapshotRenderer {
             path.addLine(to: point)
           }
         }
-        UIColor.systemBlue.withAlphaComponent(0.84).setStroke()
+        UIColor(red: 0.18, green: 0.43, blue: 0.45, alpha: 0.84).setStroke()
         path.lineWidth = 3
         path.lineCapStyle = .round
         path.lineJoinStyle = .round
@@ -165,7 +166,7 @@ private final class TripMapSnapshotRenderer {
 
         UIColor.white.setFill()
         UIBezierPath(ovalIn: markerRect.insetBy(dx: -2, dy: -2)).fill()
-        UIColor.systemBlue.setFill()
+        UIColor(red: 0.18, green: 0.43, blue: 0.45, alpha: 1).setFill()
         UIBezierPath(ovalIn: markerRect).fill()
 
         let label = "\(index + 1)"
@@ -236,7 +237,7 @@ struct TripMapCardView: View {
       VStack(alignment: .leading, spacing: 8) {
         if !trip.stops.isEmpty {
           Text(trip.stops.sorted(by: { $0.position < $1.position }).map(\.name).joined(separator: " → "))
-            .font(.headline)
+            .font(.title3.weight(.semibold))
         }
 
         HStack(spacing: 8) {
@@ -251,7 +252,8 @@ struct TripMapCardView: View {
         .font(.subheadline)
         .foregroundStyle(.secondary)
       }
-      .padding(16)
+      .padding(.horizontal, 16)
+      .padding(.vertical, 14)
     }
     .task(id: trip.updatedAt) {
       stops = await TripMapStopResolver.resolve(trip: trip, travel: travel)
@@ -288,6 +290,7 @@ private struct TripMapPreview: View {
     }
     .frame(height: 152)
     .clipped()
+    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     .contentShape(Rectangle())
     .accessibilityLabel(
       stops.isEmpty
@@ -306,7 +309,7 @@ private struct TripMapPreview: View {
   private var mapPlaceholder: some View {
     ZStack {
       LinearGradient(
-        colors: [Color.blue.opacity(0.22), Color.teal.opacity(0.16), Color.green.opacity(0.14)],
+        colors: [Color(red: 0.88, green: 0.86, blue: 0.82), Color(red: 0.80, green: 0.84, blue: 0.82)],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
       )
