@@ -150,9 +150,6 @@ private struct WorkspaceOverviewView: View {
       }
     }
     .listStyle(.insetGrouped)
-    .scrollContentBackground(.hidden)
-    .background(Color(red: 0.93, green: 0.92, blue: 0.90).ignoresSafeArea())
-    .preferredColorScheme(.light)
     .navigationTitle(workspace.trip.name)
     .navigationBarTitleDisplayMode(.large)
     .refreshable {
