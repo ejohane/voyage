@@ -14,6 +14,7 @@ import {
 import { Hono } from "hono";
 import { airportsExist } from "./airport-repository";
 import { type AuthenticateRequest, createAuthMiddleware } from "./auth";
+import { backendRequestId, logBackendFailure } from "./backend-logging";
 import { createGooglePlacesClient, type PlacesClient, PlacesServiceError } from "./google-places";
 import {
   applyStayPropertyMatch,
@@ -252,6 +253,7 @@ export function createPlanningRoutes(
   });
 
   routes.post("/:tripId/stays/property-backfill", async (context) => {
+    const requestId = backendRequestId(context.req.raw);
     const tripId = context.req.param("tripId");
     const trip = await getTrip(context.env.DB, context.var.authUserId, tripId);
     if (!trip) {
@@ -304,8 +306,13 @@ export function createPlanningRoutes(
           status: "matched" as const,
           placeId: propertyRef.placeId,
         });
-      } catch (error) {
-        console.error("Stay property backfill match failed", error);
+      } catch {
+        logBackendFailure({
+          requestId,
+          operation: "stay_property_backfill_match",
+          status: 200,
+          category: "dependency_error",
+        });
         results.push({
           stayId: stay.id,
           propertyName: stay.propertyName,
@@ -456,8 +463,15 @@ export function createPlanningRoutes(
       return context.json(stayPropertyResponseSchema.parse({ property }), 200, {
         "Cache-Control": "no-store",
       });
-    } catch (error) {
-      if (!(error instanceof PlacesServiceError)) console.error("Stay property error", error);
+    } catch (cause) {
+      if (!(cause instanceof PlacesServiceError)) {
+        logBackendFailure({
+          requestId: backendRequestId(context.req.raw),
+          operation: "stay_property_details",
+          status: 503,
+          category: "dependency_error",
+        });
+      }
       return context.json(propertyUnavailableError(), 503);
     }
   });
@@ -494,8 +508,15 @@ export function createPlanningRoutes(
           "Cache-Control": "no-store",
         },
       });
-    } catch (error) {
-      if (!(error instanceof PlacesServiceError)) console.error("Stay photo error", error);
+    } catch (cause) {
+      if (!(cause instanceof PlacesServiceError)) {
+        logBackendFailure({
+          requestId: backendRequestId(context.req.raw),
+          operation: "stay_property_photo",
+          status: 503,
+          category: "dependency_error",
+        });
+      }
       return context.json(propertyUnavailableError(), 503);
     }
   });

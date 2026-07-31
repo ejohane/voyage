@@ -1,0 +1,7 @@
+#include "Base.xcconfig"
+
+PRODUCT_BUNDLE_IDENTIFIER = app.voyage.native
+VOYAGE_ENVIRONMENT = staging
+VOYAGE_API_BASE_URL = https:/$()/staging.voyageplan.app
+
+#include? "Local.xcconfig"

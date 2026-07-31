@@ -15,8 +15,9 @@ import type {
   UpdatePlanInput,
   UpdateStayInput,
   UpdateTravelInput,
+  V1ScheduledPlan,
 } from "@voyage/contracts";
-import { stayAmenitySchema } from "@voyage/contracts";
+import { stayAmenitySchema, v1ScheduledPlanSchema } from "@voyage/contracts";
 
 type TravelRow = {
   id: string;
@@ -106,9 +107,18 @@ type PlanRow = {
   confirmation_number: string | null;
   booking_url: string | null;
   notes: string | null;
+  revision: number;
   created_at: string;
   updated_at: string;
 };
+
+type IdempotencyRecordRow = {
+  request_hash: string;
+  response_json: string | null;
+  resource_deleted_at: string | null;
+};
+
+export const v1PlanCreateIdempotencyRetentionMilliseconds = 7 * 24 * 60 * 60 * 1_000;
 
 function mapJoinedAirport(row: TravelRow, prefix: "departure" | "arrival"): Airport | null {
   const id = row[`${prefix}_airport_catalog_id`];
@@ -326,6 +336,10 @@ function mapPlan(row: PlanRow): TripPlan {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function mapV1ScheduledPlan(row: PlanRow): V1ScheduledPlan {
+  return v1ScheduledPlanSchema.parse({ ...mapPlan(row), revision: row.revision });
 }
 
 export async function listTravel(database: D1Database, tripId: string): Promise<Travel[]> {
@@ -637,6 +651,26 @@ export async function listPlans(database: D1Database, tripId: string): Promise<T
   return result.results.map(mapPlan);
 }
 
+export async function listV1ScheduledPlans(
+  database: D1Database,
+  tripId: string,
+): Promise<V1ScheduledPlan[]> {
+  const result = await database
+    .prepare(
+      `SELECT * FROM trip_plans
+       WHERE trip_id = ? AND scheduled_date IS NOT NULL AND status IN ('planned', 'booked')
+       ORDER BY scheduled_date,
+         CASE WHEN start_time IS NULL THEN 1 ELSE 0 END,
+         start_time,
+         title,
+         created_at`,
+    )
+    .bind(tripId)
+    .all<PlanRow>();
+
+  return result.results.map(mapV1ScheduledPlan);
+}
+
 export async function createPlan(
   database: D1Database,
   tripId: string,
@@ -676,6 +710,139 @@ export async function createPlan(
   return { id, tripId, ...input, createdAt: now, updatedAt: now };
 }
 
+function idempotencyExpiry(createdAt: Date) {
+  return new Date(createdAt.getTime() + v1PlanCreateIdempotencyRetentionMilliseconds).toISOString();
+}
+
+export async function deleteExpiredV1IdempotencyRecords(
+  database: D1Database,
+  currentTime = new Date(),
+) {
+  const result = await database
+    .prepare("DELETE FROM api_idempotency_records WHERE expires_at <= ?")
+    .bind(currentTime.toISOString())
+    .run();
+
+  return result.meta.changes;
+}
+
+async function getIdempotencyRecord(
+  database: D1Database,
+  userId: string,
+  idempotencyKey: string,
+  currentTime: Date,
+) {
+  return database
+    .prepare(
+      `SELECT request_hash, response_json, resource_deleted_at
+       FROM api_idempotency_records
+       WHERE user_id = ? AND operation = 'create_plan' AND idempotency_key = ?
+         AND expires_at > ?`,
+    )
+    .bind(userId, idempotencyKey, currentTime.toISOString())
+    .first<IdempotencyRecordRow>();
+}
+
+function replayedCreateResult(record: IdempotencyRecordRow, requestHash: string) {
+  if (record.request_hash !== requestHash) return { kind: "conflict" as const };
+  if (record.resource_deleted_at || !record.response_json) return { kind: "conflict" as const };
+
+  return {
+    kind: "replayed" as const,
+    plan: v1ScheduledPlanSchema.parse(JSON.parse(record.response_json)),
+  };
+}
+
+export type IdempotentPlanCreateResult =
+  | { kind: "created" | "replayed"; plan: V1ScheduledPlan }
+  | { kind: "conflict" };
+
+export async function createV1ScheduledPlanIdempotently(
+  database: D1Database,
+  tripId: string,
+  userId: string,
+  idempotencyKey: string,
+  requestHash: string,
+  input: CreatePlanInput,
+): Promise<IdempotentPlanCreateResult> {
+  const createdAt = new Date();
+  await deleteExpiredV1IdempotencyRecords(database, createdAt);
+
+  const existingRecord = await getIdempotencyRecord(database, userId, idempotencyKey, createdAt);
+  if (existingRecord) return replayedCreateResult(existingRecord, requestHash);
+
+  const id = crypto.randomUUID();
+  const now = createdAt.toISOString();
+  const expiresAt = idempotencyExpiry(createdAt);
+  const plan = v1ScheduledPlanSchema.parse({
+    id,
+    tripId,
+    ...input,
+    revision: 1,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  try {
+    await database.batch([
+      database
+        .prepare(
+          `INSERT INTO trip_plans (
+            id, trip_id, trip_stop_id, title, category, status, scheduled_date, start_time,
+            end_time, location, confirmation_number, booking_url, notes, created_by_user_id,
+            revision, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        )
+        .bind(
+          id,
+          tripId,
+          input.tripStopId,
+          input.title,
+          input.category,
+          input.status,
+          input.scheduledDate,
+          input.startTime,
+          input.endTime,
+          input.location,
+          input.confirmationNumber,
+          input.bookingUrl,
+          input.notes,
+          userId,
+          now,
+          now,
+        ),
+      database
+        .prepare(
+          `INSERT INTO api_idempotency_records (
+            user_id, operation, idempotency_key, request_hash, trip_id, resource_id,
+            response_json, resource_deleted_at, created_at, expires_at
+          ) VALUES (?, 'create_plan', ?, ?, ?, ?, ?, NULL, ?, ?)`,
+        )
+        .bind(
+          userId,
+          idempotencyKey,
+          requestHash,
+          tripId,
+          id,
+          JSON.stringify(plan),
+          now,
+          expiresAt,
+        ),
+    ]);
+
+    return { kind: "created", plan };
+  } catch (error) {
+    const concurrentRecord = await getIdempotencyRecord(
+      database,
+      userId,
+      idempotencyKey,
+      createdAt,
+    );
+    if (concurrentRecord) return replayedCreateResult(concurrentRecord, requestHash);
+    throw error;
+  }
+}
+
 export async function getPlan(
   database: D1Database,
   tripId: string,
@@ -687,6 +854,23 @@ export async function getPlan(
     .first<PlanRow>();
 
   return row ? mapPlan(row) : null;
+}
+
+export async function getV1ScheduledPlan(
+  database: D1Database,
+  tripId: string,
+  planId: string,
+): Promise<V1ScheduledPlan | null> {
+  const row = await database
+    .prepare(
+      `SELECT * FROM trip_plans
+       WHERE id = ? AND trip_id = ? AND scheduled_date IS NOT NULL
+         AND status IN ('planned', 'booked')`,
+    )
+    .bind(planId, tripId)
+    .first<PlanRow>();
+
+  return row ? mapV1ScheduledPlan(row) : null;
 }
 
 export async function updatePlan(
@@ -713,7 +897,8 @@ export async function updatePlan(
   const result = await database
     .prepare(
       `UPDATE trip_plans
-       SET ${fields.map(([field]) => `${columns[field]} = ?`).join(", ")}, updated_at = ?
+       SET ${fields.map(([field]) => `${columns[field]} = ?`).join(", ")},
+           revision = revision + 1, updated_at = ?
        WHERE id = ? AND trip_id = ?`,
     )
     .bind(...fields.map(([, value]) => value), updatedAt, planId, tripId)
@@ -722,15 +907,108 @@ export async function updatePlan(
   return result.meta.changes === 0 ? null : getPlan(database, tripId, planId);
 }
 
+export type RevisionProtectedPlanMutationResult =
+  | { kind: "updated"; plan: V1ScheduledPlan }
+  | { kind: "deleted" }
+  | { kind: "conflict"; currentRevision: number }
+  | { kind: "not_found" };
+
+export async function updateV1ScheduledPlanIfRevision(
+  database: D1Database,
+  tripId: string,
+  planId: string,
+  expectedRevision: number,
+  input: UpdatePlanInput,
+): Promise<RevisionProtectedPlanMutationResult> {
+  const columns: Record<keyof UpdatePlanInput, string> = {
+    tripStopId: "trip_stop_id",
+    title: "title",
+    category: "category",
+    status: "status",
+    scheduledDate: "scheduled_date",
+    startTime: "start_time",
+    endTime: "end_time",
+    location: "location",
+    confirmationNumber: "confirmation_number",
+    bookingUrl: "booking_url",
+    notes: "notes",
+  };
+  const fields = Object.entries(input) as [keyof UpdatePlanInput, unknown][];
+  const updatedAt = new Date().toISOString();
+  const updated = await database
+    .prepare(
+      `UPDATE trip_plans
+       SET ${fields.map(([field]) => `${columns[field]} = ?`).join(", ")},
+           revision = revision + 1, updated_at = ?
+       WHERE id = ? AND trip_id = ? AND revision = ?
+         AND scheduled_date IS NOT NULL AND status IN ('planned', 'booked')
+       RETURNING *`,
+    )
+    .bind(...fields.map(([, value]) => value), updatedAt, planId, tripId, expectedRevision)
+    .first<PlanRow>();
+
+  if (updated) return { kind: "updated", plan: mapV1ScheduledPlan(updated) };
+
+  const current = await getV1ScheduledPlan(database, tripId, planId);
+  return current ? { kind: "conflict", currentRevision: current.revision } : { kind: "not_found" };
+}
+
+export async function deleteV1ScheduledPlanIfRevision(
+  database: D1Database,
+  tripId: string,
+  planId: string,
+  expectedRevision: number,
+): Promise<RevisionProtectedPlanMutationResult> {
+  const deletedAt = new Date().toISOString();
+  const [deletion] = await database.batch<{ revision: number }>([
+    database
+      .prepare(
+        `DELETE FROM trip_plans
+         WHERE id = ? AND trip_id = ? AND revision = ?
+           AND scheduled_date IS NOT NULL AND status IN ('planned', 'booked')
+         RETURNING revision`,
+      )
+      .bind(planId, tripId, expectedRevision),
+    database
+      .prepare(
+        `UPDATE api_idempotency_records
+         SET response_json = NULL, resource_deleted_at = ?
+         WHERE trip_id = ? AND resource_id = ?
+           AND NOT EXISTS (
+             SELECT 1 FROM trip_plans WHERE id = ? AND trip_id = ?
+           )`,
+      )
+      .bind(deletedAt, tripId, planId, planId, tripId),
+  ]);
+  const deleted = deletion.results[0];
+
+  if (deleted) return { kind: "deleted" };
+
+  const current = await getV1ScheduledPlan(database, tripId, planId);
+  return current ? { kind: "conflict", currentRevision: current.revision } : { kind: "not_found" };
+}
+
 export async function deletePlan(
   database: D1Database,
   tripId: string,
   planId: string,
 ): Promise<boolean> {
-  const result = await database
-    .prepare("DELETE FROM trip_plans WHERE id = ? AND trip_id = ?")
-    .bind(planId, tripId)
-    .run();
+  const deletedAt = new Date().toISOString();
+  const [deletion] = await database.batch<{ id: string }>([
+    database
+      .prepare("DELETE FROM trip_plans WHERE id = ? AND trip_id = ? RETURNING id")
+      .bind(planId, tripId),
+    database
+      .prepare(
+        `UPDATE api_idempotency_records
+         SET response_json = NULL, resource_deleted_at = ?
+         WHERE trip_id = ? AND resource_id = ?
+           AND NOT EXISTS (
+             SELECT 1 FROM trip_plans WHERE id = ? AND trip_id = ?
+           )`,
+      )
+      .bind(deletedAt, tripId, planId, planId, tripId),
+  ]);
 
-  return result.meta.changes > 0;
+  return deletion.results.length > 0;
 }

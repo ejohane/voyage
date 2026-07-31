@@ -5,6 +5,7 @@ import {
 } from "@voyage/contracts";
 import { Hono } from "hono";
 import { type AuthenticateRequest, createAuthMiddleware } from "./auth";
+import { backendRequestId, logBackendFailure } from "./backend-logging";
 import { createGooglePlacesClient, type PlacesClient, PlacesServiceError } from "./google-places";
 import type { WorkerEnvironment } from "./types";
 
@@ -65,8 +66,15 @@ export function createLocationRoutes(
       const response = locationSuggestionsResponseSchema.parse({ suggestions });
 
       return context.json(response, 200, { "Cache-Control": "no-store" });
-    } catch (error) {
-      if (!(error instanceof PlacesServiceError)) console.error("Location suggestion error", error);
+    } catch (cause) {
+      if (!(cause instanceof PlacesServiceError)) {
+        logBackendFailure({
+          requestId: backendRequestId(context.req.raw),
+          operation: "location_suggestions",
+          status: 503,
+          category: "dependency_error",
+        });
+      }
       return context.json(unavailableError(), 503);
     }
   });
@@ -105,8 +113,15 @@ export function createLocationRoutes(
       const response = resolvedLocationResponseSchema.parse({ location });
 
       return context.json(response, 200, { "Cache-Control": "no-store" });
-    } catch (error) {
-      if (!(error instanceof PlacesServiceError)) console.error("Location resolution error", error);
+    } catch (cause) {
+      if (!(cause instanceof PlacesServiceError)) {
+        logBackendFailure({
+          requestId: backendRequestId(context.req.raw),
+          operation: "location_resolution",
+          status: 503,
+          category: "dependency_error",
+        });
+      }
       return context.json(unavailableError(), 503);
     }
   });

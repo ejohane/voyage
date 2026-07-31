@@ -11,3 +11,10 @@ dist/
 coverage/
 playwright-report/
 test-results/
+.artifacts/
+.build/
+.swiftpm/
+DerivedData/
+*.xcresult
+xcuserdata/
+*.xcuserstate

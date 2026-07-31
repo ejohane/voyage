@@ -16,6 +16,7 @@ export type Bindings = {
 
 export type Variables = {
   authUserId: string;
+  apiRequestId: string;
 };
 
 export type WorkerEnvironment = {

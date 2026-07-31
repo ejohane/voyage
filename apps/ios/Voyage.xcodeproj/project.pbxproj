@@ -1,0 +1,406 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		020000000000000000000001 /* ClerkKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0A0000000000000000000001 /* ClerkKit */; };
+		020000000000000000000002 /* ClerkKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = 0A0000000000000000000002 /* ClerkKitUI */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		050000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 060000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 040000000000000000000001;
+			remoteInfo = Voyage;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		000000000000000000000001 /* Voyage.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Voyage.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000000000002 /* VoyageTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoyageTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		001000000000000000000001 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		001000000000000000000002 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		001000000000000000000003 /* Staging.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Staging.xcconfig; sourceTree = "<group>"; };
+		001000000000000000000004 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		001000000000000000000005 /* Local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig.example; sourceTree = "<group>"; };
+		001000000000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		001000000000000000000007 /* Voyage.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Voyage.entitlements; sourceTree = "<group>"; };
+		001000000000000000000008 /* Voyage-CI.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Voyage-CI.xctestplan"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		010000000000000000000001 /* Voyage */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Voyage;
+			sourceTree = "<group>";
+		};
+		010000000000000000000002 /* VoyageTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = VoyageTests;
+			sourceTree = "<group>";
+		};
+		010000000000000000000003 /* ContractFixtures */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			name = ContractFixtures;
+			path = ../../packages/contracts/fixtures/v1;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		030000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				020000000000000000000001 /* ClerkKit in Frameworks */,
+				020000000000000000000002 /* ClerkKitUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		030000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		070000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				010000000000000000000001 /* Voyage */,
+				010000000000000000000002 /* VoyageTests */,
+				010000000000000000000003 /* ContractFixtures */,
+				070000000000000000000003 /* Configuration */,
+				001000000000000000000008 /* Voyage-CI.xctestplan */,
+				070000000000000000000002 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		070000000000000000000002 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000001 /* Voyage.app */,
+				000000000000000000000002 /* VoyageTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		070000000000000000000003 /* Configuration */ = {
+			isa = PBXGroup;
+			children = (
+				001000000000000000000001 /* Base.xcconfig */,
+				001000000000000000000002 /* Debug.xcconfig */,
+				001000000000000000000003 /* Staging.xcconfig */,
+				001000000000000000000004 /* Release.xcconfig */,
+				001000000000000000000005 /* Local.xcconfig.example */,
+				001000000000000000000006 /* Info.plist */,
+				001000000000000000000007 /* Voyage.entitlements */,
+			);
+			path = Configuration;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		040000000000000000000001 /* Voyage */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 080000000000000000000002 /* Build configuration list for PBXNativeTarget "Voyage" */;
+			buildPhases = (
+				031000000000000000000001 /* Sources */,
+				030000000000000000000001 /* Frameworks */,
+				032000000000000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				010000000000000000000001 /* Voyage */,
+			);
+			name = Voyage;
+			packageProductDependencies = (
+				0A0000000000000000000001 /* ClerkKit */,
+				0A0000000000000000000002 /* ClerkKitUI */,
+			);
+			productName = Voyage;
+			productReference = 000000000000000000000001 /* Voyage.app */;
+			productType = "com.apple.product-type.application";
+		};
+		040000000000000000000002 /* VoyageTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 080000000000000000000003 /* Build configuration list for PBXNativeTarget "VoyageTests" */;
+			buildPhases = (
+				031000000000000000000002 /* Sources */,
+				030000000000000000000002 /* Frameworks */,
+				032000000000000000000002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				050000000000000000000002 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				010000000000000000000002 /* VoyageTests */,
+				010000000000000000000003 /* ContractFixtures */,
+			);
+			name = VoyageTests;
+			productName = VoyageTests;
+			productReference = 000000000000000000000002 /* VoyageTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		060000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2620;
+				LastUpgradeCheck = 2620;
+				TargetAttributes = {
+					040000000000000000000001 = { CreatedOnToolsVersion = 26.2; };
+					040000000000000000000002 = { CreatedOnToolsVersion = 26.2; TestTargetID = 040000000000000000000001; };
+				};
+			};
+			buildConfigurationList = 080000000000000000000001 /* Build configuration list for PBXProject "Voyage" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 070000000000000000000001;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				0A0000000000000000000000 /* XCRemoteSwiftPackageReference "clerk-ios" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 070000000000000000000002 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				040000000000000000000001 /* Voyage */,
+				040000000000000000000002 /* VoyageTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		032000000000000000000001 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		032000000000000000000002 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		031000000000000000000001 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		031000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		050000000000000000000002 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 040000000000000000000001 /* Voyage */; targetProxy = 050000000000000000000001 /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		090000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		090000000000000000000002 /* Staging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "STAGING $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Staging;
+		};
+		090000000000000000000003 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		091000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 001000000000000000000002 /* Debug.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Configuration/Voyage.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Configuration/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_MODULE_NAME = Voyage;
+				PRODUCT_NAME = Voyage;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+			};
+			name = Debug;
+		};
+		091000000000000000000002 /* Staging */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 001000000000000000000003 /* Staging.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Configuration/Voyage.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Configuration/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_MODULE_NAME = Voyage;
+				PRODUCT_NAME = Voyage;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+			};
+			name = Staging;
+		};
+		091000000000000000000003 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 001000000000000000000004 /* Release.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Configuration/Voyage.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Configuration/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_MODULE_NAME = Voyage;
+				PRODUCT_NAME = Voyage;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+			};
+			name = Release;
+		};
+		092000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.voyage.native.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Voyage.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Voyage";
+			};
+			name = Debug;
+		};
+		092000000000000000000002 /* Staging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.voyage.native.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Voyage.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Voyage";
+			};
+			name = Staging;
+		};
+		092000000000000000000003 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.voyage.native.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Voyage.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Voyage";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		080000000000000000000001 /* Build configuration list for PBXProject "Voyage" */ = {isa = XCConfigurationList; buildConfigurations = (090000000000000000000001 /* Debug */, 090000000000000000000002 /* Staging */, 090000000000000000000003 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		080000000000000000000002 /* Build configuration list for PBXNativeTarget "Voyage" */ = {isa = XCConfigurationList; buildConfigurations = (091000000000000000000001 /* Debug */, 091000000000000000000002 /* Staging */, 091000000000000000000003 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		080000000000000000000003 /* Build configuration list for PBXNativeTarget "VoyageTests" */ = {isa = XCConfigurationList; buildConfigurations = (092000000000000000000001 /* Debug */, 092000000000000000000002 /* Staging */, 092000000000000000000003 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		0A0000000000000000000000 /* XCRemoteSwiftPackageReference "clerk-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/clerk/clerk-ios";
+			requirement = { kind = exactVersion; version = 1.3.1; };
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0A0000000000000000000001 /* ClerkKit */ = {isa = XCSwiftPackageProductDependency; package = 0A0000000000000000000000 /* XCRemoteSwiftPackageReference "clerk-ios" */; productName = ClerkKit; };
+		0A0000000000000000000002 /* ClerkKitUI */ = {isa = XCSwiftPackageProductDependency; package = 0A0000000000000000000000 /* XCRemoteSwiftPackageReference "clerk-ios" */; productName = ClerkKitUI; };
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 060000000000000000000001 /* Project object */;
+}

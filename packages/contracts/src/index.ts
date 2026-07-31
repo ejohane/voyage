@@ -2,6 +2,8 @@ import { z } from "zod";
 
 export const healthEndpoint = "/api/health" as const;
 export const tripsEndpoint = "/api/trips" as const;
+export const apiV1Endpoint = "/api/v1" as const;
+export const v1TripsEndpoint = `${apiV1Endpoint}/trips` as const;
 export const gmailIntegrationEndpoint = "/api/integrations/gmail" as const;
 export const locationsEndpoint = "/api/locations" as const;
 export const airportsEndpoint = "/api/airports" as const;
@@ -24,6 +26,26 @@ export function tripGmailImportEndpoint(tripId: string) {
 
 export function tripEndpoint(tripId: string) {
   return `${tripsEndpoint}/${tripId}` as const;
+}
+
+export function v1TripEndpoint(tripId: string) {
+  return `${v1TripsEndpoint}/${tripId}` as const;
+}
+
+export function v1TripWorkspaceEndpoint(tripId: string) {
+  return `${v1TripEndpoint(tripId)}/workspace` as const;
+}
+
+export function v1TripPeopleEndpoint(tripId: string) {
+  return `${v1TripEndpoint(tripId)}/people` as const;
+}
+
+export function v1TripPlansEndpoint(tripId: string) {
+  return `${v1TripEndpoint(tripId)}/plans` as const;
+}
+
+export function v1PlanEndpoint(tripId: string, planId: string) {
+  return `${v1TripPlansEndpoint(tripId)}/${planId}` as const;
 }
 
 export function tripPeopleEndpoint(tripId: string) {
@@ -279,6 +301,18 @@ export const tripSchema = tripBaseFieldsSchema.extend({
 export const tripResponseSchema = z.object({ trip: tripSchema });
 export const tripListResponseSchema = z.object({ trips: z.array(tripSchema) });
 
+export const voyageApiV1SchemaVersion = 1 as const;
+const apiV1RevisionSchema = z.string().regex(/^[a-f0-9]{64}$/);
+const apiV1EnvelopeSchema = z.object({
+  schemaVersion: z.literal(voyageApiV1SchemaVersion),
+  generatedAt: z.string().datetime(),
+});
+
+export const v1TripListResponseSchema = apiV1EnvelopeSchema.extend({
+  revision: apiV1RevisionSchema,
+  trips: z.array(tripSchema),
+});
+
 export const createInvitationInputSchema = z.object({
   email: z
     .string()
@@ -321,6 +355,10 @@ export const tripPeopleResponseSchema = z.object({
   members: z.array(tripMemberSchema),
   invitations: z.array(tripInvitationSchema),
   canManage: z.boolean(),
+});
+
+export const v1TripPeopleResponseSchema = apiV1EnvelopeSchema.extend({
+  members: z.array(tripMemberSchema),
 });
 
 export const createInvitationResponseSchema = z.object({
@@ -679,6 +717,16 @@ export const updatePlanInputSchema = planBaseFieldsSchema
   .partial()
   .refine((value) => Object.keys(value).length > 0, "Provide at least one field to update.");
 
+export const v1CreateScheduledPlanInputSchema = createPlanInputSchema.refine(
+  (value) => value.scheduledDate !== null && value.status !== "idea",
+  {
+    message: "Native trip plans must have a date and a planned or booked status.",
+    path: ["scheduledDate"],
+  },
+);
+
+export const v1UpdateScheduledPlanInputSchema = updatePlanInputSchema;
+
 export const tripPlanSchema = planBaseFieldsSchema.extend({
   id: z.string().uuid(),
   tripId: z.string().uuid(),
@@ -688,6 +736,24 @@ export const tripPlanSchema = planBaseFieldsSchema.extend({
 
 export const planResponseSchema = z.object({ plan: tripPlanSchema });
 export const planListResponseSchema = z.object({ plans: z.array(tripPlanSchema) });
+
+export const v1ScheduledPlanSchema = tripPlanSchema
+  .extend({
+    scheduledDate: dateOnlySchema,
+    status: z.enum(["planned", "booked"]),
+    revision: z.number().int().positive(),
+  })
+  .superRefine(validatePlan);
+
+export const v1PlanResponseSchema = z.object({ plan: v1ScheduledPlanSchema });
+
+export const v1TripWorkspaceResponseSchema = apiV1EnvelopeSchema.extend({
+  revision: apiV1RevisionSchema,
+  trip: tripSchema,
+  travel: z.array(travelSchema),
+  stays: z.array(staySchema),
+  plans: z.array(v1ScheduledPlanSchema),
+});
 
 export const gmailConnectionSchema = z.discriminatedUnion("connected", [
   z.object({ connected: z.literal(false) }),
@@ -799,11 +865,13 @@ export const apiErrorSchema = z.object({
       "expired",
       "revoked",
       "rate_limited",
+      "precondition_required",
       "service_unavailable",
       "internal_error",
     ]),
     message: z.string(),
     fieldErrors: z.record(z.string(), z.array(z.string())).optional(),
+    currentRevision: z.number().int().positive().optional(),
   }),
 });
 
@@ -815,11 +883,13 @@ export type TripStop = z.infer<typeof tripStopSchema>;
 export type TripAccessLevel = z.infer<typeof tripAccessLevelSchema>;
 export type TripListResponse = z.infer<typeof tripListResponseSchema>;
 export type TripResponse = z.infer<typeof tripResponseSchema>;
+export type V1TripListResponse = z.infer<typeof v1TripListResponseSchema>;
 export type CreateInvitationInput = z.infer<typeof createInvitationInputSchema>;
 export type TripMember = z.infer<typeof tripMemberSchema>;
 export type InvitationStatus = z.infer<typeof invitationStatusSchema>;
 export type TripInvitation = z.infer<typeof tripInvitationSchema>;
 export type TripPeopleResponse = z.infer<typeof tripPeopleResponseSchema>;
+export type V1TripPeopleResponse = z.infer<typeof v1TripPeopleResponseSchema>;
 export type CreateInvitationResponse = z.infer<typeof createInvitationResponseSchema>;
 export type InvitationLinkResponse = z.infer<typeof invitationLinkResponseSchema>;
 export type InvitationSummary = z.infer<typeof invitationSummarySchema>;
@@ -860,6 +930,11 @@ export type UpdatePlanInput = z.infer<typeof updatePlanInputSchema>;
 export type TripPlan = z.infer<typeof tripPlanSchema>;
 export type PlanResponse = z.infer<typeof planResponseSchema>;
 export type PlanListResponse = z.infer<typeof planListResponseSchema>;
+export type V1CreateScheduledPlanInput = z.infer<typeof v1CreateScheduledPlanInputSchema>;
+export type V1UpdateScheduledPlanInput = z.infer<typeof v1UpdateScheduledPlanInputSchema>;
+export type V1ScheduledPlan = z.infer<typeof v1ScheduledPlanSchema>;
+export type V1PlanResponse = z.infer<typeof v1PlanResponseSchema>;
+export type V1TripWorkspaceResponse = z.infer<typeof v1TripWorkspaceResponseSchema>;
 export type GmailConnection = z.infer<typeof gmailConnectionSchema>;
 export type GmailConnectInput = z.infer<typeof gmailConnectInputSchema>;
 export type GmailConnectResponse = z.infer<typeof gmailConnectResponseSchema>;
