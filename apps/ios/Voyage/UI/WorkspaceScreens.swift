@@ -51,11 +51,6 @@ private struct WorkspaceOverviewView: View {
     TripTimeline.entries(for: workspace)
   }
 
-  private var todayEntries: [TripTimelineEntry] {
-    let today = LocalDate.current()
-    return timeline.filter { $0.date == today }
-  }
-
   private var comingUpGroups: [(date: LocalDate, entries: [TripTimelineEntry])] {
     let today = LocalDate.current()
     return TripTimeline.upcomingGroups(in: timeline, after: today, limit: 5)
@@ -73,19 +68,6 @@ private struct WorkspaceOverviewView: View {
 
       Section {
         TripSummaryView(trip: workspace.trip)
-      }
-
-      Section("Today") {
-        if todayEntries.isEmpty {
-          EmptySectionRow(
-            title: "Nothing scheduled today",
-            systemImage: "sun.max"
-          )
-        } else {
-          ForEach(todayEntries) { entry in
-            TimelineNavigationRow(entry: entry, workspace: workspace, session: session)
-          }
-        }
       }
 
       if comingUpGroups.isEmpty {
