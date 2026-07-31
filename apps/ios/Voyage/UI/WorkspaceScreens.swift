@@ -107,7 +107,7 @@ private struct WorkspaceOverviewView: View {
             title: "Transportation",
             value: workspace.travel.count,
             systemImage: "airplane.departure",
-            tint: VoyagePalette.accent
+            tint: .blue
           )
         }
         .accessibilityIdentifier("workspace.travel")
@@ -119,7 +119,7 @@ private struct WorkspaceOverviewView: View {
             title: "Stays",
             value: workspace.stays.count,
             systemImage: "bed.double",
-            tint: VoyagePalette.accent
+            tint: .purple
           )
         }
         .accessibilityIdentifier("workspace.stays")
@@ -131,7 +131,7 @@ private struct WorkspaceOverviewView: View {
             title: "People",
             valueText: "Read-only",
             systemImage: "person.2",
-            tint: VoyagePalette.accent
+            tint: .teal
           )
         }
         .accessibilityIdentifier("workspace.people")
@@ -150,7 +150,9 @@ private struct WorkspaceOverviewView: View {
       }
     }
     .listStyle(.insetGrouped)
-    .voyageListSurface()
+    .scrollContentBackground(.hidden)
+    .background(Color(red: 0.93, green: 0.92, blue: 0.90).ignoresSafeArea())
+    .preferredColorScheme(.light)
     .navigationTitle(workspace.trip.name)
     .navigationBarTitleDisplayMode(.large)
     .refreshable {
@@ -348,7 +350,10 @@ private struct MissingDetailView: View {
 extension TripTimelineAccent {
   var color: Color {
     switch self {
-    case .flight, .ground, .stay, .plan: VoyagePalette.accent
+    case .flight: .blue
+    case .ground: .teal
+    case .stay: .purple
+    case .plan: .green
     }
   }
 }
