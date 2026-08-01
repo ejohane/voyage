@@ -328,6 +328,56 @@ enum FixtureFactory {
 actor FixtureAPI: VoyageAPI {
   private var fixtureWorkspace = FixtureFactory.workspace
 
+  func createTrip(input: CreateTripInput) async throws -> Trip {
+    Trip(
+      id: UUID(),
+      name: input.name,
+      startDate: input.stops.compactMap(\.arrivalDate).min(),
+      endDate: input.stops.compactMap(\.departureDate).max(),
+      stops: input.stops.enumerated().map { position, stop in
+        TripStop(
+          id: UUID(),
+          position: position,
+          name: stop.name,
+          arrivalDate: stop.arrivalDate,
+          departureDate: stop.departureDate,
+          location: stop.location.map {
+            TripStopLocation(
+              provider: $0.provider,
+              placeID: $0.placeID,
+              latitude: nil,
+              longitude: nil
+            )
+          }
+        )
+      },
+      accessLevel: .owner,
+      createdAt: "2026-08-01T12:00:00.000Z",
+      updatedAt: "2026-08-01T12:00:00.000Z"
+    )
+  }
+
+  func locationSuggestions(query: String, sessionToken: UUID) async throws
+    -> [LocationSuggestion]
+  {
+    [
+      LocationSuggestion(
+        placeID: "fixture-rome",
+        label: "Rome, Metropolitan City of Rome Capital, Italy",
+        primaryText: "Rome",
+        secondaryText: "Metropolitan City of Rome Capital, Italy",
+        types: ["locality", "political", "geocode"],
+        kind: .city
+      )
+    ]
+  }
+
+  func resolveLocation(placeID: String, sessionToken: UUID) async throws
+    -> TripStopLocationInput
+  {
+    TripStopLocationInput(provider: "google", placeID: placeID)
+  }
+
   func listTrips(ifNoneMatch: String?) async throws -> APIReadResult<TripIndex> {
     .modified(
       FixtureFactory.tripIndex,
@@ -505,6 +555,22 @@ actor FixtureAPI: VoyageAPI {
 }
 
 struct OfflineFixtureAPI: VoyageAPI {
+  func createTrip(input: CreateTripInput) async throws -> Trip {
+    throw offlineError
+  }
+
+  func locationSuggestions(query: String, sessionToken: UUID) async throws
+    -> [LocationSuggestion]
+  {
+    throw offlineError
+  }
+
+  func resolveLocation(placeID: String, sessionToken: UUID) async throws
+    -> TripStopLocationInput
+  {
+    throw offlineError
+  }
+
   func listTrips(ifNoneMatch: String?) async throws -> APIReadResult<TripIndex> {
     throw offlineError
   }

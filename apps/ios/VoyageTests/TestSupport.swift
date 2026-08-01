@@ -140,3 +140,63 @@ func makePlanResponseData(revision: Int = 4) -> Data {
     """.utf8
   )
 }
+
+func makeTripResponseData() -> Data {
+  Data(
+    """
+    {
+      "trip": {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Winter in Montréal",
+        "startDate": "2026-12-04",
+        "endDate": "2026-12-08",
+        "stops": [
+          {
+            "id": "88888888-8888-4888-8888-888888888888",
+            "position": 0,
+            "name": "Montréal, Canada",
+            "arrivalDate": "2026-12-04",
+            "departureDate": "2026-12-08",
+            "location": null
+          }
+        ],
+        "accessLevel": "owner",
+        "createdAt": "2026-08-01T12:00:00.000Z",
+        "updatedAt": "2026-08-01T12:00:00.000Z"
+      }
+    }
+    """.utf8
+  )
+}
+
+func makeLocationSuggestionsData() -> Data {
+  Data(
+    """
+    {
+      "suggestions": [
+        {
+          "placeId": "ChIJDbdkHFQayUwR7-8fITgxTmU",
+          "label": "Montréal, Québec, Canada",
+          "primaryText": "Montréal",
+          "secondaryText": "Québec, Canada",
+          "types": ["locality", "political", "geocode"],
+          "kind": "city"
+        }
+      ]
+    }
+    """.utf8
+  )
+}
+
+func makeResolvedLocationData(placeID: String) -> Data {
+  Data(
+    """
+    {
+      "location": {
+        "provider": "google",
+        "placeId": "\(placeID)"
+      }
+    }
+    """.utf8
+  )
+}

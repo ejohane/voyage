@@ -155,6 +155,62 @@ describe("Voyage API v1", () => {
     expect(unauthenticated.headers.get("X-Request-ID")).toBe("native-test-request");
   });
 
+  it("creates a trip for the authenticated native user", async () => {
+    const response = await request(v1TripsEndpoint, "user_owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Winter in Montréal",
+        stops: [
+          {
+            name: "Montréal, Canada",
+            arrivalDate: "2026-12-04",
+            departureDate: "2026-12-08",
+          },
+        ],
+      }),
+    });
+    const body = await response.json<TripResponse>();
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(response.headers.get("Location")).toBe(`/api/v1/trips/${body.trip.id}`);
+    expect(response.headers.get("X-Voyage-API-Version")).toBe("1");
+    expect(body.trip).toMatchObject({
+      name: "Winter in Montréal",
+      startDate: "2026-12-04",
+      endDate: "2026-12-08",
+      accessLevel: "owner",
+      stops: [
+        {
+          name: "Montréal, Canada",
+          arrivalDate: "2026-12-04",
+          departureDate: "2026-12-08",
+        },
+      ],
+    });
+
+    const listResponse = await request(v1TripsEndpoint, "user_owner");
+    const list = v1TripListResponseSchema.parse(await listResponse.json());
+    expect(list.trips.map((trip) => trip.id)).toContain(body.trip.id);
+  });
+
+  it("returns native field errors for invalid trip input", async () => {
+    const response = await request(v1TripsEndpoint, "user_owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "", stops: [] }),
+    });
+    const body = apiErrorSchema.parse(await response.json());
+
+    expect(response.status).toBe(422);
+    expect(body.error.code).toBe("validation_error");
+    expect(body.error.fieldErrors).toMatchObject({
+      name: expect.any(Array),
+      stops: expect.any(Array),
+    });
+  });
+
   it("lists only membership-scoped trips and supports conditional refresh", async () => {
     const ownerTrip = await createTrip();
     await createTrip("user_other");

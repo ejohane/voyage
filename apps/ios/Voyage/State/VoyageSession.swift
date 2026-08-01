@@ -69,6 +69,46 @@ final class VoyageSession {
     await restoreAndRefreshTrips(forceRefresh: true)
   }
 
+  @discardableResult
+  func createTrip(input: CreateTripInput) async throws -> Trip {
+    lastError = nil
+    do {
+      let trip = try await api.createTrip(input: input)
+      await refreshTrips()
+      return trip
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      let apiError = Self.map(error)
+      lastError = apiError
+      throw apiError
+    }
+  }
+
+  func locationSuggestions(query: String, sessionToken: UUID) async throws
+    -> [LocationSuggestion]
+  {
+    do {
+      return try await api.locationSuggestions(query: query, sessionToken: sessionToken)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      throw Self.map(error)
+    }
+  }
+
+  func resolveLocation(placeID: String, sessionToken: UUID) async throws
+    -> TripStopLocationInput
+  {
+    do {
+      return try await api.resolveLocation(placeID: placeID, sessionToken: sessionToken)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      throw Self.map(error)
+    }
+  }
+
   func loadWorkspace(tripID: UUID, forceRefresh: Bool = false) async {
     let cached = try? await cache.loadWorkspace(tripID: tripID)
     if let cached {

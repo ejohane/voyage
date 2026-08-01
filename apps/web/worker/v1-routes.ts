@@ -1,7 +1,9 @@
 import {
   type ApiError,
   apiErrorSchema,
+  createTripInputSchema,
   tripListResponseSchema,
+  tripResponseSchema,
   v1CreateScheduledPlanInputSchema,
   v1PlanResponseSchema,
   v1ScheduledPlanSchema,
@@ -16,7 +18,9 @@ import { routePath } from "hono/route";
 import { z } from "zod";
 import { type AuthenticateRequest, createAuthMiddleware } from "./auth";
 import { backendRequestId, logBackendFailure } from "./backend-logging";
+import type { PlacesClient } from "./google-places";
 import { getTripAccess, listMemberships, mapMembership } from "./invitations-repository";
+import { createLocationRoutes } from "./location-routes";
 import {
   createV1ScheduledPlanIdempotently,
   deleteV1ScheduledPlanIfRevision,
@@ -26,7 +30,7 @@ import {
   listV1ScheduledPlans,
   updateV1ScheduledPlanIfRevision,
 } from "./planning-repository";
-import { getTrip, listTrips } from "./trips-repository";
+import { createTrip, getTrip, listTrips } from "./trips-repository";
 import type { WorkerEnvironment } from "./types";
 import { createClerkUserDirectory, type UserDirectory } from "./user-directory";
 
@@ -35,6 +39,7 @@ const requestIdHeader = "X-Request-ID";
 const idempotencyKeySchema = z.string().uuid();
 
 type V1RoutesDependencies = {
+  placesClient?: PlacesClient;
   userDirectory?: UserDirectory;
   now?: () => Date;
 };
@@ -141,6 +146,28 @@ export function createV1Routes(
     });
     return context.json(response, 200, headers);
   });
+
+  routes.post("/trips", async (context) => {
+    const parsed = createTripInputSchema.safeParse(await readJson(context.req.raw));
+    if (!parsed.success) {
+      return context.json(validationError(parsed.error.flatten().fieldErrors), 422);
+    }
+
+    const trip = await createTrip(context.env.DB, context.var.authUserId, parsed.data);
+    const response = tripResponseSchema.parse({ trip });
+    return context.json(response, 201, {
+      "Cache-Control": "private, no-store",
+      Location: `/api/v1/trips/${trip.id}`,
+    });
+  });
+
+  routes.route(
+    "/locations",
+    createLocationRoutes(authenticateRequest, {
+      placesClient: dependencies.placesClient,
+      authenticateRequests: false,
+    }),
+  );
 
   routes.get("/trips/:tripId/workspace", async (context) => {
     const tripId = context.req.param("tripId");

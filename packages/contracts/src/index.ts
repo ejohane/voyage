@@ -4,6 +4,7 @@ export const healthEndpoint = "/api/health" as const;
 export const tripsEndpoint = "/api/trips" as const;
 export const apiV1Endpoint = "/api/v1" as const;
 export const v1TripsEndpoint = `${apiV1Endpoint}/trips` as const;
+export const v1LocationsEndpoint = `${apiV1Endpoint}/locations` as const;
 export const gmailIntegrationEndpoint = "/api/integrations/gmail" as const;
 export const locationsEndpoint = "/api/locations" as const;
 export const airportsEndpoint = "/api/airports" as const;
@@ -11,6 +12,8 @@ export const invitationsEndpoint = "/api/invitations" as const;
 
 export const locationSuggestionsEndpoint = `${locationsEndpoint}/suggestions` as const;
 export const resolveLocationEndpoint = `${locationsEndpoint}/resolve` as const;
+export const v1LocationSuggestionsEndpoint = `${v1LocationsEndpoint}/suggestions` as const;
+export const v1ResolveLocationEndpoint = `${v1LocationsEndpoint}/resolve` as const;
 
 export function gmailConnectEndpoint() {
   return `${gmailIntegrationEndpoint}/connect` as const;

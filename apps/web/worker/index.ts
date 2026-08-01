@@ -64,6 +64,7 @@ export function createApp(dependencies: AppDependencies = {}) {
   app.route(
     apiV1Endpoint,
     createV1Routes(v1AuthenticateRequest, {
+      placesClient: dependencies.placesClient,
       userDirectory: dependencies.userDirectory,
       now: dependencies.now,
     }),

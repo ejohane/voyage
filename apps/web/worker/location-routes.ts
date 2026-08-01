@@ -11,6 +11,7 @@ import type { WorkerEnvironment } from "./types";
 
 type LocationRouteDependencies = {
   placesClient?: PlacesClient;
+  authenticateRequests?: boolean;
 };
 
 function languageCode(request: Request) {
@@ -33,7 +34,9 @@ export function createLocationRoutes(
 ) {
   const routes = new Hono<WorkerEnvironment>();
 
-  routes.use("*", createAuthMiddleware(authenticateRequest));
+  if (dependencies.authenticateRequests !== false) {
+    routes.use("*", createAuthMiddleware(authenticateRequest));
+  }
 
   routes.get("/suggestions", async (context) => {
     const query = context.req.query("q")?.trim() ?? "";

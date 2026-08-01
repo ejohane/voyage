@@ -268,6 +268,128 @@ struct APIClientTests {
     }
   }
 
+  @Test("POST trip sends the native create payload and decodes the created trip")
+  func createTripRequest() async throws {
+    let transport = MockHTTPTransport(stubs: [
+      .v1(statusCode: 201, data: makeTripResponseData())
+    ])
+    let client = makeClient(transport: transport)
+    let input = CreateTripInput(
+      name: "Winter in Montréal",
+      stops: [
+        TripStopInput(
+          name: "Montréal, Canada",
+          arrivalDate: LocalDate(rawValue: "2026-12-04"),
+          departureDate: LocalDate(rawValue: "2026-12-08"),
+          location: TripStopLocationInput(
+            provider: "google",
+            placeID: "ChIJDbdkHFQayUwR7-8fITgxTmU"
+          )
+        )
+      ]
+    )
+
+    let trip = try await client.createTrip(input: input)
+    #expect(trip.name == "Winter in Montréal")
+    #expect(trip.stops.first?.name == "Montréal, Canada")
+
+    let request = await transport.request(at: 0)
+    #expect(request.httpMethod == "POST")
+    #expect(request.url?.path == "/base/api/v1/trips")
+    #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+    let body = try #require(request.httpBody)
+    let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    #expect(json["name"] as? String == "Winter in Montréal")
+    let stops = try #require(json["stops"] as? [[String: Any]])
+    let stop = try #require(stops.first)
+    #expect(stop["name"] as? String == "Montréal, Canada")
+    #expect(stop["arrivalDate"] as? String == "2026-12-04")
+    #expect(stop["departureDate"] as? String == "2026-12-08")
+    let location = try #require(stop["location"] as? [String: String])
+    #expect(location["provider"] == "google")
+    #expect(location["placeId"] == "ChIJDbdkHFQayUwR7-8fITgxTmU")
+  }
+
+  @Test("POST trip preserves explicit null dates for an undated destination")
+  func createUndatedTripRequest() async throws {
+    let transport = MockHTTPTransport(stubs: [
+      .v1(statusCode: 201, data: makeTripResponseData())
+    ])
+    let client = makeClient(transport: transport)
+
+    _ = try await client.createTrip(
+      input: CreateTripInput(
+        name: "Someday in Montréal",
+        stops: [
+          TripStopInput(name: "Montréal, Canada", arrivalDate: nil, departureDate: nil)
+        ]
+      )
+    )
+
+    let request = await transport.request(at: 0)
+    let body = try #require(request.httpBody)
+    let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    let stops = try #require(json["stops"] as? [[String: Any]])
+    let stop = try #require(stops.first)
+    #expect(stop.keys.contains("arrivalDate"))
+    #expect(stop["arrivalDate"] is NSNull)
+    #expect(stop.keys.contains("departureDate"))
+    #expect(stop["departureDate"] is NSNull)
+    #expect(stop.keys.contains("location"))
+    #expect(stop["location"] is NSNull)
+  }
+
+  @Test("GET location suggestions encodes the query and decodes native results")
+  func locationSuggestionsRequest() async throws {
+    let sessionToken = UUID(uuidString: "5F0D88D9-7955-4680-9FBC-BAAD1FB5890C")!
+    let transport = MockHTTPTransport(stubs: [
+      .v1(statusCode: 200, data: makeLocationSuggestionsData())
+    ])
+    let client = makeClient(transport: transport)
+
+    let suggestions = try await client.locationSuggestions(
+      query: "Montréal & Québec",
+      sessionToken: sessionToken
+    )
+
+    #expect(suggestions.first?.primaryText == "Montréal")
+    #expect(suggestions.first?.kind == .city)
+
+    let request = await transport.request(at: 0)
+    let requestURL = try #require(request.url)
+    let components = try #require(
+      URLComponents(url: requestURL, resolvingAgainstBaseURL: false)
+    )
+    #expect(request.httpMethod == "GET")
+    #expect(components.path == "/base/api/v1/locations/suggestions")
+    #expect(components.queryItems?.first(where: { $0.name == "q" })?.value == "Montréal & Québec")
+    #expect(
+      components.queryItems?.first(where: { $0.name == "sessionToken" })?.value
+        == sessionToken.uuidString.lowercased()
+    )
+  }
+
+  @Test("POST location resolution keeps the autocomplete session token")
+  func resolveLocationRequest() async throws {
+    let sessionToken = UUID(uuidString: "5F0D88D9-7955-4680-9FBC-BAAD1FB5890C")!
+    let placeID = "ChIJDbdkHFQayUwR7-8fITgxTmU"
+    let transport = MockHTTPTransport(stubs: [
+      .v1(statusCode: 200, data: makeResolvedLocationData(placeID: placeID))
+    ])
+    let client = makeClient(transport: transport)
+
+    let location = try await client.resolveLocation(placeID: placeID, sessionToken: sessionToken)
+    #expect(location == TripStopLocationInput(provider: "google", placeID: placeID))
+
+    let request = await transport.request(at: 0)
+    #expect(request.httpMethod == "POST")
+    #expect(request.url?.path == "/base/api/v1/locations/resolve")
+    let body = try #require(request.httpBody)
+    let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: String])
+    #expect(json["placeId"] == placeID)
+    #expect(json["sessionToken"] == sessionToken.uuidString.lowercased())
+  }
+
   @Test("PATCH plan sends quoted revision and a complete JSON body")
   func updatePlanRequest() async throws {
     let transport = MockHTTPTransport(stubs: [
