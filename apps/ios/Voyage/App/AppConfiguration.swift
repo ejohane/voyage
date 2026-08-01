@@ -12,9 +12,16 @@ struct AppConfiguration: Sendable {
   let environment: VoyageEnvironment
 
   var isConfigured: Bool {
-    guard apiBaseURL.scheme == "https", apiBaseURL.host != nil else { return false }
+    guard isAllowedAPIURL else { return false }
     return clerkPublishableKey.hasPrefix("pk_")
       && !clerkPublishableKey.contains("replace_")
+  }
+
+  private var isAllowedAPIURL: Bool {
+    guard let scheme = apiBaseURL.scheme, let host = apiBaseURL.host else { return false }
+    if scheme == "https" { return true }
+    guard environment == .debug, scheme == "http" else { return false }
+    return host == "localhost" || host == "127.0.0.1" || host == "::1"
   }
 
   static let current: AppConfiguration = {
