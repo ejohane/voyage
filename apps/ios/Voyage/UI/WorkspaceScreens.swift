@@ -22,11 +22,10 @@ struct TripWorkspaceView: View {
           await session.loadWorkspace(tripID: tripID, forceRefresh: true)
         }
         .accessibilityIdentifier("workspace.error")
-      case .loaded(let workspace, let savedAt, let freshness):
+      case .loaded(let workspace, _, let freshness):
         WorkspaceOverviewView(
           session: session,
           workspace: workspace,
-          savedAt: savedAt,
           freshness: freshness
         )
       }
@@ -42,7 +41,6 @@ struct TripWorkspaceView: View {
 private struct WorkspaceOverviewView: View {
   let session: VoyageSession
   let workspace: TripWorkspace
-  let savedAt: Date
   let freshness: ContentFreshness
 
   @State private var editorMode: PlanEditorMode?
@@ -62,12 +60,8 @@ private struct WorkspaceOverviewView: View {
 
   var body: some View {
     List {
-      if freshness == .stale {
-        OfflineSnapshotRow(savedAt: savedAt)
-      }
-
       Section {
-        TripSummaryView(trip: workspace.trip)
+        TripSummaryView(trip: workspace.trip, travel: workspace.travel)
       }
 
       if comingUpGroups.isEmpty {
@@ -185,28 +179,10 @@ private struct WorkspaceOverviewView: View {
 
 private struct TripSummaryView: View {
   let trip: Trip
+  let travel: [Travel]
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      if !trip.stops.isEmpty {
-        Text(trip.stops.sorted(by: { $0.position < $1.position }).map(\.name).joined(separator: " → "))
-          .font(.headline)
-      }
-
-      HStack(spacing: 8) {
-        if let dateRange = trip.dateRangeText {
-          Label(dateRange, systemImage: "calendar")
-        }
-        Spacer(minLength: 8)
-        Text(trip.accessLevel.displayName)
-          .font(.caption.weight(.medium))
-          .foregroundStyle(.secondary)
-      }
-      .font(.subheadline)
-      .foregroundStyle(.secondary)
-    }
-    .padding(.vertical, 2)
-    .accessibilityElement(children: .combine)
+    TripMapCardView(trip: trip, travel: travel)
   }
 }
 

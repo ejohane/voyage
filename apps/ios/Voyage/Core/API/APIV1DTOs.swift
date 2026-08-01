@@ -103,9 +103,16 @@ struct TripStopDTO: Decodable, Sendable {
 struct TripStopLocationDTO: Decodable, Sendable {
   let provider: String
   let placeId: String
+  let latitude: Double?
+  let longitude: Double?
 
   var domain: TripStopLocation {
-    TripStopLocation(provider: provider, placeID: placeId)
+    TripStopLocation(
+      provider: provider,
+      placeID: placeId,
+      latitude: latitude,
+      longitude: longitude
+    )
   }
 }
 

@@ -32,13 +32,6 @@ struct ItineraryView: View {
         )
       } else {
         List {
-          if freshness == .stale {
-            Section {
-              Label("Offline snapshot — editing is unavailable", systemImage: "wifi.slash")
-                .foregroundStyle(.secondary)
-            }
-          }
-
           ForEach(groups, id: \.date) { group in
             Section(group.date.longDisplayText) {
               ForEach(group.entries) { entry in
