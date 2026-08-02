@@ -44,6 +44,7 @@ private struct WorkspaceOverviewView: View {
   let freshness: ContentFreshness
 
   @State private var editorMode: PlanEditorMode?
+  @State private var selectedQuickAction: WorkspaceQuickAction?
 
   private var timeline: [TripTimelineEntry] {
     TripTimeline.entries(for: workspace)
@@ -63,6 +64,16 @@ private struct WorkspaceOverviewView: View {
       Section {
         TripSummaryView(trip: workspace.trip, travel: workspace.travel)
       }
+
+      Section {
+        TripQuickActionsCard(
+          travelCount: workspace.travel.count,
+          stayCount: workspace.stays.count
+        ) { action in
+          selectedQuickAction = action
+        }
+      }
+      .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
 
       if comingUpGroups.isEmpty {
         Section("Coming Up") {
@@ -90,53 +101,6 @@ private struct WorkspaceOverviewView: View {
         }
       }
 
-      Section {
-        NavigationLink {
-          ItineraryView(session: session, workspace: workspace, freshness: freshness)
-        } label: {
-          Label("Full Itinerary", systemImage: "list.bullet.rectangle")
-        }
-        .accessibilityIdentifier("workspace.itinerary")
-      }
-
-      Section("Trip Details") {
-        NavigationLink {
-          TravelListView(workspace: workspace)
-        } label: {
-          DetailNavigationLabel(
-            title: "Transportation",
-            value: workspace.travel.count,
-            systemImage: "airplane.departure",
-            tint: .blue
-          )
-        }
-        .accessibilityIdentifier("workspace.travel")
-
-        NavigationLink {
-          StayListView(workspace: workspace)
-        } label: {
-          DetailNavigationLabel(
-            title: "Stays",
-            value: workspace.stays.count,
-            systemImage: "bed.double",
-            tint: .purple
-          )
-        }
-        .accessibilityIdentifier("workspace.stays")
-
-        NavigationLink {
-          PeopleView(session: session, trip: workspace.trip)
-        } label: {
-          DetailNavigationLabel(
-            title: "People",
-            valueText: "Read-only",
-            systemImage: "person.2",
-            tint: .teal
-          )
-        }
-        .accessibilityIdentifier("workspace.people")
-      }
-
       if !workspace.trip.accessLevel.canEditPlans {
         Section {
           Label("You have view-only access to this trip.", systemImage: "eye")
@@ -150,10 +114,27 @@ private struct WorkspaceOverviewView: View {
       }
     }
     .listStyle(.insetGrouped)
+    .listSectionSpacing(16)
     .navigationTitle(workspace.trip.name)
     .navigationBarTitleDisplayMode(.large)
     .refreshable {
       await session.loadWorkspace(tripID: workspace.trip.id, forceRefresh: true)
+    }
+    .navigationDestination(item: $selectedQuickAction) { action in
+      switch action {
+      case .travel:
+        TravelListView(workspace: workspace)
+      case .stays:
+        StayListView(workspace: workspace)
+      case .people:
+        PeopleView(session: session, trip: workspace.trip)
+      case .more:
+        TripDirectoryView(
+          session: session,
+          workspace: workspace,
+          freshness: freshness
+        )
+      }
     }
     .toolbar {
       if canEdit {
@@ -174,6 +155,175 @@ private struct WorkspaceOverviewView: View {
         mode: mode
       )
     }
+  }
+}
+
+private enum WorkspaceQuickAction: String, Identifiable {
+  case travel
+  case stays
+  case people
+  case more
+
+  var id: Self { self }
+}
+
+private struct TripQuickActionsCard: View {
+  let travelCount: Int
+  let stayCount: Int
+  let select: (WorkspaceQuickAction) -> Void
+
+  var body: some View {
+    HStack(spacing: 0) {
+      actionButton(
+        title: "Travel",
+        systemImage: "airplane.departure",
+        tint: .blue,
+        accessibilityValue: itemCountText(travelCount),
+        identifier: "workspace.travel",
+        action: .travel
+      )
+
+      Divider()
+
+      actionButton(
+        title: "Stays",
+        systemImage: "bed.double",
+        tint: .purple,
+        accessibilityValue: itemCountText(stayCount),
+        identifier: "workspace.stays",
+        action: .stays
+      )
+
+      Divider()
+
+      actionButton(
+        title: "People",
+        systemImage: "person.2",
+        tint: .teal,
+        accessibilityValue: "Trip members",
+        identifier: "workspace.people",
+        action: .people
+      )
+
+      Divider()
+
+      actionButton(
+        title: "More",
+        systemImage: "ellipsis.circle",
+        tint: .secondary,
+        accessibilityValue: "All trip sections",
+        identifier: "workspace.more",
+        action: .more
+      )
+    }
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, 12)
+  }
+
+  private func actionButton(
+    title: String,
+    systemImage: String,
+    tint: Color,
+    accessibilityValue: String,
+    identifier: String,
+    action: WorkspaceQuickAction
+  ) -> some View {
+    Button {
+      select(action)
+    } label: {
+      VStack(spacing: 7) {
+        Image(systemName: systemImage)
+          .font(.title3)
+          .foregroundStyle(tint)
+          .frame(height: 24)
+          .accessibilityHidden(true)
+
+        Text(title)
+          .font(.caption.weight(.medium))
+          .foregroundStyle(.primary)
+          .lineLimit(1)
+          .minimumScaleFactor(0.8)
+      }
+      .frame(maxWidth: .infinity, minHeight: 50)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(title)
+    .accessibilityValue(accessibilityValue)
+    .accessibilityIdentifier(identifier)
+  }
+
+  private func itemCountText(_ count: Int) -> String {
+    "\(count) \(count == 1 ? "item" : "items")"
+  }
+}
+
+@MainActor
+private struct TripDirectoryView: View {
+  let session: VoyageSession
+  let workspace: TripWorkspace
+  let freshness: ContentFreshness
+
+  var body: some View {
+    List {
+      Section("Planning") {
+        NavigationLink {
+          ItineraryView(session: session, workspace: workspace, freshness: freshness)
+        } label: {
+          DetailNavigationLabel(
+            title: "Full Itinerary",
+            value: TripTimeline.entries(for: workspace).count,
+            systemImage: "list.bullet.rectangle",
+            tint: .green
+          )
+        }
+        .accessibilityIdentifier("workspace.itinerary")
+      }
+
+      Section("Bookings") {
+        NavigationLink {
+          TravelListView(workspace: workspace)
+        } label: {
+          DetailNavigationLabel(
+            title: "Transportation",
+            value: workspace.travel.count,
+            systemImage: "airplane.departure",
+            tint: .blue
+          )
+        }
+        .accessibilityIdentifier("directory.travel")
+
+        NavigationLink {
+          StayListView(workspace: workspace)
+        } label: {
+          DetailNavigationLabel(
+            title: "Stays",
+            value: workspace.stays.count,
+            systemImage: "bed.double",
+            tint: .purple
+          )
+        }
+        .accessibilityIdentifier("directory.stays")
+      }
+
+      Section("Collaboration") {
+        NavigationLink {
+          PeopleView(session: session, trip: workspace.trip)
+        } label: {
+          DetailNavigationLabel(
+            title: "People",
+            valueText: "Read-only",
+            systemImage: "person.2",
+            tint: .teal
+          )
+        }
+        .accessibilityIdentifier("directory.people")
+      }
+    }
+    .listStyle(.insetGrouped)
+    .navigationTitle("More")
+    .navigationBarTitleDisplayMode(.inline)
+    .accessibilityIdentifier("trip.directory")
   }
 }
 
