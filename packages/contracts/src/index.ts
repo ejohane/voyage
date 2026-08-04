@@ -5,6 +5,7 @@ export const tripsEndpoint = "/api/trips" as const;
 export const apiV1Endpoint = "/api/v1" as const;
 export const v1TripsEndpoint = `${apiV1Endpoint}/trips` as const;
 export const v1LocationsEndpoint = `${apiV1Endpoint}/locations` as const;
+export const v1GmailIntegrationEndpoint = `${apiV1Endpoint}/integrations/gmail` as const;
 export const gmailIntegrationEndpoint = "/api/integrations/gmail" as const;
 export const locationsEndpoint = "/api/locations" as const;
 export const airportsEndpoint = "/api/airports" as const;
@@ -19,12 +20,24 @@ export function gmailConnectEndpoint() {
   return `${gmailIntegrationEndpoint}/connect` as const;
 }
 
+export function v1GmailConnectEndpoint() {
+  return `${v1GmailIntegrationEndpoint}/connect` as const;
+}
+
 export function tripGmailScanEndpoint(tripId: string) {
   return `${tripEndpoint(tripId)}/imports/gmail/scan` as const;
 }
 
 export function tripGmailImportEndpoint(tripId: string) {
   return `${tripEndpoint(tripId)}/imports/gmail` as const;
+}
+
+export function v1TripGmailScanEndpoint(tripId: string) {
+  return `${v1TripEndpoint(tripId)}/imports/gmail/scan` as const;
+}
+
+export function v1TripGmailImportEndpoint(tripId: string) {
+  return `${v1TripEndpoint(tripId)}/imports/gmail` as const;
 }
 
 export function tripEndpoint(tripId: string) {
@@ -767,13 +780,33 @@ export const gmailConnectionSchema = z.discriminatedUnion("connected", [
   }),
 ]);
 
-export const gmailConnectInputSchema = z.object({
-  returnTo: z
-    .string()
-    .startsWith("/")
-    .max(500)
-    .refine((value) => !value.startsWith("//"), "Use a Voyage page."),
-});
+export const gmailConnectInputSchema = z
+  .object({
+    client: z.enum(["web", "ios"]).default("web"),
+    returnTo: z
+      .string()
+      .startsWith("/")
+      .max(500)
+      .refine((value) => !value.startsWith("//"), "Use a Voyage page.")
+      .optional(),
+    tripId: z.string().uuid().optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.client === "web" && !value.returnTo) {
+      context.addIssue({
+        code: "custom",
+        path: ["returnTo"],
+        message: "Choose a Voyage page.",
+      });
+    }
+    if (value.client === "ios" && !value.tripId) {
+      context.addIssue({
+        code: "custom",
+        path: ["tripId"],
+        message: "Choose a trip.",
+      });
+    }
+  });
 
 export const gmailConnectResponseSchema = z.object({
   authorizationUrl: z.string().url(),

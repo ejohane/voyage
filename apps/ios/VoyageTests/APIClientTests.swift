@@ -418,6 +418,60 @@ struct APIClientTests {
     #expect(json["confirmationNumber"] is NSNull)
   }
 
+  @Test("Gmail connection starts through v1 with a native trip callback")
+  func gmailConnectionRequest() async throws {
+    let transport = MockHTTPTransport(stubs: [
+      .v1(statusCode: 200, data: makeGmailConnectionData()),
+      .v1(statusCode: 200, data: makeGmailConnectData()),
+    ])
+    let client = makeClient(transport: transport)
+
+    let connection = try await client.gmailConnection()
+    let authorizationURL = try await client.beginGmailConnection(tripID: tripID)
+
+    #expect(connection.connected)
+    #expect(connection.email == "traveler@example.com")
+    #expect(authorizationURL.host == "accounts.google.com")
+
+    let statusRequest = await transport.request(at: 0)
+    #expect(statusRequest.url?.path == "/base/api/v1/integrations/gmail")
+    let connectRequest = await transport.request(at: 1)
+    #expect(connectRequest.url?.path == "/base/api/v1/integrations/gmail/connect")
+    let body = try #require(connectRequest.httpBody)
+    let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: String])
+    #expect(json["client"] == "ios")
+    #expect(json["tripId"] == tripID.uuidString.lowercased())
+  }
+
+  @Test("Gmail scan uses its extended timeout and approved candidates encode for import")
+  func gmailScanAndImportRequests() async throws {
+    let transport = MockHTTPTransport(stubs: [
+      .v1(statusCode: 200, data: makeGmailScanData()),
+      .v1(statusCode: 200, data: makeGmailImportData()),
+    ])
+    let client = makeClient(transport: transport)
+
+    let scan = try await client.scanGmail(tripID: tripID, mode: .standard)
+    let result = try await client.importGmail(tripID: tripID, candidates: scan.candidates)
+
+    #expect(scan.messagesScanned == 4)
+    #expect(scan.candidates.first?.id == "gmail:message-flight:travel:0")
+    #expect(result.imported.first?.itemID == UUID(uuidString: "99999999-9999-4999-8999-999999999999"))
+
+    let scanRequest = await transport.request(at: 0)
+    #expect(scanRequest.timeoutInterval == 120)
+    #expect(scanRequest.url?.path.hasSuffix("/imports/gmail/scan") == true)
+    let importRequest = await transport.request(at: 1)
+    #expect(importRequest.url?.path.hasSuffix("/imports/gmail") == true)
+    let body = try #require(importRequest.httpBody)
+    let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    let candidates = try #require(json["candidates"] as? [[String: Any]])
+    let candidate = try #require(candidates.first)
+    #expect(candidate["kind"] as? String == "travel")
+    let input = try #require(candidate["input"] as? [String: Any])
+    #expect(input["bookingUrl"] as? String == "https://example.com/manage/VOY123")
+  }
+
   @Test("PATCH plan sends quoted revision and maps a conflict")
   func updatePlanConflict() async {
     let data = Data(

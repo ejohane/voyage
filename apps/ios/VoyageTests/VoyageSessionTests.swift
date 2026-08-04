@@ -175,6 +175,31 @@ struct VoyageSessionTests {
     #expect(await api.workspaceIfNoneMatches == [cachedEntityTag, nil, nil, nil])
   }
 
+  @Test("Importing Gmail bookings force-refreshes the workspace")
+  func gmailImportRefreshesWorkspace() async throws {
+    let initial = try TestFixtures.workspace()
+    let scan = try JSONDecoder().decode(GmailScanResult.self, from: makeGmailScanData())
+    let importResult = try JSONDecoder().decode(
+      GmailImportResult.self,
+      from: makeGmailImportData()
+    )
+    let api = SessionAPI(
+      workspaceResults: [modified(initial, requestID: "request-gmail-refresh")],
+      gmailImportResult: importResult
+    )
+    let session = VoyageSession(api: api, cache: InMemorySnapshotCache())
+
+    let returned = try await session.importGmail(
+      tripID: initial.trip.id,
+      candidates: scan.candidates
+    )
+
+    #expect(returned == importResult)
+    #expect(await api.workspaceIfNoneMatches == [nil])
+    #expect(await api.gmailImportTripIDs == [initial.trip.id])
+    #expect(workspace(from: session, tripID: initial.trip.id) == initial)
+  }
+
   @Test("A mutation conflict is stored, mirrored as lastError, and rethrown")
   func mutationConflictIsExposed() async throws {
     let workspace = try TestFixtures.workspace()
@@ -417,6 +442,8 @@ actor SessionAPI: VoyageAPI {
   private var createPlans: [Plan]
   private var updatePlans: [Plan]
   private let updateError: APIError?
+  private let gmailImportResult: GmailImportResult?
+  private(set) var gmailImportTripIDs: [UUID] = []
 
   init(
     listResult: APIReadResult<TripIndex>? = nil,
@@ -426,7 +453,8 @@ actor SessionAPI: VoyageAPI {
     createTrips: [Trip] = [],
     createPlans: [Plan] = [],
     updatePlans: [Plan] = [],
-    updateError: APIError? = nil
+    updateError: APIError? = nil,
+    gmailImportResult: GmailImportResult? = nil
   ) {
     self.listResult =
       listResult
@@ -443,6 +471,7 @@ actor SessionAPI: VoyageAPI {
     self.createPlans = createPlans
     self.updatePlans = updatePlans
     self.updateError = updateError
+    self.gmailImportResult = gmailImportResult
   }
 
   func listTrips(ifNoneMatch: String?) async throws -> APIReadResult<TripIndex> {
@@ -521,6 +550,15 @@ actor SessionAPI: VoyageAPI {
   }
 
   func deletePlan(tripID: UUID, planID: UUID, expectedRevision: Int) async throws {}
+
+  func importGmail(
+    tripID: UUID,
+    candidates: [GmailImportCandidate]
+  ) async throws -> GmailImportResult {
+    gmailImportTripIDs.append(tripID)
+    guard let gmailImportResult else { throw APIError.invalidResponse }
+    return gmailImportResult
+  }
 }
 
 private enum PurgeFailure: Error {

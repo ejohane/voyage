@@ -187,6 +187,63 @@ final class VoyageSession {
     }
   }
 
+  func gmailConnection() async throws -> GmailConnection {
+    do {
+      return try await api.gmailConnection()
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      throw Self.map(error)
+    }
+  }
+
+  func beginGmailConnection(tripID: UUID) async throws -> URL {
+    do {
+      return try await api.beginGmailConnection(tripID: tripID)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      throw Self.map(error)
+    }
+  }
+
+  func disconnectGmail() async throws {
+    do {
+      try await api.disconnectGmail()
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      throw Self.map(error)
+    }
+  }
+
+  func scanGmail(tripID: UUID, mode: GmailScanMode = .standard) async throws
+    -> GmailScanResult
+  {
+    do {
+      return try await api.scanGmail(tripID: tripID, mode: mode)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      throw Self.map(error)
+    }
+  }
+
+  func importGmail(
+    tripID: UUID,
+    candidates: [GmailImportCandidate]
+  ) async throws -> GmailImportResult {
+    do {
+      let result = try await api.importGmail(tripID: tripID, candidates: candidates)
+      await loadWorkspace(tripID: tripID, forceRefresh: true)
+      return result
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      throw Self.map(error)
+    }
+  }
+
   @discardableResult
   func createPlan(
     tripID: UUID,

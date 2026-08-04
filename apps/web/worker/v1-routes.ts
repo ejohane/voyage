@@ -18,6 +18,8 @@ import { routePath } from "hono/route";
 import { z } from "zod";
 import { type AuthenticateRequest, createAuthMiddleware } from "./auth";
 import { backendRequestId, logBackendFailure } from "./backend-logging";
+import { createGmailImportRoutes } from "./gmail-import-routes";
+import { createGmailIntegrationRoutes } from "./gmail-integration-routes";
 import type { PlacesClient } from "./google-places";
 import { getTripAccess, listMemberships, mapMembership } from "./invitations-repository";
 import { createLocationRoutes } from "./location-routes";
@@ -39,6 +41,7 @@ const requestIdHeader = "X-Request-ID";
 const idempotencyKeySchema = z.string().uuid();
 
 type V1RoutesDependencies = {
+  gmailFetch?: typeof fetch;
   placesClient?: PlacesClient;
   userDirectory?: UserDirectory;
   now?: () => Date;
@@ -374,6 +377,18 @@ export function createV1Routes(
 
     return context.body(null, 204, { "Cache-Control": "private, no-store" });
   });
+
+  routes.route(
+    "/integrations/gmail",
+    createGmailIntegrationRoutes(authenticateRequest, { fetcher: dependencies.gmailFetch }),
+  );
+  routes.route(
+    "/trips",
+    createGmailImportRoutes(authenticateRequest, {
+      fetcher: dependencies.gmailFetch,
+      placesClient: dependencies.placesClient,
+    }),
+  );
 
   routes.onError((_cause, context) => {
     logBackendFailure({

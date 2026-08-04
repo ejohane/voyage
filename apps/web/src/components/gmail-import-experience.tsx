@@ -496,7 +496,7 @@ function GmailImportExperience({ trip }: { trip: Trip }) {
   }
 
   async function handleConnect() {
-    const response = await connect.mutateAsync({ returnTo: location.pathname });
+    const response = await connect.mutateAsync({ client: "web", returnTo: location.pathname });
     window.location.assign(response.authorizationUrl);
   }
 

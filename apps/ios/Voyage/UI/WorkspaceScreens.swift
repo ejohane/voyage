@@ -281,6 +281,20 @@ private struct TripDirectoryView: View {
       }
 
       Section("Bookings") {
+        if workspace.trip.accessLevel.canEditPlans && freshness == .fresh {
+          NavigationLink {
+            GmailImportView(session: session, workspace: workspace)
+          } label: {
+            DetailNavigationLabel(
+              title: "Find Bookings",
+              valueText: "Gmail",
+              systemImage: "envelope.badge",
+              tint: .orange
+            )
+          }
+          .accessibilityIdentifier("directory.gmail")
+        }
+
         NavigationLink {
           TravelListView(workspace: workspace)
         } label: {
