@@ -32,6 +32,7 @@ import {
 import { type ComponentType, type ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { BookingLocationMap } from "@/components/booking-location-map";
+import { InlineNotesField } from "@/components/inline-notes-field";
 import { StayForm } from "@/components/stay-form";
 import { StayPropertyContext } from "@/components/stay-property-context";
 import { TravelForm } from "@/components/travel-form";
@@ -406,6 +407,7 @@ function TravelSection({ trip }: SectionProps) {
         target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
 
       if (event.key === "Escape" && inspector) {
+        if (target?.dataset.inlineNotes === "true") target.blur();
         setInspector(undefined);
         return;
       }
@@ -643,6 +645,11 @@ function TravelInspector({
     setIsEditing(false);
   }
 
+  async function handleNotesUpdate(notes: string | null) {
+    if (!item) return;
+    await update.mutateAsync({ notes });
+  }
+
   return (
     <WorkspaceInspector
       className="animate-in border-l-2 border-l-blue-600 fade-in slide-in-from-right-4 duration-200"
@@ -679,6 +686,7 @@ function TravelInspector({
           canEdit={canEdit}
           item={item}
           onEdit={() => setIsEditing(true)}
+          onSaveNotes={handleNotesUpdate}
           tripId={tripId}
         />
       ) : (
@@ -694,11 +702,13 @@ function TravelDetails({
   canEdit,
   item,
   onEdit,
+  onSaveNotes,
   tripId,
 }: {
   canEdit: boolean;
   item: Travel;
   onEdit: () => void;
+  onSaveNotes: (notes: string | null) => Promise<void>;
   tripId: string;
 }) {
   const Icon = travelIcons[item.type];
@@ -768,7 +778,11 @@ function TravelDetails({
       </DetailList>
 
       {item.bookingUrl ? <BookingLink href={item.bookingUrl} /> : null}
-      {item.notes ? <NotesBlock notes={item.notes} /> : null}
+      {canEdit ? (
+        <InlineNotesField notes={item.notes} onSave={onSaveNotes} />
+      ) : item.notes ? (
+        <NotesBlock notes={item.notes} />
+      ) : null}
     </div>
   );
 }
@@ -833,6 +847,7 @@ function StaysSection({ trip }: SectionProps) {
         target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
 
       if (event.key === "Escape" && inspector) {
+        if (target?.dataset.inlineNotes === "true") target.blur();
         setInspector(undefined);
         return;
       }
@@ -1149,6 +1164,11 @@ function StayInspector({
     setIsEditing(false);
   }
 
+  async function handleNotesUpdate(notes: string | null) {
+    if (!item) return;
+    await update.mutateAsync({ notes });
+  }
+
   return (
     <WorkspaceInspector
       className="animate-in border-l-2 border-l-blue-600 fade-in slide-in-from-right-4 duration-200"
@@ -1185,6 +1205,7 @@ function StayInspector({
           canEdit={canEdit}
           item={item}
           onEdit={() => setIsEditing(true)}
+          onSaveNotes={handleNotesUpdate}
           stop={stops.find((stop) => stop.id === item.tripStopId)}
           tripId={tripId}
         />
@@ -1201,12 +1222,14 @@ function StayDetails({
   canEdit,
   item,
   onEdit,
+  onSaveNotes,
   stop,
   tripId,
 }: {
   canEdit: boolean;
   item: Stay;
   onEdit: () => void;
+  onSaveNotes: (notes: string | null) => Promise<void>;
   stop?: TripStop;
   tripId: string;
 }) {
@@ -1317,7 +1340,11 @@ function StayDetails({
       ) : null}
 
       {item.bookingUrl ? <BookingLink href={item.bookingUrl} /> : null}
-      {item.notes ? <NotesBlock notes={item.notes} /> : null}
+      {canEdit ? (
+        <InlineNotesField notes={item.notes} onSave={onSaveNotes} />
+      ) : item.notes ? (
+        <NotesBlock notes={item.notes} />
+      ) : null}
     </div>
   );
 }
