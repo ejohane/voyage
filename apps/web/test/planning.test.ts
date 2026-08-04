@@ -320,6 +320,76 @@ describe("trip planning API", () => {
     expect(deleteResponse.status).toBe(204);
   });
 
+  it("updates and clears transportation and stay notes independently", async () => {
+    const { trip } = await createTrip();
+    const createdTravel = await (
+      await request(tripTravelEndpoint(trip.id), "user_owner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(travelInput),
+      })
+    ).json<TravelResponse>();
+    const createdStay = await (
+      await request(tripStaysEndpoint(trip.id), "user_owner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...stayInput, tripStopId: trip.stops[0].id }),
+      })
+    ).json<StayResponse>();
+
+    const travelNotesResponse = await request(
+      `${tripTravelEndpoint(trip.id)}/${createdTravel.travel.id}`,
+      "user_owner",
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: "  Meet the driver outside terminal 5.  " }),
+      },
+    );
+    const travelWithNotes = await travelNotesResponse.json<TravelResponse>();
+    const stayNotesResponse = await request(
+      `${tripStaysEndpoint(trip.id)}/${createdStay.stay.id}`,
+      "user_owner",
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: "  Ask reception about luggage storage.  " }),
+      },
+    );
+    const stayWithNotes = await stayNotesResponse.json<StayResponse>();
+    const overlongResponse = await request(
+      `${tripTravelEndpoint(trip.id)}/${createdTravel.travel.id}`,
+      "user_owner",
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: "x".repeat(2_001) }),
+      },
+    );
+    const clearedTravel = await (
+      await request(`${tripTravelEndpoint(trip.id)}/${createdTravel.travel.id}`, "user_owner", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: null }),
+      })
+    ).json<TravelResponse>();
+    const clearedStay = await (
+      await request(`${tripStaysEndpoint(trip.id)}/${createdStay.stay.id}`, "user_owner", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: null }),
+      })
+    ).json<StayResponse>();
+
+    expect(travelNotesResponse.status).toBe(200);
+    expect(travelWithNotes.travel.notes).toBe("Meet the driver outside terminal 5.");
+    expect(stayNotesResponse.status).toBe(200);
+    expect(stayWithNotes.stay.notes).toBe("Ask reception about luggage storage.");
+    expect(overlongResponse.status).toBe(422);
+    expect(clearedTravel.travel.notes).toBeNull();
+    expect(clearedStay.stay.notes).toBeNull();
+  });
+
   it("serves dynamic property details and a no-store photo only to trip members", async () => {
     const { trip } = await createTrip();
     const created = await (
@@ -498,6 +568,13 @@ describe("trip planning API", () => {
 
   it("allows viewers to read but not change planning data", async () => {
     const { trip } = await createTrip();
+    const createdTravel = await (
+      await request(tripTravelEndpoint(trip.id), "user_owner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(travelInput),
+      })
+    ).json<TravelResponse>();
     await env.DB.prepare(
       "INSERT INTO trip_memberships (trip_id, user_id, access_level, joined_at) VALUES (?, ?, 'viewer', ?)",
     )
@@ -510,6 +587,15 @@ describe("trip planning API", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(travelInput),
     });
+    const updateResponse = await request(
+      `${tripTravelEndpoint(trip.id)}/${createdTravel.travel.id}`,
+      "user_viewer",
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: "Viewer edit" }),
+      },
+    );
     const plansResponse = await request(tripPlansEndpoint(trip.id), "user_viewer");
     const createPlanResponse = await request(tripPlansEndpoint(trip.id), "user_viewer", {
       method: "POST",
@@ -519,6 +605,7 @@ describe("trip planning API", () => {
 
     expect(listResponse.status).toBe(200);
     expect(createResponse.status).toBe(403);
+    expect(updateResponse.status).toBe(403);
     expect(plansResponse.status).toBe(200);
     expect(createPlanResponse.status).toBe(403);
   });
