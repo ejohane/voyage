@@ -3,6 +3,8 @@ import {
   locationSuggestionsEndpoint,
   resolveLocationEndpoint,
   type TripStopLocation,
+  v1LocationSuggestionsEndpoint,
+  v1ResolveLocationEndpoint,
 } from "@voyage/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { createApp } from "../worker";
@@ -49,6 +51,15 @@ describe("location API", () => {
     expect(response.status).toBe(401);
   });
 
+  it("requires v1 authentication before searching", async () => {
+    const response = await request(
+      `${v1LocationSuggestionsEndpoint}?q=Rome&sessionToken=5f0d88d9-7955-4680-9fbc-baad1fb5890c`,
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("X-Voyage-API-Version")).toBe("1");
+  });
+
   it("returns normalized Google Places suggestions", async () => {
     const response = await request(
       `${locationSuggestionsEndpoint}?q=Rome&sessionToken=5f0d88d9-7955-4680-9fbc-baad1fb5890c`,
@@ -73,6 +84,26 @@ describe("location API", () => {
     });
   });
 
+  it("exposes suggestions through the authenticated v1 API", async () => {
+    const response = await request(
+      `${v1LocationSuggestionsEndpoint}?q=Rome&sessionToken=5f0d88d9-7955-4680-9fbc-baad1fb5890c`,
+      "user_owner",
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Voyage-API-Version")).toBe("1");
+    expect(response.headers.get("X-Request-ID")).toBeTruthy();
+    expect(await response.json()).toEqual({
+      suggestions: [
+        expect.objectContaining({
+          placeId: resolvedLocation.placeId,
+          primaryText: "Rome",
+          kind: "city",
+        }),
+      ],
+    });
+  });
+
   it("resolves a selected suggestion with the same session", async () => {
     const response = await request(resolveLocationEndpoint, "user_owner", {
       method: "POST",
@@ -89,6 +120,21 @@ describe("location API", () => {
       resolvedLocation.placeId,
       "5f0d88d9-7955-4680-9fbc-baad1fb5890c",
     );
+  });
+
+  it("resolves a v1 suggestion with the same session", async () => {
+    const response = await request(v1ResolveLocationEndpoint, "user_owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        placeId: resolvedLocation.placeId,
+        sessionToken: "5f0d88d9-7955-4680-9fbc-baad1fb5890c",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Voyage-API-Version")).toBe("1");
+    expect(await response.json()).toEqual({ location: resolvedLocation });
   });
 
   it("rejects short searches before calling Google", async () => {

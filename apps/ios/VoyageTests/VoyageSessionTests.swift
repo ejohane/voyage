@@ -5,6 +5,64 @@ import Testing
 
 @MainActor
 struct VoyageSessionTests {
+  @Test("Creating a trip refreshes the trip index")
+  func creatingTripRefreshesTrips() async throws {
+    let existingIndex = try TestFixtures.tripIndex()
+    let createdTrip = Trip(
+      id: UUID(uuidString: "77777777-7777-4777-8777-777777777777")!,
+      name: "Winter in Montréal",
+      startDate: LocalDate(rawValue: "2026-12-04"),
+      endDate: LocalDate(rawValue: "2026-12-08"),
+      stops: [
+        TripStop(
+          id: UUID(uuidString: "88888888-8888-4888-8888-888888888888")!,
+          position: 0,
+          name: "Montréal, Canada",
+          arrivalDate: LocalDate(rawValue: "2026-12-04"),
+          departureDate: LocalDate(rawValue: "2026-12-08"),
+          location: nil
+        )
+      ],
+      accessLevel: .owner,
+      createdAt: "2026-08-01T12:00:00.000Z",
+      updatedAt: "2026-08-01T12:00:00.000Z"
+    )
+    let refreshedIndex = TripIndex(
+      schemaVersion: existingIndex.schemaVersion,
+      generatedAt: "2026-08-01T12:00:00.000Z",
+      revision: String(repeating: "a", count: 64),
+      trips: existingIndex.trips + [createdTrip]
+    )
+    let api = SessionAPI(
+      listResult: .modified(
+        refreshedIndex,
+        metadata: APIResponseMetadata(
+          entityTag: APIClient.entityTag(forRevision: refreshedIndex.revision),
+          requestID: "request-create-trip"
+        )
+      ),
+      createTrips: [createdTrip]
+    )
+    let session = VoyageSession(api: api, cache: InMemorySnapshotCache())
+
+    let returned = try await session.createTrip(
+      input: CreateTripInput(
+        name: createdTrip.name,
+        stops: [
+          TripStopInput(
+            name: "Montréal, Canada",
+            arrivalDate: LocalDate(rawValue: "2026-12-04"),
+            departureDate: LocalDate(rawValue: "2026-12-08")
+          )
+        ]
+      )
+    )
+
+    #expect(returned == createdTrip)
+    #expect(session.trips.contains(createdTrip))
+    #expect(await api.listIfNoneMatches == [nil])
+  }
+
   @Test("Cached trips are immediately stale, then 304 touches and marks them fresh")
   func cachedTripsBecomeFreshAfterNotModified() async throws {
     let index = try TestFixtures.tripIndex()
@@ -115,6 +173,31 @@ struct VoyageSessionTests {
     #expect(session.planMutationState == .idle)
     #expect(workspace(from: session, tripID: initial.trip.id)?.plans == afterDelete.plans)
     #expect(await api.workspaceIfNoneMatches == [cachedEntityTag, nil, nil, nil])
+  }
+
+  @Test("Importing Gmail bookings force-refreshes the workspace")
+  func gmailImportRefreshesWorkspace() async throws {
+    let initial = try TestFixtures.workspace()
+    let scan = try JSONDecoder().decode(GmailScanResult.self, from: makeGmailScanData())
+    let importResult = try JSONDecoder().decode(
+      GmailImportResult.self,
+      from: makeGmailImportData()
+    )
+    let api = SessionAPI(
+      workspaceResults: [modified(initial, requestID: "request-gmail-refresh")],
+      gmailImportResult: importResult
+    )
+    let session = VoyageSession(api: api, cache: InMemorySnapshotCache())
+
+    let returned = try await session.importGmail(
+      tripID: initial.trip.id,
+      candidates: scan.candidates
+    )
+
+    #expect(returned == importResult)
+    #expect(await api.workspaceIfNoneMatches == [nil])
+    #expect(await api.gmailImportTripIDs == [initial.trip.id])
+    #expect(workspace(from: session, tripID: initial.trip.id) == initial)
   }
 
   @Test("A mutation conflict is stored, mirrored as lastError, and rethrown")
@@ -355,18 +438,23 @@ actor SessionAPI: VoyageAPI {
   private var workspaceResults: [APIReadResult<TripWorkspace>]
   private(set) var workspaceIfNoneMatches: [String?] = []
   private let workspaceError: APIError?
+  private var createTrips: [Trip]
   private var createPlans: [Plan]
   private var updatePlans: [Plan]
   private let updateError: APIError?
+  private let gmailImportResult: GmailImportResult?
+  private(set) var gmailImportTripIDs: [UUID] = []
 
   init(
     listResult: APIReadResult<TripIndex>? = nil,
     suspendList: Bool = false,
     workspaceResults: [APIReadResult<TripWorkspace>] = [],
     workspaceError: APIError? = nil,
+    createTrips: [Trip] = [],
     createPlans: [Plan] = [],
     updatePlans: [Plan] = [],
-    updateError: APIError? = nil
+    updateError: APIError? = nil,
+    gmailImportResult: GmailImportResult? = nil
   ) {
     self.listResult =
       listResult
@@ -379,9 +467,11 @@ actor SessionAPI: VoyageAPI {
     self.suspendList = suspendList
     self.workspaceResults = workspaceResults
     self.workspaceError = workspaceError
+    self.createTrips = createTrips
     self.createPlans = createPlans
     self.updatePlans = updatePlans
     self.updateError = updateError
+    self.gmailImportResult = gmailImportResult
   }
 
   func listTrips(ifNoneMatch: String?) async throws -> APIReadResult<TripIndex> {
@@ -394,6 +484,23 @@ actor SessionAPI: VoyageAPI {
       }
     }
     return listResult
+  }
+
+  func createTrip(input: CreateTripInput) async throws -> Trip {
+    guard !createTrips.isEmpty else { throw APIError.invalidResponse }
+    return createTrips.removeFirst()
+  }
+
+  func locationSuggestions(query: String, sessionToken: UUID) async throws
+    -> [LocationSuggestion]
+  {
+    []
+  }
+
+  func resolveLocation(placeID: String, sessionToken: UUID) async throws
+    -> TripStopLocationInput
+  {
+    TripStopLocationInput(provider: "google", placeID: placeID)
   }
 
   func waitForListRequest() async {
@@ -443,6 +550,15 @@ actor SessionAPI: VoyageAPI {
   }
 
   func deletePlan(tripID: UUID, planID: UUID, expectedRevision: Int) async throws {}
+
+  func importGmail(
+    tripID: UUID,
+    candidates: [GmailImportCandidate]
+  ) async throws -> GmailImportResult {
+    gmailImportTripIDs.append(tripID)
+    guard let gmailImportResult else { throw APIError.invalidResponse }
+    return gmailImportResult
+  }
 }
 
 private enum PurgeFailure: Error {

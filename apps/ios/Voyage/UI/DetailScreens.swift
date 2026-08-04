@@ -76,7 +76,7 @@ struct TravelListView: View {
         ContentUnavailableView(
           "No transportation",
           systemImage: "airplane.departure",
-          description: Text("Transportation added on the web will appear here.")
+          description: Text("Use Find Bookings in More to search Gmail for transportation.")
         )
       } else {
         List(workspace.travel.sorted(by: { $0.departureAt < $1.departureAt })) { travel in
@@ -194,7 +194,7 @@ struct StayListView: View {
         ContentUnavailableView(
           "No stays",
           systemImage: "bed.double",
-          description: Text("Stays added on the web will appear here.")
+          description: Text("Use Find Bookings in More to search Gmail for stays.")
         )
       } else {
         List(workspace.stays.sorted(by: { $0.checkInDate < $1.checkInDate })) { stay in

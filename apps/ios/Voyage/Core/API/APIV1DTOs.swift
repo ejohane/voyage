@@ -52,6 +52,51 @@ struct V1TripPeopleDTO: Decodable, Sendable {
   }
 }
 
+struct V1TripResponseDTO: Decodable, Sendable {
+  let trip: TripDTO
+}
+
+struct V1LocationSuggestionsDTO: Decodable, Sendable {
+  let suggestions: [LocationSuggestionDTO]
+
+  var domain: [LocationSuggestion] {
+    suggestions.map(\.domain)
+  }
+}
+
+struct LocationSuggestionDTO: Decodable, Sendable {
+  let placeId: String
+  let label: String
+  let primaryText: String
+  let secondaryText: String?
+  let types: [String]
+  let kind: String
+
+  var domain: LocationSuggestion {
+    LocationSuggestion(
+      placeID: placeId,
+      label: label,
+      primaryText: primaryText,
+      secondaryText: secondaryText,
+      types: types,
+      kind: LocationKind(rawValue: kind)
+    )
+  }
+}
+
+struct V1ResolvedLocationDTO: Decodable, Sendable {
+  let location: ResolvedLocationDTO
+}
+
+struct ResolvedLocationDTO: Decodable, Sendable {
+  let provider: String
+  let placeId: String
+
+  var domain: TripStopLocationInput {
+    TripStopLocationInput(provider: provider, placeID: placeId)
+  }
+}
+
 struct V1PlanResponseDTO: Decodable, Sendable {
   let plan: PlanDTO
 }

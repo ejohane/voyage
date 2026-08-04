@@ -69,6 +69,46 @@ final class VoyageSession {
     await restoreAndRefreshTrips(forceRefresh: true)
   }
 
+  @discardableResult
+  func createTrip(input: CreateTripInput) async throws -> Trip {
+    lastError = nil
+    do {
+      let trip = try await api.createTrip(input: input)
+      await refreshTrips()
+      return trip
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      let apiError = Self.map(error)
+      lastError = apiError
+      throw apiError
+    }
+  }
+
+  func locationSuggestions(query: String, sessionToken: UUID) async throws
+    -> [LocationSuggestion]
+  {
+    do {
+      return try await api.locationSuggestions(query: query, sessionToken: sessionToken)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      throw Self.map(error)
+    }
+  }
+
+  func resolveLocation(placeID: String, sessionToken: UUID) async throws
+    -> TripStopLocationInput
+  {
+    do {
+      return try await api.resolveLocation(placeID: placeID, sessionToken: sessionToken)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      throw Self.map(error)
+    }
+  }
+
   func loadWorkspace(tripID: UUID, forceRefresh: Bool = false) async {
     let cached = try? await cache.loadWorkspace(tripID: tripID)
     if let cached {
@@ -144,6 +184,63 @@ final class VoyageSession {
         peopleByTripID.removeValue(forKey: tripID)
         workspaceStates[tripID] = .failed(apiError)
       }
+    }
+  }
+
+  func gmailConnection() async throws -> GmailConnection {
+    do {
+      return try await api.gmailConnection()
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      throw Self.map(error)
+    }
+  }
+
+  func beginGmailConnection(tripID: UUID) async throws -> URL {
+    do {
+      return try await api.beginGmailConnection(tripID: tripID)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      throw Self.map(error)
+    }
+  }
+
+  func disconnectGmail() async throws {
+    do {
+      try await api.disconnectGmail()
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      throw Self.map(error)
+    }
+  }
+
+  func scanGmail(tripID: UUID, mode: GmailScanMode = .standard) async throws
+    -> GmailScanResult
+  {
+    do {
+      return try await api.scanGmail(tripID: tripID, mode: mode)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      throw Self.map(error)
+    }
+  }
+
+  func importGmail(
+    tripID: UUID,
+    candidates: [GmailImportCandidate]
+  ) async throws -> GmailImportResult {
+    do {
+      let result = try await api.importGmail(tripID: tripID, candidates: candidates)
+      await loadWorkspace(tripID: tripID, forceRefresh: true)
+      return result
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      throw Self.map(error)
     }
   }
 

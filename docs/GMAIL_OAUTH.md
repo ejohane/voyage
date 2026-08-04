@@ -31,6 +31,11 @@ Authorized redirect URIs:
 The client ID and secret belong in `apps/web/.dev.vars`, which is ignored by Git. Start from
 `apps/web/.dev.vars.example` when configuring another worktree.
 
+The primary checkout is the durable source of truth for ignored local environment files. Run
+`bun run sync:local-env` inside a worktree to refresh it from the primary checkout, or
+`bun run sync:local-env --all` to refresh every registered worktree. `bun run setup:worktree`
+also performs this sync, replacing partial or stale worktree copies without committing secrets.
+
 ### Voyage Production
 
 Authorized redirect URIs:

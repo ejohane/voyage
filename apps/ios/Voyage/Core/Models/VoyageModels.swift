@@ -131,6 +131,77 @@ struct Trip: Identifiable, Codable, Equatable, Sendable {
   let updatedAt: String
 }
 
+struct TripStopInput: Encodable, Equatable, Sendable {
+  let name: String
+  let arrivalDate: LocalDate?
+  let departureDate: LocalDate?
+  let location: TripStopLocationInput?
+
+  init(
+    name: String,
+    arrivalDate: LocalDate?,
+    departureDate: LocalDate?,
+    location: TripStopLocationInput? = nil
+  ) {
+    self.name = name
+    self.arrivalDate = arrivalDate
+    self.departureDate = departureDate
+    self.location = location
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case name
+    case arrivalDate
+    case departureDate
+    case location
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(name, forKey: .name)
+    try container.encode(arrivalDate, forKey: .arrivalDate)
+    try container.encode(departureDate, forKey: .departureDate)
+    try container.encode(location, forKey: .location)
+  }
+}
+
+struct TripStopLocationInput: Encodable, Equatable, Sendable {
+  let provider: String
+  let placeID: String
+
+  private enum CodingKeys: String, CodingKey {
+    case provider
+    case placeID = "placeId"
+  }
+}
+
+struct LocationKind: OpenStringValue {
+  let rawValue: String
+
+  static let country = Self(rawValue: "country")
+  static let region = Self(rawValue: "region")
+  static let city = Self(rawValue: "city")
+  static let neighborhood = Self(rawValue: "neighborhood")
+  static let address = Self(rawValue: "address")
+  static let place = Self(rawValue: "place")
+}
+
+struct LocationSuggestion: Identifiable, Equatable, Sendable {
+  let placeID: String
+  let label: String
+  let primaryText: String
+  let secondaryText: String?
+  let types: [String]
+  let kind: LocationKind
+
+  var id: String { placeID }
+}
+
+struct CreateTripInput: Encodable, Equatable, Sendable {
+  let name: String
+  let stops: [TripStopInput]
+}
+
 struct Airport: Identifiable, Codable, Equatable, Sendable {
   let id: Int
   let ident: String

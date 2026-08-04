@@ -25,6 +25,7 @@
     "format:check": "biome check .",
     "preview": "bun run --cwd apps/web preview",
     "setup:worktree": "bash scripts/setup-worktree.sh",
+    "sync:local-env": "bash scripts/sync-local-env.sh",
     "test": "bun run --cwd apps/web test && bun run --cwd apps/mcp test",
     "typecheck": "bun run --cwd apps/web typecheck && bun run --cwd apps/mcp typecheck"
   },

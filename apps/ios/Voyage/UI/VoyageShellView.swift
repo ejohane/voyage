@@ -38,10 +38,23 @@ struct VoyageShellView: View {
 private struct TripsView: View {
   let session: VoyageSession
 
+  @State private var presentedSheet: TripsSheet?
+
   var body: some View {
     content
       .refreshable {
         await session.refreshTrips()
+      }
+      .toolbar {
+        ToolbarItem(placement: .primaryAction) {
+          Button("New Trip", systemImage: "plus") {
+            presentedSheet = .create
+          }
+          .accessibilityIdentifier("trip.create")
+        }
+      }
+      .sheet(item: $presentedSheet) { _ in
+        TripCreateView(session: session)
       }
       .accessibilityIdentifier("trips.screen")
   }
@@ -65,15 +78,21 @@ private struct TripsView: View {
       .accessibilityIdentifier("trips.error")
     case .loaded(let index, _, let freshness):
       if index.trips.isEmpty {
-        ContentUnavailableView(
-          "No trips yet",
-          systemImage: "suitcase",
-          description: Text(
+        ContentUnavailableView {
+          Label("No trips yet", systemImage: "suitcase")
+        } description: {
+          Text(
             freshness == .stale
               ? "Your saved trips are available offline, but this snapshot is empty."
-              : "Trips created on the web will appear here."
+              : "Create a trip to start planning your next journey."
           )
-        )
+        } actions: {
+          Button("Create Trip", systemImage: "plus") {
+            presentedSheet = .create
+          }
+          .buttonStyle(.borderedProminent)
+          .accessibilityIdentifier("trips.empty.create")
+        }
         .accessibilityIdentifier("trips.empty")
       } else {
         List {
@@ -89,6 +108,12 @@ private struct TripsView: View {
       }
     }
   }
+}
+
+private enum TripsSheet: String, Identifiable {
+  case create
+
+  var id: String { rawValue }
 }
 
 private struct TripRow: View {

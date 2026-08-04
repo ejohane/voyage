@@ -17,6 +17,10 @@ import {
   tripStaysEndpoint,
   tripsEndpoint,
   tripTravelEndpoint,
+  v1GmailConnectEndpoint,
+  v1GmailIntegrationEndpoint,
+  v1TripGmailImportEndpoint,
+  v1TripGmailScanEndpoint,
 } from "@voyage/contracts";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../worker";
@@ -1486,6 +1490,46 @@ describe("Gmail import", () => {
     expect(stored?.encrypted_refresh_token).not.toContain("super-secret-refresh-token");
     expect(repeatedCallback.headers.get("location")).toContain("/trips?gmail=error");
     expect(googleCalls.filter((call) => call === "POST /token")).toHaveLength(1);
+  });
+
+  it("connects the native app through versioned routes and returns to its verified scheme", async () => {
+    const { trip } = await createTrip();
+    const connectResponse = await request(v1GmailConnectEndpoint(), "user_owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ client: "ios", tripId: trip.id }),
+    });
+    const { authorizationUrl } = await connectResponse.json<GmailConnectResponse>();
+    const state = new URL(authorizationUrl).searchParams.get("state");
+    const callbackResponse = await request(
+      `/api/integrations/gmail/callback?code=test-code&state=${encodeURIComponent(state ?? "")}`,
+    );
+    const statusResponse = await request(v1GmailIntegrationEndpoint, "user_owner");
+    const status = await statusResponse.json<GmailConnection>();
+    const scanResponse = await request(v1TripGmailScanEndpoint(trip.id), "user_owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "standard" }),
+    });
+    const scan = await scanResponse.json<GmailScanResponse>();
+    const importResponse = await request(v1TripGmailImportEndpoint(trip.id), "user_owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ candidates: scan.candidates }),
+    });
+
+    expect(connectResponse.status).toBe(200);
+    expect(connectResponse.headers.get("X-Voyage-API-Version")).toBe("1");
+    expect(connectResponse.headers.get("X-Request-ID")).toBeTruthy();
+    expect(callbackResponse.headers.get("location")).toBe(
+      `app.voyage.native://oauth/gmail?tripId=${trip.id}&result=connected`,
+    );
+    expect(status).toMatchObject({ connected: true, email: "traveler@example.com" });
+    expect(statusResponse.headers.get("X-Voyage-API-Version")).toBe("1");
+    expect(scanResponse.status).toBe(200);
+    expect(scan.candidates).not.toHaveLength(0);
+    expect(importResponse.status).toBe(200);
+    expect(importResponse.headers.get("X-Voyage-API-Version")).toBe("1");
   });
 
   it("scans, imports approved travel and stays, deduplicates, and disconnects", async () => {

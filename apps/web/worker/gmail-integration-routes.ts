@@ -33,7 +33,33 @@ function safeReturnTo(value: string) {
   return value.startsWith("/") && !value.startsWith("//") ? value : "/trips";
 }
 
+function nativeReturnTo(tripId: string) {
+  const url = new URL("app.voyage.native://oauth/gmail");
+  url.searchParams.set("tripId", tripId);
+  return url.toString();
+}
+
+function safeNativeReturnTo(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "app.voyage.native:" &&
+      url.hostname === "oauth" &&
+      url.pathname === "/gmail"
+      ? url
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function redirectWithResult(request: Request, returnTo: string, result: "connected" | "error") {
+  if (returnTo.startsWith("app.voyage.native:")) {
+    const nativeURL = safeNativeReturnTo(returnTo);
+    if (nativeURL) {
+      nativeURL.searchParams.set("result", result);
+      return nativeURL.toString();
+    }
+  }
   const url = new URL(safeReturnTo(returnTo), new URL(request.url).origin);
   url.searchParams.set("gmail", result);
   return url.toString();
@@ -57,7 +83,7 @@ export function createGmailIntegrationRoutes(
 
   routes.post("/connect", authenticate, async (context) => {
     const parsed = gmailConnectInputSchema.safeParse(await readJson(context.req.raw));
-    if (!parsed.success || parsed.data.returnTo.startsWith("//")) {
+    if (!parsed.success) {
       return context.json(
         {
           error: {
@@ -83,6 +109,10 @@ export function createGmailIntegrationRoutes(
     const state = randomBase64Url();
     const codeVerifier = randomBase64Url();
     const now = new Date();
+    const returnTo =
+      parsed.data.client === "ios" && parsed.data.tripId
+        ? nativeReturnTo(parsed.data.tripId)
+        : safeReturnTo(parsed.data.returnTo ?? "/trips");
     await saveGmailOAuthState(context.env.DB, {
       stateHash: await sha256Base64Url(state),
       userId: context.var.authUserId,
@@ -90,7 +120,7 @@ export function createGmailIntegrationRoutes(
         codeVerifier,
         context.env.GMAIL_TOKEN_ENCRYPTION_KEY,
       ),
-      returnTo: parsed.data.returnTo,
+      returnTo,
       expiresAt: new Date(now.getTime() + 10 * 60_000).toISOString(),
       createdAt: now.toISOString(),
     });

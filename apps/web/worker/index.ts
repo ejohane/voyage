@@ -64,6 +64,8 @@ export function createApp(dependencies: AppDependencies = {}) {
   app.route(
     apiV1Endpoint,
     createV1Routes(v1AuthenticateRequest, {
+      gmailFetch: dependencies.gmailFetch,
+      placesClient: dependencies.placesClient,
       userDirectory: dependencies.userDirectory,
       now: dependencies.now,
     }),

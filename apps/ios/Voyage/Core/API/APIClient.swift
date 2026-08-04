@@ -12,8 +12,20 @@ enum APIReadResult<Value: Sendable>: Sendable {
 
 protocol VoyageAPI: Sendable {
   func listTrips(ifNoneMatch: String?) async throws -> APIReadResult<TripIndex>
+  func createTrip(input: CreateTripInput) async throws -> Trip
+  func locationSuggestions(query: String, sessionToken: UUID) async throws
+    -> [LocationSuggestion]
+  func resolveLocation(placeID: String, sessionToken: UUID) async throws -> TripStopLocationInput
   func workspace(tripID: UUID, ifNoneMatch: String?) async throws -> APIReadResult<TripWorkspace>
   func people(tripID: UUID) async throws -> TripPeople
+  func gmailConnection() async throws -> GmailConnection
+  func beginGmailConnection(tripID: UUID) async throws -> URL
+  func disconnectGmail() async throws
+  func scanGmail(tripID: UUID, mode: GmailScanMode) async throws -> GmailScanResult
+  func importGmail(
+    tripID: UUID,
+    candidates: [GmailImportCandidate]
+  ) async throws -> GmailImportResult
   func createPlan(
     tripID: UUID,
     input: ScheduledPlanInput,
@@ -26,6 +38,21 @@ protocol VoyageAPI: Sendable {
     input: ScheduledPlanInput
   ) async throws -> Plan
   func deletePlan(tripID: UUID, planID: UUID, expectedRevision: Int) async throws
+}
+
+extension VoyageAPI {
+  func gmailConnection() async throws -> GmailConnection { throw APIError.invalidResponse }
+  func beginGmailConnection(tripID: UUID) async throws -> URL { throw APIError.invalidResponse }
+  func disconnectGmail() async throws { throw APIError.invalidResponse }
+  func scanGmail(tripID: UUID, mode: GmailScanMode) async throws -> GmailScanResult {
+    throw APIError.invalidResponse
+  }
+  func importGmail(
+    tripID: UUID,
+    candidates: [GmailImportCandidate]
+  ) async throws -> GmailImportResult {
+    throw APIError.invalidResponse
+  }
 }
 
 struct AuthTokenProvider: Sendable {
@@ -63,7 +90,7 @@ struct URLSessionTransport: HTTPTransport {
     configuration.httpCookieStorage = nil
     configuration.httpShouldSetCookies = false
     configuration.timeoutIntervalForRequest = 30
-    configuration.timeoutIntervalForResource = 60
+    configuration.timeoutIntervalForResource = 180
     return URLSessionTransport(session: URLSession(configuration: configuration))
   }()
 
@@ -110,6 +137,53 @@ actor APIClient: VoyageAPI {
     }
   }
 
+  func createTrip(input: CreateTripInput) async throws -> Trip {
+    let (response, _): (V1TripResponseDTO, APIResponseMetadata) = try await mutate(
+      path: "/api/v1/trips",
+      method: "POST",
+      body: try encode(input),
+      headers: [:],
+      expectedStatus: 201
+    )
+    return response.trip.domain
+  }
+
+  func locationSuggestions(query: String, sessionToken: UUID) async throws
+    -> [LocationSuggestion]
+  {
+    let result: APIReadResult<V1LocationSuggestionsDTO> = try await get(
+      path: "/api/v1/locations/suggestions",
+      queryItems: [
+        URLQueryItem(name: "q", value: query),
+        URLQueryItem(name: "sessionToken", value: sessionToken.uuidString.lowercased()),
+      ],
+      ifNoneMatch: nil
+    )
+    switch result {
+    case .modified(let dto, _):
+      return dto.domain
+    case .notModified:
+      throw APIError.invalidResponse
+    }
+  }
+
+  func resolveLocation(placeID: String, sessionToken: UUID) async throws
+    -> TripStopLocationInput
+  {
+    let input = ResolveLocationInput(
+      placeId: placeID,
+      sessionToken: sessionToken.uuidString.lowercased()
+    )
+    let (response, _): (V1ResolvedLocationDTO, APIResponseMetadata) = try await mutate(
+      path: "/api/v1/locations/resolve",
+      method: "POST",
+      body: try encode(input),
+      headers: [:],
+      expectedStatus: 200
+    )
+    return response.location.domain
+  }
+
   func workspace(
     tripID: UUID,
     ifNoneMatch: String? = nil
@@ -142,6 +216,63 @@ actor APIClient: VoyageAPI {
     case .notModified:
       throw APIError.invalidResponse
     }
+  }
+
+  func gmailConnection() async throws -> GmailConnection {
+    let result: APIReadResult<GmailConnection> = try await get(
+      path: "/api/v1/integrations/gmail",
+      ifNoneMatch: nil
+    )
+    switch result {
+    case .modified(let connection, _): return connection
+    case .notModified: throw APIError.invalidResponse
+    }
+  }
+
+  func beginGmailConnection(tripID: UUID) async throws -> URL {
+    let input = GmailConnectRequest(client: "ios", tripID: tripID)
+    let (response, _): (GmailConnectResponse, APIResponseMetadata) = try await mutate(
+      path: "/api/v1/integrations/gmail/connect",
+      method: "POST",
+      body: try encode(input),
+      headers: [:],
+      expectedStatus: 200
+    )
+    return response.authorizationURL
+  }
+
+  func disconnectGmail() async throws {
+    try await mutateWithoutResponse(
+      path: "/api/v1/integrations/gmail",
+      method: "DELETE",
+      headers: [:]
+    )
+  }
+
+  func scanGmail(tripID: UUID, mode: GmailScanMode) async throws -> GmailScanResult {
+    let (response, _): (GmailScanResult, APIResponseMetadata) = try await mutate(
+      path: "/api/v1/trips/\(tripID.uuidString.lowercased())/imports/gmail/scan",
+      method: "POST",
+      body: try encode(GmailScanRequest(mode: mode)),
+      headers: [:],
+      expectedStatus: 200,
+      timeoutInterval: 120
+    )
+    return response
+  }
+
+  func importGmail(
+    tripID: UUID,
+    candidates: [GmailImportCandidate]
+  ) async throws -> GmailImportResult {
+    let (response, _): (GmailImportResult, APIResponseMetadata) = try await mutate(
+      path: "/api/v1/trips/\(tripID.uuidString.lowercased())/imports/gmail",
+      method: "POST",
+      body: try encode(GmailImportRequest(candidates: candidates)),
+      headers: [:],
+      expectedStatus: 200
+    )
+    return response
   }
 
   func createPlan(
@@ -201,9 +332,14 @@ actor APIClient: VoyageAPI {
 
   private func get<Response: Decodable & Sendable>(
     path: String,
+    queryItems: [URLQueryItem] = [],
     ifNoneMatch: String?
   ) async throws -> APIReadResult<Response> {
-    var request = try await authorizedRequest(path: path, method: "GET")
+    var request = try await authorizedRequest(
+      path: path,
+      method: "GET",
+      queryItems: queryItems
+    )
     if let ifNoneMatch {
       request.setValue(ifNoneMatch, forHTTPHeaderField: "If-None-Match")
     }
@@ -248,9 +384,14 @@ actor APIClient: VoyageAPI {
     method: String,
     body: Data,
     headers: [String: String],
-    expectedStatus: Int
+    expectedStatus: Int,
+    timeoutInterval: TimeInterval = 30
   ) async throws -> (Response, APIResponseMetadata) {
-    var request = try await authorizedRequest(path: path, method: method)
+    var request = try await authorizedRequest(
+      path: path,
+      method: method,
+      timeoutInterval: timeoutInterval
+    )
     request.httpBody = body
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     for header in headers {
@@ -303,14 +444,19 @@ actor APIClient: VoyageAPI {
     }
   }
 
-  private func authorizedRequest(path: String, method: String) async throws -> URLRequest {
+  private func authorizedRequest(
+    path: String,
+    method: String,
+    queryItems: [URLQueryItem] = [],
+    timeoutInterval: TimeInterval = 30
+  ) async throws -> URLRequest {
     let token = try await tokenProvider.token()
     guard !token.isEmpty else { throw APIError.missingSession }
 
     var request = URLRequest(
-      url: endpoint(path: path),
+      url: endpoint(path: path, queryItems: queryItems),
       cachePolicy: .reloadIgnoringLocalCacheData,
-      timeoutInterval: 30
+      timeoutInterval: timeoutInterval
     )
     request.httpMethod = method
     request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -352,9 +498,16 @@ actor APIClient: VoyageAPI {
     }
   }
 
-  private func endpoint(path: String) -> URL {
+  private func endpoint(path: String, queryItems: [URLQueryItem] = []) -> URL {
     let relativePath = path.hasPrefix("/") ? String(path.dropFirst()) : path
-    return baseURL.appending(path: relativePath)
+    let url = baseURL.appending(path: relativePath)
+    guard !queryItems.isEmpty,
+      var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+    else {
+      return url
+    }
+    components.queryItems = queryItems
+    return components.url ?? url
   }
 
   private func validateVersionHeader(_ response: HTTPURLResponse) throws {
@@ -425,6 +578,42 @@ actor APIClient: VoyageAPI {
     }
     return plan
   }
+}
+
+enum GmailScanMode: String, Codable, Equatable, Sendable {
+  case standard
+  case deep
+}
+
+private struct GmailConnectRequest: Encodable {
+  let client: String
+  let tripID: UUID
+
+  private enum CodingKeys: String, CodingKey {
+    case client
+    case tripID = "tripId"
+  }
+}
+
+private struct GmailConnectResponse: Decodable {
+  let authorizationURL: URL
+
+  private enum CodingKeys: String, CodingKey {
+    case authorizationURL = "authorizationUrl"
+  }
+}
+
+private struct GmailScanRequest: Encodable {
+  let mode: GmailScanMode
+}
+
+private struct GmailImportRequest: Encodable {
+  let candidates: [GmailImportCandidate]
+}
+
+private struct ResolveLocationInput: Encodable {
+  let placeId: String
+  let sessionToken: String
 }
 
 extension APIReadResult {

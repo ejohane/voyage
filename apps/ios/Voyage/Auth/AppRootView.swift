@@ -18,8 +18,11 @@ struct AppRootView: View {
         )
         .id(user.id)
       } else {
-        AuthView(mode: .signIn, isDismissible: false)
-          .persistsIdentifiers(false)
+        AuthView(
+          mode: configuration.environment == .debug ? .signInOrUp : .signIn,
+          isDismissible: false
+        )
+        .persistsIdentifiers(false)
       }
     }
   }

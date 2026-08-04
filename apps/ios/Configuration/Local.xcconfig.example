@@ -1,3 +1,4 @@
 // Copy this file to Local.xcconfig. The destination is ignored by Git.
 // Clerk publishable keys identify a Clerk application; never put secret keys here.
 VOYAGE_CLERK_PUBLISHABLE_KEY = replace_with_clerk_publishable_key
+VOYAGE_LOCAL_CLERK_PUBLISHABLE_KEY = replace_with_local_clerk_publishable_key

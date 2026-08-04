@@ -4,10 +4,17 @@ Native iPhone app for Voyage. The project targets iOS 18 and uses Swift 6 with c
 
 ## Local configuration
 
-1. Copy `Configuration/Local.xcconfig.example` to `Configuration/Local.xcconfig`.
-2. Set `VOYAGE_CLERK_PUBLISHABLE_KEY` in that ignored file.
+Run `bun run configure:ios` from the repository root. It writes the ignored
+`Configuration/Local.xcconfig` with both the local Clerk publishable key from
+`apps/web/.dev.vars` and the live key from the GitHub production environment.
 
-All configurations use bundle identifier `app.voyage.native`, matching Voyage's Clerk native application registration. Debug and Staging use `https://staging.voyageplan.app`; Release uses `https://voyageplan.app`.
+All configurations use bundle identifier `app.voyage.native`, matching Voyage's Clerk native application registration. Debug uses the local app and Worker at `http://127.0.0.1:5173` with the local Clerk instance. Staging uses `https://staging.voyageplan.app`, and Release uses `https://voyageplan.app`; both hosted configurations use the live Clerk instance.
+
+Start the local app and Worker before launching a Debug build:
+
+```sh
+bun run dev
+```
 
 The Clerk callback is `app.voyage.native://callback`. The app entitlement includes `webcredentials:clerk.voyageplan.app`.
 

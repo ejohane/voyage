@@ -323,10 +323,117 @@ enum FixtureFactory {
       ),
     ]
   )
+
+  static let gmailCandidate = GmailImportCandidate.travel(
+    GmailTravelCandidate(
+      kind: "travel",
+      source: GmailCandidateSource(
+        key: "gmail:fixture-flight:travel:0",
+        messageID: "fixture-flight",
+        threadID: "fixture-flight-thread",
+        subject: "Your flight to Rome is confirmed",
+        sender: "ITA Airways <bookings@example.com>",
+        receivedAt: "2026-07-18T12:00:00.000Z",
+        messageURL: URL(string: "https://mail.google.com/mail/#inbox/fixture-flight")!
+      ),
+      sources: nil,
+      confidence: "high",
+      eventType: "confirmation",
+      input: GmailTravelInput(
+        kind: .journey,
+        type: .flight,
+        status: .booked,
+        departureStopID: nil,
+        arrivalStopID: stopID,
+        departureAirportID: nil,
+        arrivalAirportID: nil,
+        departureLocation: "New York (JFK)",
+        arrivalLocation: "Rome (FCO)",
+        departureAt: LocalDateTime(rawValue: "2026-07-28T18:30")!,
+        arrivalAt: LocalDateTime(rawValue: "2026-07-29T08:45"),
+        carrier: "ITA Airways",
+        referenceNumber: "AZ611",
+        vehicleDescription: nil,
+        confirmationNumber: "VOYAGE6",
+        bookingURL: URL(string: "https://example.com/bookings/fixture-flight"),
+        notes: nil
+      )
+    )
+  )
+
+  static let gmailScan = GmailScanResult(
+    candidates: [gmailCandidate],
+    alreadyImported: 0,
+    messagesScanned: 12,
+    search: GmailScanSearchSummary(
+      rangeStart: LocalDate(rawValue: "2026-07-14")!,
+      rangeEnd: LocalDate(rawValue: "2026-08-19")!,
+      windowsSearched: 1,
+      queriesRun: 3,
+      followUpQueriesRun: 0,
+      messagesDiscovered: 12,
+      messagesFetched: 12,
+      messagesReused: 0,
+      gapsSearched: 0,
+      rejections: [:],
+      limitReached: false,
+      stoppedReason: "complete"
+    )
+  )
 }
 
 actor FixtureAPI: VoyageAPI {
   private var fixtureWorkspace = FixtureFactory.workspace
+
+  func createTrip(input: CreateTripInput) async throws -> Trip {
+    Trip(
+      id: UUID(),
+      name: input.name,
+      startDate: input.stops.compactMap(\.arrivalDate).min(),
+      endDate: input.stops.compactMap(\.departureDate).max(),
+      stops: input.stops.enumerated().map { position, stop in
+        TripStop(
+          id: UUID(),
+          position: position,
+          name: stop.name,
+          arrivalDate: stop.arrivalDate,
+          departureDate: stop.departureDate,
+          location: stop.location.map {
+            TripStopLocation(
+              provider: $0.provider,
+              placeID: $0.placeID,
+              latitude: nil,
+              longitude: nil
+            )
+          }
+        )
+      },
+      accessLevel: .owner,
+      createdAt: "2026-08-01T12:00:00.000Z",
+      updatedAt: "2026-08-01T12:00:00.000Z"
+    )
+  }
+
+  func locationSuggestions(query: String, sessionToken: UUID) async throws
+    -> [LocationSuggestion]
+  {
+    [
+      LocationSuggestion(
+        placeID: "fixture-rome",
+        label: "Rome, Metropolitan City of Rome Capital, Italy",
+        primaryText: "Rome",
+        secondaryText: "Metropolitan City of Rome Capital, Italy",
+        types: ["locality", "political", "geocode"],
+        kind: .city
+      )
+    ]
+  }
+
+  func resolveLocation(placeID: String, sessionToken: UUID) async throws
+    -> TripStopLocationInput
+  {
+    TripStopLocationInput(provider: "google", placeID: placeID)
+  }
 
   func listTrips(ifNoneMatch: String?) async throws -> APIReadResult<TripIndex> {
     .modified(
@@ -373,6 +480,38 @@ actor FixtureAPI: VoyageAPI {
       )
     }
     return FixtureFactory.people
+  }
+
+  func gmailConnection() async throws -> GmailConnection {
+    GmailConnection(
+      connected: true,
+      email: "traveler@example.com",
+      connectedAt: "2026-08-04T12:00:00.000Z"
+    )
+  }
+
+  func disconnectGmail() async throws {}
+
+  func scanGmail(tripID: UUID, mode: GmailScanMode) async throws -> GmailScanResult {
+    try validate(tripID: tripID)
+    return FixtureFactory.gmailScan
+  }
+
+  func importGmail(
+    tripID: UUID,
+    candidates: [GmailImportCandidate]
+  ) async throws -> GmailImportResult {
+    try validate(tripID: tripID)
+    return GmailImportResult(
+      imported: candidates.map { candidate in
+        GmailImportedItem(
+          sourceKey: candidate.id,
+          kind: "travel",
+          itemID: UUID()
+        )
+      },
+      skipped: []
+    )
   }
 
   func createPlan(
@@ -505,6 +644,22 @@ actor FixtureAPI: VoyageAPI {
 }
 
 struct OfflineFixtureAPI: VoyageAPI {
+  func createTrip(input: CreateTripInput) async throws -> Trip {
+    throw offlineError
+  }
+
+  func locationSuggestions(query: String, sessionToken: UUID) async throws
+    -> [LocationSuggestion]
+  {
+    throw offlineError
+  }
+
+  func resolveLocation(placeID: String, sessionToken: UUID) async throws
+    -> TripStopLocationInput
+  {
+    throw offlineError
+  }
+
   func listTrips(ifNoneMatch: String?) async throws -> APIReadResult<TripIndex> {
     throw offlineError
   }

@@ -140,3 +140,146 @@ func makePlanResponseData(revision: Int = 4) -> Data {
     """.utf8
   )
 }
+
+func makeTripResponseData() -> Data {
+  Data(
+    """
+    {
+      "trip": {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Winter in Montréal",
+        "startDate": "2026-12-04",
+        "endDate": "2026-12-08",
+        "stops": [
+          {
+            "id": "88888888-8888-4888-8888-888888888888",
+            "position": 0,
+            "name": "Montréal, Canada",
+            "arrivalDate": "2026-12-04",
+            "departureDate": "2026-12-08",
+            "location": null
+          }
+        ],
+        "accessLevel": "owner",
+        "createdAt": "2026-08-01T12:00:00.000Z",
+        "updatedAt": "2026-08-01T12:00:00.000Z"
+      }
+    }
+    """.utf8
+  )
+}
+
+func makeLocationSuggestionsData() -> Data {
+  Data(
+    """
+    {
+      "suggestions": [
+        {
+          "placeId": "ChIJDbdkHFQayUwR7-8fITgxTmU",
+          "label": "Montréal, Québec, Canada",
+          "primaryText": "Montréal",
+          "secondaryText": "Québec, Canada",
+          "types": ["locality", "political", "geocode"],
+          "kind": "city"
+        }
+      ]
+    }
+    """.utf8
+  )
+}
+
+func makeResolvedLocationData(placeID: String) -> Data {
+  Data(
+    """
+    {
+      "location": {
+        "provider": "google",
+        "placeId": "\(placeID)"
+      }
+    }
+    """.utf8
+  )
+}
+
+func makeGmailConnectionData() -> Data {
+  Data(#"{"connected":true,"email":"traveler@example.com","connectedAt":"2026-08-04T12:00:00.000Z"}"#.utf8)
+}
+
+func makeGmailConnectData() -> Data {
+  Data(#"{"authorizationUrl":"https://accounts.google.com/o/oauth2/v2/auth?state=test"}"#.utf8)
+}
+
+func makeGmailScanData() -> Data {
+  Data(
+    """
+    {
+      "candidates": [
+        {
+          "kind": "travel",
+          "source": {
+            "key": "gmail:message-flight:travel:0",
+            "messageId": "message-flight",
+            "threadId": "thread-flight",
+            "subject": "Flight confirmation",
+            "sender": "Airline <bookings@example.com>",
+            "receivedAt": "2026-08-01T12:00:00.000Z",
+            "messageUrl": "https://mail.google.com/mail/#inbox/message-flight"
+          },
+          "confidence": "high",
+          "eventType": "confirmation",
+          "input": {
+            "kind": "journey",
+            "type": "flight",
+            "status": "booked",
+            "departureStopId": null,
+            "arrivalStopId": "22222222-2222-4222-8222-222222222222",
+            "departureAirportId": null,
+            "arrivalAirportId": null,
+            "departureLocation": "ORD · Chicago O'Hare",
+            "arrivalLocation": "LIS · Lisbon",
+            "departureAt": "2026-10-04T18:20",
+            "arrivalAt": "2026-10-05T08:30",
+            "carrier": "United",
+            "referenceNumber": "UA 942",
+            "vehicleDescription": null,
+            "confirmationNumber": "VOY123",
+            "bookingUrl": "https://example.com/manage/VOY123",
+            "notes": null
+          }
+        }
+      ],
+      "alreadyImported": 0,
+      "messagesScanned": 4,
+      "search": {
+        "rangeStart": "2026-04-01",
+        "rangeEnd": "2027-04-01",
+        "windowsSearched": 3,
+        "queriesRun": 8,
+        "followUpQueriesRun": 2,
+        "messagesDiscovered": 5,
+        "messagesFetched": 4,
+        "messagesReused": 0,
+        "gapsSearched": 1,
+        "rejections": {"no_supported_booking": 1},
+        "limitReached": false,
+        "stoppedReason": "complete"
+      }
+    }
+    """.utf8
+  )
+}
+
+func makeGmailImportData() -> Data {
+  Data(
+    """
+    {
+      "imported": [{
+        "sourceKey": "gmail:message-flight:travel:0",
+        "kind": "travel",
+        "itemId": "99999999-9999-4999-8999-999999999999"
+      }],
+      "skipped": []
+    }
+    """.utf8
+  )
+}
