@@ -12,9 +12,35 @@ type GmailProfile = {
   emailAddress: string;
 };
 
+type GoogleErrorResponse = {
+  error?: string;
+};
+
+export class GoogleOAuthError extends Error {
+  readonly status: number;
+  readonly code?: string;
+
+  constructor(action: string, status: number, code?: string) {
+    super(`Google ${action} failed with status ${status}.`);
+    this.name = "GoogleOAuthError";
+    this.status = status;
+    this.code = code;
+  }
+
+  get requiresReauthorization() {
+    return this.code === "invalid_grant";
+  }
+}
+
 async function googleJson<T>(response: Response, action: string): Promise<T> {
   if (!response.ok) {
-    throw new Error(`Google ${action} failed with status ${response.status}.`);
+    let code: string | undefined;
+    try {
+      code = (await response.clone().json<GoogleErrorResponse>()).error;
+    } catch {
+      // Google does not guarantee a JSON error body for dependency failures.
+    }
+    throw new GoogleOAuthError(action, response.status, code);
   }
   return response.json<T>();
 }

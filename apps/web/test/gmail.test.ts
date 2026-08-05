@@ -1532,6 +1532,49 @@ describe("Gmail import", () => {
     expect(importResponse.headers.get("X-Voyage-API-Version")).toBe("1");
   });
 
+  it("clears an expired Gmail connection and asks the user to reconnect", async () => {
+    const { trip } = await createTrip();
+    await connectGmail(`/trips/${trip.id}`);
+    const expiredGoogleFetch: typeof fetch = async (input, init) => {
+      const googleRequest = new Request(input, init);
+      if (
+        new URL(googleRequest.url).pathname === "/token" &&
+        (await googleRequest.clone().formData()).get("grant_type") === "refresh_token"
+      ) {
+        return Response.json(
+          { error: "invalid_grant", error_description: "Token has been expired or revoked." },
+          { status: 400 },
+        );
+      }
+      return googleFetch(input, init);
+    };
+    const expiredApp = createApp({
+      authenticateRequest: async (authenticatedRequest) =>
+        authenticatedRequest.headers.get("x-test-user"),
+      gmailFetch: expiredGoogleFetch,
+      placesClient,
+    });
+
+    const scanResponse = await expiredApp.request(
+      `https://voyage.test${tripGmailScanEndpoint(trip.id)}`,
+      { method: "POST", headers: { "x-test-user": "user_owner" } },
+      env,
+    );
+    const payload = await scanResponse.json<{
+      error: { code: string; message: string };
+    }>();
+    const connection = await (
+      await request(gmailIntegrationEndpoint, "user_owner")
+    ).json<GmailConnection>();
+
+    expect(scanResponse.status).toBe(409);
+    expect(payload.error).toEqual({
+      code: "gmail_reauthorization_required",
+      message: "Your Gmail connection expired. Connect Gmail again to continue.",
+    });
+    expect(connection).toEqual({ connected: false });
+  });
+
   it("scans, imports approved travel and stays, deduplicates, and disconnects", async () => {
     const { trip } = await createTrip();
     await connectGmail(`/trips/${trip.id}`);

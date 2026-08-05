@@ -896,6 +896,7 @@ export const apiErrorSchema = z.object({
       "not_found",
       "validation_error",
       "gmail_not_connected",
+      "gmail_reauthorization_required",
       "conflict",
       "email_mismatch",
       "expired",

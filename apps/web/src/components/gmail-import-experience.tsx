@@ -429,6 +429,7 @@ function GmailImportExperience({ trip }: { trip: Trip }) {
     search: GmailScanResponse["search"];
   }>();
   const [importResult, setImportResult] = useState<GmailImportResponse>();
+  const [connectionNotice, setConnectionNotice] = useState<string>();
   const connection = useGmailConnection();
   const connect = useConnectGmail();
   const disconnect = useDisconnectGmail();
@@ -477,6 +478,7 @@ function GmailImportExperience({ trip }: { trip: Trip }) {
     setExpandedGroup(undefined);
     setScanSummary(undefined);
     setImportResult(undefined);
+    setConnectionNotice(undefined);
   }
 
   function handleOpenChange(next: boolean) {
@@ -496,6 +498,7 @@ function GmailImportExperience({ trip }: { trip: Trip }) {
   }
 
   async function handleConnect() {
+    setConnectionNotice(undefined);
     const response = await connect.mutateAsync({ client: "web", returnTo: location.pathname });
     window.location.assign(response.authorizationUrl);
   }
@@ -507,18 +510,25 @@ function GmailImportExperience({ trip }: { trip: Trip }) {
   }
 
   async function handleScan(mode: "standard" | "deep" = "standard") {
-    const result = await scan.mutateAsync(mode);
-    const groups = groupCandidates(result.candidates);
-    setCandidates(result.candidates);
-    setSelected(new Set(result.candidates.map((candidate) => candidate.source.key)));
-    setExpandedGroup(groups.find(groupNeedsAttention)?.key);
-    setScanSummary({
-      messages: result.messagesScanned,
-      imported: result.alreadyImported,
-      search: result.search,
-    });
-    setImportResult(undefined);
-    setStep("review");
+    try {
+      const result = await scan.mutateAsync(mode);
+      const groups = groupCandidates(result.candidates);
+      setCandidates(result.candidates);
+      setSelected(new Set(result.candidates.map((candidate) => candidate.source.key)));
+      setExpandedGroup(groups.find(groupNeedsAttention)?.key);
+      setScanSummary({
+        messages: result.messagesScanned,
+        imported: result.alreadyImported,
+        search: result.search,
+      });
+      setImportResult(undefined);
+      setStep("review");
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.code === "gmail_reauthorization_required") {
+        setConnectionNotice(error.message);
+        setStep("connect");
+      }
+    }
   }
 
   function replaceCandidate(input: CreateTravelInput | CreateStayInput) {
@@ -638,6 +648,12 @@ function GmailImportExperience({ trip }: { trip: Trip }) {
                 {callbackResult === "error" ? (
                   <p className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                     Gmail could not be connected. Please try the consent flow again.
+                  </p>
+                ) : null}
+
+                {connectionNotice ? (
+                  <p className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                    {connectionNotice}
                   </p>
                 ) : null}
 

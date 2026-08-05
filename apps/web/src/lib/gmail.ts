@@ -11,7 +11,7 @@ import {
   tripGmailImportEndpoint,
   tripGmailScanEndpoint,
 } from "@voyage/contracts";
-import { useApiRequest } from "@/lib/api";
+import { ApiRequestError, useApiRequest } from "@/lib/api";
 
 const gmailKeys = {
   connection: ["gmail", "connection"] as const,
@@ -48,12 +48,18 @@ function useDisconnectGmail() {
 
 function useScanGmail(tripId: string) {
   const request = useApiRequest();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (mode: "standard" | "deep" = "standard") =>
       request<GmailScanResponse>(tripGmailScanEndpoint(tripId), {
         method: "POST",
         body: JSON.stringify({ mode }),
       }),
+    onError: (error) => {
+      if (error instanceof ApiRequestError && error.code === "gmail_reauthorization_required") {
+        queryClient.setQueryData<GmailConnection>(gmailKeys.connection, { connected: false });
+      }
+    },
   });
 }
 

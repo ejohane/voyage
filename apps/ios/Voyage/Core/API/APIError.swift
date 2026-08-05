@@ -33,6 +33,13 @@ enum APIError: LocalizedError, Equatable, Sendable {
   }
 }
 
+extension APIError {
+  var requiresGmailReauthorization: Bool {
+    guard case .server(_, let code, _, _, _, _) = self else { return false }
+    return code == "gmail_reauthorization_required"
+  }
+}
+
 struct APIErrorEnvelopeDTO: Decodable, Sendable {
   struct Detail: Decodable, Sendable {
     let code: String?
