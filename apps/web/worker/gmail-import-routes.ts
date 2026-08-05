@@ -12,11 +12,12 @@ import { decryptSecret, encryptSecret } from "./gmail-crypto";
 import { importGmailCandidate } from "./gmail-import-repository";
 import { scanGmailBookings } from "./gmail-ingestion";
 import {
+  deleteGmailConnection,
   getGmailConnection,
   listImportedSourceKeys,
   saveGmailConnection,
 } from "./gmail-repository";
-import { refreshGoogleAccessToken } from "./google-oauth";
+import { GoogleOAuthError, refreshGoogleAccessToken } from "./google-oauth";
 import { createGooglePlacesClient, type PlacesClient } from "./google-places";
 import { listTravel } from "./planning-repository";
 import { getTrip } from "./trips-repository";
@@ -88,11 +89,27 @@ export function createGmailImportRoutes(
       connection.encryptedRefreshToken,
       context.env.GMAIL_TOKEN_ENCRYPTION_KEY,
     );
-    const tokens = await refreshGoogleAccessToken(fetcher, {
-      refreshToken,
-      clientId: context.env.GOOGLE_OAUTH_CLIENT_ID,
-      clientSecret: context.env.GOOGLE_OAUTH_CLIENT_SECRET,
-    });
+    let tokens: Awaited<ReturnType<typeof refreshGoogleAccessToken>>;
+    try {
+      tokens = await refreshGoogleAccessToken(fetcher, {
+        refreshToken,
+        clientId: context.env.GOOGLE_OAUTH_CLIENT_ID,
+        clientSecret: context.env.GOOGLE_OAUTH_CLIENT_SECRET,
+      });
+    } catch (error) {
+      if (!(error instanceof GoogleOAuthError) || !error.requiresReauthorization) throw error;
+      await deleteGmailConnection(context.env.DB, context.var.authUserId);
+      return context.json(
+        {
+          error: {
+            code: "gmail_reauthorization_required" as const,
+            message: "Your Gmail connection expired. Connect Gmail again to continue.",
+          },
+        },
+        409,
+        { "Cache-Control": "no-store" },
+      );
+    }
     if (tokens.refresh_token) {
       await saveGmailConnection(context.env.DB, {
         ...connection,

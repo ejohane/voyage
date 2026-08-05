@@ -345,6 +345,15 @@ struct GmailImportView: View {
       step = .review
     } catch is CancellationError {
       return
+    } catch let error as APIError {
+      if error.requiresGmailReauthorization {
+        connection = GmailConnection(connected: false, email: nil, connectedAt: nil)
+        scanResult = nil
+        candidates = []
+        selectedCandidateIDs = []
+        step = .connect
+      }
+      errorMessage = error.localizedDescription
     } catch {
       errorMessage = error.localizedDescription
     }

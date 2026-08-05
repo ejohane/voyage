@@ -472,6 +472,37 @@ struct APIClientTests {
     #expect(input["bookingUrl"] as? String == "https://example.com/manage/VOY123")
   }
 
+  @Test("Expired Gmail scans preserve the reconnect-required server response")
+  func expiredGmailScan() async {
+    let data = Data(
+      #"{"error":{"code":"gmail_reauthorization_required","message":"Your Gmail connection expired. Connect Gmail again to continue."}}"#
+        .utf8
+    )
+    let transport = MockHTTPTransport(stubs: [
+      .v1(statusCode: 409, data: data, requestID: "request-gmail-expired")
+    ])
+    let client = makeClient(transport: transport)
+
+    do {
+      _ = try await client.scanGmail(tripID: tripID, mode: .standard)
+      Issue.record("Expected Gmail reauthorization to be required")
+    } catch let error as APIError {
+      #expect(
+        error
+          == .server(
+            status: 409,
+            code: "gmail_reauthorization_required",
+            message: "Your Gmail connection expired. Connect Gmail again to continue.",
+            fieldErrors: [:],
+            currentRevision: nil,
+            requestID: "request-gmail-expired"
+          )
+      )
+    } catch {
+      Issue.record("Unexpected error: \(error)")
+    }
+  }
+
   @Test("PATCH plan sends quoted revision and maps a conflict")
   func updatePlanConflict() async {
     let data = Data(
