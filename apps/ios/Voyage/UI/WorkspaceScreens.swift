@@ -46,13 +46,8 @@ private struct WorkspaceOverviewView: View {
   @State private var editorMode: PlanEditorMode?
   @State private var selectedQuickAction: WorkspaceQuickAction?
 
-  private var timeline: [TripTimelineEntry] {
-    TripTimeline.entries(for: workspace)
-  }
-
-  private var comingUpGroups: [(date: LocalDate, entries: [TripTimelineEntry])] {
-    let today = LocalDate.current()
-    return TripTimeline.upcomingGroups(in: timeline, after: today, limit: 5)
+  private var itineraryGroups: [(date: LocalDate, entries: [TripTimelineEntry])] {
+    TripTimeline.groupedEntries(for: workspace)
   }
 
   private var canEdit: Bool {
@@ -75,15 +70,15 @@ private struct WorkspaceOverviewView: View {
       }
       .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
 
-      if comingUpGroups.isEmpty {
-        Section("Coming Up") {
+      if itineraryGroups.isEmpty {
+        Section("Itinerary") {
           EmptySectionRow(
-            title: "Nothing else scheduled",
+            title: "No itinerary yet",
             systemImage: "calendar"
           )
         }
       } else {
-        ForEach(comingUpGroups, id: \.date) { group in
+        ForEach(itineraryGroups, id: \.date) { group in
           Section {
             ForEach(group.entries) { entry in
               TimelineNavigationRow(
@@ -93,9 +88,9 @@ private struct WorkspaceOverviewView: View {
               )
             }
           } header: {
-            ComingUpDayHeader(
+            ItineraryDayHeader(
               date: group.date,
-              showsSectionTitle: group.date == comingUpGroups.first?.date
+              showsSectionTitle: group.date == itineraryGroups.first?.date
             )
           }
         }
@@ -361,14 +356,14 @@ private struct EmptySectionRow: View {
   }
 }
 
-private struct ComingUpDayHeader: View {
+private struct ItineraryDayHeader: View {
   let date: LocalDate
   let showsSectionTitle: Bool
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       if showsSectionTitle {
-        Text("Coming Up")
+        Text("Itinerary")
           .font(.subheadline)
           .foregroundStyle(.secondary)
       }
@@ -380,7 +375,7 @@ private struct ComingUpDayHeader: View {
     .textCase(nil)
     .accessibilityElement(children: .combine)
     .accessibilityAddTraits(.isHeader)
-    .accessibilityIdentifier("coming-up.day.\(date.rawValue)")
+    .accessibilityIdentifier("itinerary.day.\(date.rawValue)")
   }
 }
 
