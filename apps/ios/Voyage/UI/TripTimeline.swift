@@ -42,20 +42,6 @@ enum TripTimeline {
     groupedEntries(entries(for: workspace))
   }
 
-  static func upcomingGroups(
-    in entries: [TripTimelineEntry],
-    after date: LocalDate,
-    limit: Int
-  ) -> [(date: LocalDate, entries: [TripTimelineEntry])] {
-    guard limit > 0 else { return [] }
-    let upcoming =
-      entries
-      .filter { $0.date > date }
-      .sorted(by: areInDisplayOrder)
-      .prefix(limit)
-    return groupedEntries(Array(upcoming))
-  }
-
   private static func groupedEntries(
     _ entries: [TripTimelineEntry]
   ) -> [(date: LocalDate, entries: [TripTimelineEntry])] {

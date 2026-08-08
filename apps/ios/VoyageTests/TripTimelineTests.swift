@@ -31,22 +31,20 @@ struct TripTimelineTests {
     #expect(octoberFifth[1].time == nil)
   }
 
-  @Test("Upcoming preview groups five entries by day and preserves overnight boundaries")
-  func upcomingPreviewGrouping() throws {
+  @Test("Full itinerary groups every entry by day and preserves overnight boundaries")
+  func fullItineraryGrouping() throws {
     let workspace = try TestFixtures.workspace()
-    let entries = Array(TripTimeline.entries(for: workspace).reversed())
-    let groups = TripTimeline.upcomingGroups(
-      in: entries,
-      after: try #require(LocalDate(rawValue: "2026-10-03")),
-      limit: 5
-    )
+    let groups = TripTimeline.groupedEntries(for: workspace)
     let departure = try #require(groups.first?.entries.first)
     let arrival = try #require(groups.dropFirst().first?.entries.first)
 
-    #expect(groups.flatMap(\.entries).count == 5)
+    #expect(groups.flatMap(\.entries).count == TripTimeline.entries(for: workspace).count)
     #expect(
       groups.map(\.date.rawValue)
-        == ["2026-10-04", "2026-10-05", "2026-10-06", "2026-10-07"]
+        == [
+          "2026-10-04", "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-09",
+          "2026-10-12",
+        ]
     )
     #expect(departure.source == .travel(workspace.travel[0].id))
     #expect(arrival.source == .travel(workspace.travel[0].id))
