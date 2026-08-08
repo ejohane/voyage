@@ -163,9 +163,12 @@ export function createInvitationRoutes(
       }
     }
 
+    const now = currentTime().toISOString();
     const invitations =
       access === "owner"
-        ? (await listTripInvitations(context.env.DB, tripId)).map(mapTripInvitation)
+        ? (await listTripInvitations(context.env.DB, tripId)).map((invitation) =>
+            mapTripInvitation(invitation, now),
+          )
         : [];
     const response = tripPeopleResponseSchema.parse({
       members: membershipRows.map((membership) =>
@@ -304,7 +307,7 @@ export function createInvitationRoutes(
     }
 
     const response = createInvitationResponseSchema.parse({
-      invitation: mapTripInvitation(invitation),
+      invitation: mapTripInvitation(invitation, now),
       ...(isPreview ? { previewUrl: url } : {}),
     });
     return context.json(response, 201, { "Cache-Control": "no-store" });
@@ -367,7 +370,7 @@ export function createInvitationRoutes(
     const updated = (await getInvitationById(context.env.DB, tripId, invitation.id)) ?? invitation;
     return context.json(
       createInvitationResponseSchema.parse({
-        invitation: mapTripInvitation(updated),
+        invitation: mapTripInvitation(updated, now),
         ...(isPreview ? { previewUrl: url } : {}),
       }),
       200,
@@ -384,17 +387,18 @@ export function createInvitationRoutes(
       tripId,
       context.req.param("invitationId"),
     );
-    if (!invitation || invitationStatus(invitation) !== "pending") {
+    const nowDate = currentTime();
+    const now = nowDate.toISOString();
+    if (!invitation || invitationStatus(invitation, now) !== "pending") {
       return context.json(error("not_found", "Pending invitation not found."), 404);
     }
-    const nowDate = currentTime();
     const token = generateInvitationToken();
     await addInvitationToken(
       context.env.DB,
       invitation.id,
       await hashInvitationToken(token),
       invitation.expires_at,
-      nowDate.toISOString(),
+      now,
     );
     return context.json(
       invitationLinkResponseSchema.parse({

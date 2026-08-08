@@ -59,12 +59,12 @@ export function invitationStatus(
   return "pending";
 }
 
-export function mapTripInvitation(row: InvitationRow): TripInvitation {
+export function mapTripInvitation(row: InvitationRow, now: string): TripInvitation {
   return {
     id: row.id,
     email: row.email,
     role: "Traveler",
-    status: invitationStatus(row),
+    status: invitationStatus(row, now),
     expiresAt: row.expires_at,
     lastSentAt: row.last_sent_at,
     sendCount: row.send_count,
