@@ -55,6 +55,31 @@ struct APIClientTests {
     #expect(metadata.requestID == "request-304")
   }
 
+  @Test("Briefing loads independently without conditional caching")
+  func briefingRequest() async throws {
+    let transport = MockHTTPTransport(stubs: [
+      .v1(
+        statusCode: 200,
+        data: try TestFixtures.data(named: "trip-briefing"),
+        requestID: "request-briefing"
+      )
+    ])
+    let client = makeClient(transport: transport)
+
+    let briefing = try await client.briefing(tripID: tripID)
+
+    #expect(briefing.sections.count == 1)
+    #expect(briefing.sections[0].items.count == 3)
+    #expect(briefing.generatorVersion == "arrival-v1")
+    #expect(briefing.inputFingerprint == String(repeating: "d", count: 64))
+    let request = await transport.request(at: 0)
+    #expect(
+      request.url?.path
+        == "/base/api/v1/trips/11111111-1111-4111-8111-111111111111/briefing"
+    )
+    #expect(request.value(forHTTPHeaderField: "If-None-Match") == nil)
+  }
+
   @Test("GET maps structured API errors with fields, revision, and request ID")
   func getErrorMapping() async {
     let data = Data(

@@ -30,6 +30,28 @@ export function mapAirport(row: AirportRow): Airport {
   };
 }
 
+export async function findAirportByIataCode(
+  database: D1Database,
+  rawCode: string,
+): Promise<Airport | null> {
+  const code = rawCode.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(code)) return null;
+
+  const result = await database
+    .prepare(
+      `SELECT id, ident, iata_code, icao_code, type, name, municipality, iso_country, iso_region,
+              latitude, longitude
+       FROM airports
+       WHERE upper(iata_code) = ?
+       ORDER BY id
+       LIMIT 2`,
+    )
+    .bind(code)
+    .all<AirportRow>();
+
+  return result.results.length === 1 ? mapAirport(result.results[0]) : null;
+}
+
 function escapeLike(value: string) {
   return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
 }

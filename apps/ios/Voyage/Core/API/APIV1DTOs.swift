@@ -38,6 +38,211 @@ struct V1TripWorkspaceDTO: Decodable, Sendable {
   }
 }
 
+struct V1TripBriefingDTO: Decodable, Sendable {
+  let schemaVersion: Int
+  let generatedAt: String
+  let revision: String
+  let generatorVersion: String
+  let inputFingerprint: String
+  let sections: [ArrivalBriefingSectionDTO]
+  let issues: [BriefingIssueDTO]
+
+  var domain: TripBriefing {
+    TripBriefing(
+      schemaVersion: schemaVersion,
+      generatedAt: generatedAt,
+      revision: revision,
+      generatorVersion: generatorVersion,
+      inputFingerprint: inputFingerprint,
+      sections: sections.map(\.domain),
+      issues: issues.map(\.domain)
+    )
+  }
+}
+
+struct ArrivalBriefingSectionDTO: Decodable, Sendable {
+  let id: String
+  let kind: String
+  let date: LocalDate
+  let items: [BriefingItemDTO]
+  let issues: [BriefingIssueDTO]
+
+  var domain: ArrivalBriefingSection {
+    ArrivalBriefingSection(
+      id: id,
+      date: date,
+      items: items.map(\.domain),
+      issues: issues.map(\.domain)
+    )
+  }
+}
+
+struct BriefingIssueDTO: Decodable, Sendable {
+  let id: String
+  let code: String
+  let provenance: String
+
+  var domain: BriefingIssue {
+    BriefingIssue(
+      id: id,
+      code: BriefingIssueCode(rawValue: code),
+      provenance: BriefingProvenance(rawValue: provenance)
+    )
+  }
+}
+
+enum BriefingItemDTO: Decodable, Sendable {
+  case flightArrival(BriefingFlightArrivalItemDTO)
+  case rentalPickup(BriefingRentalPickupItemDTO)
+  case driveEstimate(BriefingDriveEstimateItemDTO)
+  case stayArrival(BriefingStayArrivalItemDTO)
+
+  private enum CodingKeys: String, CodingKey {
+    case kind
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    switch try container.decode(String.self, forKey: .kind) {
+    case "flight_arrival":
+      self = .flightArrival(try BriefingFlightArrivalItemDTO(from: decoder))
+    case "rental_pickup":
+      self = .rentalPickup(try BriefingRentalPickupItemDTO(from: decoder))
+    case "drive_estimate":
+      self = .driveEstimate(try BriefingDriveEstimateItemDTO(from: decoder))
+    case "stay_arrival":
+      self = .stayArrival(try BriefingStayArrivalItemDTO(from: decoder))
+    default:
+      throw DecodingError.dataCorruptedError(
+        forKey: .kind,
+        in: container,
+        debugDescription: "Unsupported briefing item kind."
+      )
+    }
+  }
+
+  var domain: BriefingItem {
+    switch self {
+    case .flightArrival(let item): .flightArrival(item.domain)
+    case .rentalPickup(let item): .rentalPickup(item.domain)
+    case .driveEstimate(let item): .driveEstimate(item.domain)
+    case .stayArrival(let item): .stayArrival(item.domain)
+    }
+  }
+}
+
+struct BriefingFlightArrivalItemDTO: Decodable, Sendable {
+  struct AirportSummaryDTO: Decodable, Sendable {
+    let id: Int
+    let iataCode: String
+    let name: String
+    let municipality: String?
+    let latitude: Double?
+    let longitude: Double?
+
+    var domain: BriefingFlightArrivalItem.AirportSummary {
+      BriefingFlightArrivalItem.AirportSummary(
+        id: id,
+        iataCode: iataCode,
+        name: name,
+        municipality: municipality,
+        latitude: latitude,
+        longitude: longitude
+      )
+    }
+  }
+
+  let id: String
+  let provenance: String
+  let sourceTravelId: UUID
+  let arrivalAt: LocalDateTime
+  let airport: AirportSummaryDTO
+  let carrier: String?
+  let referenceNumber: String?
+
+  var domain: BriefingFlightArrivalItem {
+    BriefingFlightArrivalItem(
+      id: id,
+      provenance: BriefingProvenance(rawValue: provenance),
+      sourceTravelID: sourceTravelId,
+      arrivalAt: arrivalAt,
+      airport: airport.domain,
+      carrier: carrier,
+      referenceNumber: referenceNumber
+    )
+  }
+}
+
+struct BriefingRentalPickupItemDTO: Decodable, Sendable {
+  let id: String
+  let provenance: String
+  let sourceTravelId: UUID
+  let pickupAt: LocalDateTime
+  let pickupLocation: String
+  let company: String?
+  let confirmationNumber: String?
+
+  var domain: BriefingRentalPickupItem {
+    BriefingRentalPickupItem(
+      id: id,
+      provenance: BriefingProvenance(rawValue: provenance),
+      sourceTravelID: sourceTravelId,
+      pickupAt: pickupAt,
+      pickupLocation: pickupLocation,
+      company: company,
+      confirmationNumber: confirmationNumber
+    )
+  }
+}
+
+struct BriefingDriveEstimateItemDTO: Decodable, Sendable {
+  let id: String
+  let provenance: String
+  let originLabel: String
+  let destinationLabel: String
+  let durationMinutes: Int
+  let distanceMeters: Int?
+  let estimateKind: String
+  let attribution: String
+  let directionsUrl: URL
+
+  var domain: BriefingDriveEstimateItem {
+    BriefingDriveEstimateItem(
+      id: id,
+      provenance: BriefingProvenance(rawValue: provenance),
+      originLabel: originLabel,
+      destinationLabel: destinationLabel,
+      durationMinutes: durationMinutes,
+      distanceMeters: distanceMeters,
+      estimateKind: estimateKind,
+      attribution: attribution,
+      directionsURL: directionsUrl
+    )
+  }
+}
+
+struct BriefingStayArrivalItemDTO: Decodable, Sendable {
+  let id: String
+  let provenance: String
+  let sourceStayId: UUID
+  let propertyName: String
+  let address: String
+  let checkInDate: LocalDate
+  let checkInWindow: String?
+
+  var domain: BriefingStayArrivalItem {
+    BriefingStayArrivalItem(
+      id: id,
+      provenance: BriefingProvenance(rawValue: provenance),
+      sourceStayID: sourceStayId,
+      propertyName: propertyName,
+      address: address,
+      checkInDate: checkInDate,
+      checkInWindow: checkInWindow
+    )
+  }
+}
+
 struct V1TripPeopleDTO: Decodable, Sendable {
   let schemaVersion: Int
   let generatedAt: String

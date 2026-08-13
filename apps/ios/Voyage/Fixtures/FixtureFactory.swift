@@ -138,16 +138,16 @@ enum FixtureFactory {
         kind: .rental,
         type: .car,
         status: .booked,
-        departureStopID: florenceStopID,
-        arrivalStopID: florenceStopID,
+        departureStopID: stopID,
+        arrivalStopID: stopID,
         departureAirportID: nil,
         arrivalAirportID: nil,
         departureAirport: nil,
         arrivalAirport: nil,
-        departureLocation: "Florence Santa Maria Novella",
-        arrivalLocation: "Florence Santa Maria Novella",
-        departureAt: LocalDateTime(rawValue: "2026-08-02T08:30")!,
-        arrivalAt: LocalDateTime(rawValue: "2026-08-04T18:00"),
+        departureLocation: "Rome Fiumicino Airport",
+        arrivalLocation: "Rome Fiumicino Airport",
+        departureAt: LocalDateTime(rawValue: "2026-07-28T21:15")!,
+        arrivalAt: LocalDateTime(rawValue: "2026-08-01T07:30"),
         carrier: "Sicily by Car",
         referenceNumber: nil,
         vehicleDescription: "Compact automatic",
@@ -288,6 +288,64 @@ enum FixtureFactory {
         updatedAt: "2026-07-20T12:00:00.000Z"
       ),
     ]
+  )
+
+  static let briefing = TripBriefing(
+    schemaVersion: 1,
+    generatedAt: "2026-07-28T12:00:00.000Z",
+    revision: String(repeating: "c", count: 64),
+    generatorVersion: "arrival-v1",
+    inputFingerprint: String(repeating: "d", count: 64),
+    sections: [
+      ArrivalBriefingSection(
+        id: "arrival:44444444-4444-4444-8444-444444444444:2026-07-28",
+        date: LocalDate(rawValue: "2026-07-28")!,
+        items: [
+          .flightArrival(
+            BriefingFlightArrivalItem(
+              id: "arrival-flight:44444444-4444-4444-8444-444444444444",
+              provenance: .booked,
+              sourceTravelID: UUID(uuidString: "44444444-4444-4444-8444-444444444444")!,
+              arrivalAt: LocalDateTime(rawValue: "2026-07-28T20:30")!,
+              airport: BriefingFlightArrivalItem.AirportSummary(
+                id: 2,
+                iataCode: "FCO",
+                name: "Leonardo da Vinci–Fiumicino Airport",
+                municipality: "Rome",
+                latitude: 41.8003,
+                longitude: 12.2389
+              ),
+              carrier: "Delta",
+              referenceNumber: "DL 444"
+            )
+          ),
+          .rentalPickup(
+            BriefingRentalPickupItem(
+              id: "arrival-rental:66666666-6666-4666-8666-666666666666",
+              provenance: .booked,
+              sourceTravelID: UUID(uuidString: "66666666-6666-4666-8666-666666666666")!,
+              pickupAt: LocalDateTime(rawValue: "2026-07-28T21:15")!,
+              pickupLocation: "Rome Fiumicino Airport",
+              company: "Sicily by Car",
+              confirmationNumber: "CAR-8421"
+            )
+          ),
+          .stayArrival(
+            BriefingStayArrivalItem(
+              id: "arrival-stay:77777777-7777-4777-8777-777777777777",
+              provenance: .booked,
+              sourceStayID: UUID(uuidString: "77777777-7777-4777-8777-777777777777")!,
+              propertyName: "Hotel de’ Ricci",
+              address: "Via della Barchetta 14, Rome",
+              checkInDate: LocalDate(rawValue: "2026-07-28")!,
+              checkInWindow: "3:00 PM – 11:00 PM"
+            )
+          ),
+        ],
+        issues: []
+      )
+    ],
+    issues: []
   )
 
   static let people = TripPeople(
@@ -466,6 +524,11 @@ actor FixtureAPI: VoyageAPI {
         requestID: "fixture-workspace"
       )
     )
+  }
+
+  func briefing(tripID: UUID) async throws -> TripBriefing {
+    try validate(tripID: tripID)
+    return FixtureFactory.briefing
   }
 
   func people(tripID: UUID) async throws -> TripPeople {
