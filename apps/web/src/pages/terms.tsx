@@ -51,6 +51,10 @@ function TermsPage() {
           </a>
           .
         </p>
+        <p>
+          Arrival route estimates in the iOS app use Apple Maps and are subject to Apple’s terms and
+          privacy policy.
+        </p>
       </LegalSection>
 
       <LegalSection title="Connected AI tools">

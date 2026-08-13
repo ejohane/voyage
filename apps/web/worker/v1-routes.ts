@@ -7,6 +7,7 @@ import {
   v1CreateScheduledPlanInputSchema,
   v1PlanResponseSchema,
   v1ScheduledPlanSchema,
+  v1TripBriefingResponseSchema,
   v1TripListResponseSchema,
   v1TripPeopleResponseSchema,
   v1TripWorkspaceResponseSchema,
@@ -16,6 +17,12 @@ import {
 import { Hono } from "hono";
 import { routePath } from "hono/route";
 import { z } from "zod";
+import { findAirportByIataCode } from "./airport-repository";
+import {
+  arrivalBriefingGeneratorVersion,
+  buildArrivalBriefing,
+  resolveLegacyArrivalAirports,
+} from "./arrival-briefing";
 import { type AuthenticateRequest, createAuthMiddleware } from "./auth";
 import { backendRequestId, logBackendFailure } from "./backend-logging";
 import { createGmailImportRoutes } from "./gmail-import-routes";
@@ -196,6 +203,46 @@ export function createV1Routes(
       ...workspace,
     });
     return context.json(response, 200, headers);
+  });
+
+  routes.get("/trips/:tripId/briefing", async (context) => {
+    const tripId = context.req.param("tripId");
+    const trip = await getTrip(context.env.DB, context.var.authUserId, tripId);
+    if (!trip) return context.json(error("not_found", "Trip not found."), 404);
+
+    const [travel, stays] = await Promise.all([
+      listTravel(context.env.DB, tripId),
+      listStays(context.env.DB, tripId),
+    ]);
+    const briefingTravel = await resolveLegacyArrivalAirports(travel, (iataCode) =>
+      findAirportByIataCode(context.env.DB, iataCode),
+    );
+    const briefing = await buildArrivalBriefing({
+      trip,
+      travel: briefingTravel,
+      stays,
+    });
+    const inputFingerprint = await sha256({
+      generatorVersion: arrivalBriefingGeneratorVersion,
+      trip,
+      travel: briefingTravel,
+      stays,
+    });
+    const response = v1TripBriefingResponseSchema.parse({
+      schemaVersion: voyageApiV1SchemaVersion,
+      generatedAt: currentTime().toISOString(),
+      revision: await sha256({
+        generatorVersion: arrivalBriefingGeneratorVersion,
+        inputFingerprint,
+        briefing,
+      }),
+      generatorVersion: arrivalBriefingGeneratorVersion,
+      inputFingerprint,
+      ...briefing,
+    });
+    return context.json(response, 200, {
+      "Cache-Control": "private, no-store",
+    });
   });
 
   routes.get("/trips/:tripId/people", async (context) => {
@@ -408,6 +455,7 @@ export function createV1Routes(
 export const v1ResponseSchemas = {
   tripList: v1TripListResponseSchema,
   workspace: v1TripWorkspaceResponseSchema,
+  briefing: v1TripBriefingResponseSchema,
   people: v1TripPeopleResponseSchema,
   plan: v1PlanResponseSchema,
   scheduledPlan: v1ScheduledPlanSchema,

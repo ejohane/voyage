@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-01T12:00:00.000Z",
+  "revision": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "generatorVersion": "arrival-v1",
+  "inputFingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "sections": [
+    {
+      "id": "arrival:33333333-3333-4333-8333-333333333333:2026-10-05",
+      "kind": "arrival",
+      "date": "2026-10-05",
+      "items": [
+        {
+          "id": "arrival-flight:33333333-3333-4333-8333-333333333333",
+          "kind": "flight_arrival",
+          "provenance": "booked",
+          "sourceTravelId": "33333333-3333-4333-8333-333333333333",
+          "arrivalAt": "2026-10-05T08:10",
+          "airport": {
+            "id": 3622,
+            "iataCode": "LIS",
+            "name": "Humberto Delgado Airport",
+            "municipality": "Lisbon",
+            "latitude": 38.7742,
+            "longitude": -9.1342
+          },
+          "carrier": "United Airlines",
+          "referenceNumber": "UA 942"
+        },
+        {
+          "id": "arrival-rental:33333333-3333-4333-8333-333333333334",
+          "kind": "rental_pickup",
+          "provenance": "booked",
+          "sourceTravelId": "33333333-3333-4333-8333-333333333334",
+          "pickupAt": "2026-10-05T09:00",
+          "pickupLocation": "Lisbon Airport",
+          "company": "Europcar",
+          "confirmationNumber": "CAR123"
+        },
+        {
+          "id": "arrival-stay:44444444-4444-4444-8444-444444444444",
+          "kind": "stay_arrival",
+          "provenance": "booked",
+          "sourceStayId": "44444444-4444-4444-8444-444444444444",
+          "propertyName": "Memmo Alfama",
+          "address": "Travessa das Merceeiras 27, Lisbon",
+          "checkInDate": "2026-10-05",
+          "checkInWindow": "15:00 – midnight"
+        }
+      ],
+      "issues": []
+    }
+  ],
+  "issues": []
+}

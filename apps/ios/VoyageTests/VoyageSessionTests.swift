@@ -321,6 +321,7 @@ struct VoyageSessionTests {
   func purgeFailurePreservesSessionState() async throws {
     let index = try TestFixtures.tripIndex()
     let workspace = try TestFixtures.workspace()
+    let briefing = try TestFixtures.briefing()
     let api = SessionAPI(
       listResult: .modified(
         index,
@@ -329,15 +330,18 @@ struct VoyageSessionTests {
           requestID: "request-index"
         )
       ),
-      workspaceResults: [modified(workspace, requestID: "request-workspace")]
+      workspaceResults: [modified(workspace, requestID: "request-workspace")],
+      briefingResults: [briefing]
     )
     let cache = PurgeFailingSnapshotCache()
     let session = VoyageSession(api: api, cache: cache)
     await session.start()
     await session.loadWorkspace(tripID: workspace.trip.id)
+    await session.loadBriefing(tripID: workspace.trip.id)
     await session.loadPeople(tripID: workspace.trip.id)
     let originalTripIndexState = session.tripIndexState
     let originalWorkspaceState = session.workspaceState(for: workspace.trip.id)
+    let originalBriefingState = session.briefingState(for: workspace.trip.id)
     let originalPeople = session.peopleByTripID
     let originalPlanMutationState = session.planMutationState
     let originalLastError = session.lastError
@@ -353,9 +357,46 @@ struct VoyageSessionTests {
 
     #expect(session.tripIndexState == originalTripIndexState)
     #expect(session.workspaceState(for: workspace.trip.id) == originalWorkspaceState)
+    #expect(session.briefingState(for: workspace.trip.id) == originalBriefingState)
     #expect(session.peopleByTripID == originalPeople)
     #expect(session.planMutationState == originalPlanMutationState)
     #expect(session.lastError == originalLastError)
+  }
+
+  @Test("A briefing loads independently from its workspace")
+  func briefingLoadsIndependently() async throws {
+    let workspace = try TestFixtures.workspace()
+    let briefing = try TestFixtures.briefing()
+    let api = SessionAPI(
+      workspaceResults: [modified(workspace, requestID: "request-workspace")],
+      briefingResults: [briefing]
+    )
+    let session = VoyageSession(api: api, cache: InMemorySnapshotCache())
+
+    await session.loadWorkspace(tripID: workspace.trip.id)
+    await session.loadBriefing(tripID: workspace.trip.id)
+
+    #expect(self.workspace(from: session, tripID: workspace.trip.id) == workspace)
+    #expect(session.briefingState(for: workspace.trip.id) == .loaded(briefing))
+    #expect(await api.briefingTripIDs == [workspace.trip.id])
+  }
+
+  @Test("A briefing failure leaves the loaded workspace available")
+  func briefingFailurePreservesWorkspace() async throws {
+    let workspace = try TestFixtures.workspace()
+    let error = APIError.transport(message: "offline")
+    let api = SessionAPI(
+      workspaceResults: [modified(workspace, requestID: "request-workspace")],
+      briefingError: error
+    )
+    let session = VoyageSession(api: api, cache: InMemorySnapshotCache())
+
+    await session.loadWorkspace(tripID: workspace.trip.id)
+    await session.loadBriefing(tripID: workspace.trip.id)
+
+    #expect(self.workspace(from: session, tripID: workspace.trip.id) == workspace)
+    #expect(session.briefingState(for: workspace.trip.id) == .failed(error))
+    #expect(session.lastError == nil)
   }
 
   private func modified(
@@ -438,6 +479,9 @@ actor SessionAPI: VoyageAPI {
   private var workspaceResults: [APIReadResult<TripWorkspace>]
   private(set) var workspaceIfNoneMatches: [String?] = []
   private let workspaceError: APIError?
+  private var briefingResults: [TripBriefing]
+  private let briefingError: APIError?
+  private(set) var briefingTripIDs: [UUID] = []
   private var createTrips: [Trip]
   private var createPlans: [Plan]
   private var updatePlans: [Plan]
@@ -450,6 +494,8 @@ actor SessionAPI: VoyageAPI {
     suspendList: Bool = false,
     workspaceResults: [APIReadResult<TripWorkspace>] = [],
     workspaceError: APIError? = nil,
+    briefingResults: [TripBriefing] = [],
+    briefingError: APIError? = nil,
     createTrips: [Trip] = [],
     createPlans: [Plan] = [],
     updatePlans: [Plan] = [],
@@ -467,6 +513,8 @@ actor SessionAPI: VoyageAPI {
     self.suspendList = suspendList
     self.workspaceResults = workspaceResults
     self.workspaceError = workspaceError
+    self.briefingResults = briefingResults
+    self.briefingError = briefingError
     self.createTrips = createTrips
     self.createPlans = createPlans
     self.updatePlans = updatePlans
@@ -527,6 +575,13 @@ actor SessionAPI: VoyageAPI {
 
   func people(tripID: UUID) async throws -> TripPeople {
     TripPeople(schemaVersion: 1, generatedAt: "", members: [])
+  }
+
+  func briefing(tripID: UUID) async throws -> TripBriefing {
+    briefingTripIDs.append(tripID)
+    if let briefingError { throw briefingError }
+    guard !briefingResults.isEmpty else { throw APIError.invalidResponse }
+    return briefingResults.removeFirst()
   }
 
   func createPlan(

@@ -17,6 +17,7 @@ protocol VoyageAPI: Sendable {
     -> [LocationSuggestion]
   func resolveLocation(placeID: String, sessionToken: UUID) async throws -> TripStopLocationInput
   func workspace(tripID: UUID, ifNoneMatch: String?) async throws -> APIReadResult<TripWorkspace>
+  func briefing(tripID: UUID) async throws -> TripBriefing
   func people(tripID: UUID) async throws -> TripPeople
   func gmailConnection() async throws -> GmailConnection
   func beginGmailConnection(tripID: UUID) async throws -> URL
@@ -41,6 +42,7 @@ protocol VoyageAPI: Sendable {
 }
 
 extension VoyageAPI {
+  func briefing(tripID: UUID) async throws -> TripBriefing { throw APIError.invalidResponse }
   func gmailConnection() async throws -> GmailConnection { throw APIError.invalidResponse }
   func beginGmailConnection(tripID: UUID) async throws -> URL { throw APIError.invalidResponse }
   func disconnectGmail() async throws { throw APIError.invalidResponse }
@@ -199,6 +201,26 @@ actor APIClient: VoyageAPI {
         metadata: metadata
       )
       return dto.domain
+    }
+  }
+
+  func briefing(tripID: UUID) async throws -> TripBriefing {
+    let result: APIReadResult<V1TripBriefingDTO> = try await get(
+      path: "/api/v1/trips/\(tripID.uuidString.lowercased())/briefing",
+      ifNoneMatch: nil
+    )
+    switch result {
+    case .modified(let dto, _):
+      guard dto.schemaVersion == Self.version,
+        dto.revision.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil,
+        dto.generatorVersion == "arrival-v1",
+        dto.inputFingerprint.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil
+      else {
+        throw APIError.invalidResponse
+      }
+      return dto.domain
+    case .notModified:
+      throw APIError.invalidResponse
     }
   }
 

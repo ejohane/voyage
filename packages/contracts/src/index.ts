@@ -52,6 +52,10 @@ export function v1TripWorkspaceEndpoint(tripId: string) {
   return `${v1TripEndpoint(tripId)}/workspace` as const;
 }
 
+export function v1TripBriefingEndpoint(tripId: string) {
+  return `${v1TripEndpoint(tripId)}/briefing` as const;
+}
+
 export function v1TripPeopleEndpoint(tripId: string) {
   return `${v1TripEndpoint(tripId)}/people` as const;
 }
@@ -771,6 +775,95 @@ export const v1TripWorkspaceResponseSchema = apiV1EnvelopeSchema.extend({
   plans: z.array(v1ScheduledPlanSchema),
 });
 
+export const briefingProvenanceSchema = z.enum(["booked", "estimated", "needs_attention"]);
+
+const briefingItemBaseSchema = z.object({
+  id: z.string().min(1).max(200),
+});
+
+export const briefingFlightArrivalItemSchema = briefingItemBaseSchema.extend({
+  kind: z.literal("flight_arrival"),
+  provenance: z.literal("booked"),
+  sourceTravelId: z.string().uuid(),
+  arrivalAt: localDateTimeSchema,
+  airport: z.object({
+    id: z.number().int().positive(),
+    iataCode: z.string().length(3),
+    name: z.string().min(1).max(200),
+    municipality: z.string().max(160).nullable(),
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+  }),
+  carrier: z.string().max(120).nullable(),
+  referenceNumber: z.string().max(80).nullable(),
+});
+
+export const briefingRentalPickupItemSchema = briefingItemBaseSchema.extend({
+  kind: z.literal("rental_pickup"),
+  provenance: z.literal("booked"),
+  sourceTravelId: z.string().uuid(),
+  pickupAt: localDateTimeSchema,
+  pickupLocation: z.string().min(1).max(160),
+  company: z.string().max(120).nullable(),
+  confirmationNumber: z.string().max(120).nullable(),
+});
+
+export const briefingDriveEstimateItemSchema = briefingItemBaseSchema.extend({
+  kind: z.literal("drive_estimate"),
+  provenance: z.literal("estimated"),
+  originLabel: z.string().min(1).max(300),
+  destinationLabel: z.string().min(1).max(300),
+  durationMinutes: z.number().int().positive(),
+  distanceMeters: z.number().int().nonnegative().nullable(),
+  estimateKind: z.literal("traffic_unaware"),
+  attribution: z.literal("Google Maps"),
+  directionsUrl: z.string().url(),
+});
+
+export const briefingStayArrivalItemSchema = briefingItemBaseSchema.extend({
+  kind: z.literal("stay_arrival"),
+  provenance: z.literal("booked"),
+  sourceStayId: z.string().uuid(),
+  propertyName: z.string().min(1).max(160),
+  address: z.string().min(1).max(300),
+  checkInDate: dateOnlySchema,
+  checkInWindow: z.string().max(120).nullable(),
+});
+
+export const briefingItemSchema = z.discriminatedUnion("kind", [
+  briefingFlightArrivalItemSchema,
+  briefingRentalPickupItemSchema,
+  briefingDriveEstimateItemSchema,
+  briefingStayArrivalItemSchema,
+]);
+
+export const briefingIssueSchema = z.object({
+  id: z.string().min(1).max(200),
+  code: z.enum([
+    "ambiguous_flight",
+    "ambiguous_stay",
+    "stay_location_unresolved",
+    "route_unavailable",
+  ]),
+  provenance: z.literal("needs_attention"),
+});
+
+export const arrivalBriefingSectionSchema = z.object({
+  id: z.string().min(1).max(200),
+  kind: z.literal("arrival"),
+  date: dateOnlySchema,
+  items: z.array(briefingItemSchema).min(1).max(4),
+  issues: z.array(briefingIssueSchema).max(4),
+});
+
+export const v1TripBriefingResponseSchema = apiV1EnvelopeSchema.extend({
+  revision: apiV1RevisionSchema,
+  generatorVersion: z.literal("arrival-v1"),
+  inputFingerprint: apiV1RevisionSchema,
+  sections: z.array(arrivalBriefingSectionSchema).max(1),
+  issues: z.array(briefingIssueSchema).max(4),
+});
+
 export const gmailConnectionSchema = z.discriminatedUnion("connected", [
   z.object({ connected: z.literal(false) }),
   z.object({
@@ -972,6 +1065,15 @@ export type V1UpdateScheduledPlanInput = z.infer<typeof v1UpdateScheduledPlanInp
 export type V1ScheduledPlan = z.infer<typeof v1ScheduledPlanSchema>;
 export type V1PlanResponse = z.infer<typeof v1PlanResponseSchema>;
 export type V1TripWorkspaceResponse = z.infer<typeof v1TripWorkspaceResponseSchema>;
+export type BriefingProvenance = z.infer<typeof briefingProvenanceSchema>;
+export type BriefingFlightArrivalItem = z.infer<typeof briefingFlightArrivalItemSchema>;
+export type BriefingRentalPickupItem = z.infer<typeof briefingRentalPickupItemSchema>;
+export type BriefingDriveEstimateItem = z.infer<typeof briefingDriveEstimateItemSchema>;
+export type BriefingStayArrivalItem = z.infer<typeof briefingStayArrivalItemSchema>;
+export type BriefingItem = z.infer<typeof briefingItemSchema>;
+export type BriefingIssue = z.infer<typeof briefingIssueSchema>;
+export type ArrivalBriefingSection = z.infer<typeof arrivalBriefingSectionSchema>;
+export type V1TripBriefingResponse = z.infer<typeof v1TripBriefingResponseSchema>;
 export type GmailConnection = z.infer<typeof gmailConnectionSchema>;
 export type GmailConnectInput = z.infer<typeof gmailConnectInputSchema>;
 export type GmailConnectResponse = z.infer<typeof gmailConnectResponseSchema>;

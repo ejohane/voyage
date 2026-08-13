@@ -20,6 +20,13 @@ enum WorkspaceState: Equatable, Sendable {
   case failed(APIError)
 }
 
+enum BriefingState: Equatable, Sendable {
+  case idle
+  case loading
+  case loaded(TripBriefing)
+  case failed(APIError)
+}
+
 enum PlanMutationState: Equatable, Sendable {
   case idle
   case saving
@@ -32,22 +39,27 @@ enum PlanMutationState: Equatable, Sendable {
 final class VoyageSession {
   private(set) var tripIndexState: TripIndexState = .idle
   private(set) var workspaceStates: [UUID: WorkspaceState] = [:]
+  private(set) var briefingStates: [UUID: BriefingState] = [:]
+  private(set) var arrivalRouteStates: [String: ArrivalRouteState] = [:]
   private(set) var peopleByTripID: [UUID: TripPeople] = [:]
   private(set) var planMutationState: PlanMutationState = .idle
   private(set) var lastError: APIError?
 
   private let api: any VoyageAPI
   private let cache: any SnapshotCaching
+  private let arrivalRouteProvider: any ArrivalRouteProviding
   private let now: @Sendable () -> Date
   private var didStart = false
 
   init(
     api: any VoyageAPI,
     cache: any SnapshotCaching,
+    arrivalRouteProvider: any ArrivalRouteProviding = AppleMapsArrivalRouteProvider(),
     now: @escaping @Sendable () -> Date = Date.init
   ) {
     self.api = api
     self.cache = cache
+    self.arrivalRouteProvider = arrivalRouteProvider
     self.now = now
   }
 
@@ -157,6 +169,7 @@ final class VoyageSession {
           lastError = Self.map(error)
         }
         peopleByTripID.removeValue(forKey: tripID)
+        briefingStates.removeValue(forKey: tripID)
         workspaceStates[tripID] = .failed(apiError)
       } else if cached == nil {
         // A 401 can be resolved by refreshing the authenticated session and does not prove that
@@ -182,8 +195,40 @@ final class VoyageSession {
           lastError = Self.map(error)
         }
         peopleByTripID.removeValue(forKey: tripID)
+        briefingStates.removeValue(forKey: tripID)
         workspaceStates[tripID] = .failed(apiError)
       }
+    }
+  }
+
+  func loadBriefing(tripID: UUID) async {
+    briefingStates[tripID] = .loading
+    do {
+      briefingStates[tripID] = .loaded(try await api.briefing(tripID: tripID))
+    } catch is CancellationError {
+      return
+    } catch {
+      briefingStates[tripID] = .failed(Self.map(error))
+    }
+  }
+
+  func loadArrivalRoute(_ request: ArrivalRouteRequest, forceRefresh: Bool = false) async {
+    if !forceRefresh {
+      switch arrivalRouteState(for: request.id) {
+      case .loading, .loaded:
+        return
+      case .idle, .failed:
+        break
+      }
+    }
+
+    arrivalRouteStates[request.id] = .loading
+    do {
+      arrivalRouteStates[request.id] = .loaded(try await arrivalRouteProvider.estimate(request))
+    } catch is CancellationError {
+      arrivalRouteStates[request.id] = .idle
+    } catch {
+      arrivalRouteStates[request.id] = .failed
     }
   }
 
@@ -339,10 +384,20 @@ final class VoyageSession {
     workspaceStates[tripID] ?? .idle
   }
 
+  func briefingState(for tripID: UUID) -> BriefingState {
+    briefingStates[tripID] ?? .idle
+  }
+
+  func arrivalRouteState(for routeID: String) -> ArrivalRouteState {
+    arrivalRouteStates[routeID] ?? .idle
+  }
+
   func purge() async throws {
     try await cache.purge()
     tripIndexState = .idle
     workspaceStates = [:]
+    briefingStates = [:]
+    arrivalRouteStates = [:]
     peopleByTripID = [:]
     planMutationState = .idle
     lastError = nil

@@ -368,6 +368,113 @@ struct TripWorkspace: Codable, Equatable, Sendable {
   let plans: [Plan]
 }
 
+struct BriefingProvenance: OpenStringValue {
+  let rawValue: String
+
+  static let booked = Self(rawValue: "booked")
+  static let estimated = Self(rawValue: "estimated")
+  static let needsAttention = Self(rawValue: "needs_attention")
+}
+
+struct BriefingIssueCode: OpenStringValue {
+  let rawValue: String
+
+  static let ambiguousFlight = Self(rawValue: "ambiguous_flight")
+  static let ambiguousStay = Self(rawValue: "ambiguous_stay")
+  static let stayLocationUnresolved = Self(rawValue: "stay_location_unresolved")
+  static let routeUnavailable = Self(rawValue: "route_unavailable")
+}
+
+struct BriefingFlightArrivalItem: Identifiable, Equatable, Sendable {
+  struct AirportSummary: Equatable, Sendable {
+    let id: Int
+    let iataCode: String
+    let name: String
+    let municipality: String?
+    let latitude: Double?
+    let longitude: Double?
+  }
+
+  let id: String
+  let provenance: BriefingProvenance
+  let sourceTravelID: UUID
+  let arrivalAt: LocalDateTime
+  let airport: AirportSummary
+  let carrier: String?
+  let referenceNumber: String?
+}
+
+struct BriefingRentalPickupItem: Identifiable, Equatable, Sendable {
+  let id: String
+  let provenance: BriefingProvenance
+  let sourceTravelID: UUID
+  let pickupAt: LocalDateTime
+  let pickupLocation: String
+  let company: String?
+  let confirmationNumber: String?
+}
+
+struct BriefingDriveEstimateItem: Identifiable, Equatable, Sendable {
+  let id: String
+  let provenance: BriefingProvenance
+  let originLabel: String
+  let destinationLabel: String
+  let durationMinutes: Int
+  let distanceMeters: Int?
+  let estimateKind: String
+  let attribution: String
+  let directionsURL: URL
+}
+
+struct BriefingStayArrivalItem: Identifiable, Equatable, Sendable {
+  let id: String
+  let provenance: BriefingProvenance
+  let sourceStayID: UUID
+  let propertyName: String
+  let address: String
+  let checkInDate: LocalDate
+  let checkInWindow: String?
+}
+
+enum BriefingItem: Identifiable, Equatable, Sendable {
+  case flightArrival(BriefingFlightArrivalItem)
+  case rentalPickup(BriefingRentalPickupItem)
+  case driveEstimate(BriefingDriveEstimateItem)
+  case stayArrival(BriefingStayArrivalItem)
+
+  var id: String {
+    switch self {
+    case .flightArrival(let item): item.id
+    case .rentalPickup(let item): item.id
+    case .driveEstimate(let item): item.id
+    case .stayArrival(let item): item.id
+    }
+  }
+}
+
+struct BriefingIssue: Identifiable, Equatable, Sendable {
+  let id: String
+  let code: BriefingIssueCode
+  let provenance: BriefingProvenance
+}
+
+struct ArrivalBriefingSection: Identifiable, Equatable, Sendable {
+  let id: String
+  let date: LocalDate
+  let items: [BriefingItem]
+  let issues: [BriefingIssue]
+}
+
+struct TripBriefing: Equatable, Sendable {
+  let schemaVersion: Int
+  let generatedAt: String
+  let revision: String
+  let generatorVersion: String
+  let inputFingerprint: String
+  let sections: [ArrivalBriefingSection]
+  let issues: [BriefingIssue]
+}
+
 struct TripPeople: Codable, Equatable, Sendable {
   let schemaVersion: Int
   let generatedAt: String

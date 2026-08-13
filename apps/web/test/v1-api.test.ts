@@ -11,6 +11,7 @@ import {
   type V1PlanResponse,
   type V1TripPeopleResponse,
   v1PlanEndpoint,
+  v1TripBriefingResponseSchema,
   v1TripListResponseSchema,
   v1TripPeopleEndpoint,
   v1TripPeopleResponseSchema,
@@ -20,6 +21,7 @@ import {
   v1TripWorkspaceResponseSchema,
 } from "@voyage/contracts";
 import { beforeEach, describe, expect, it } from "vitest";
+import briefingFixture from "../../../packages/contracts/fixtures/v1/trip-briefing.json";
 import listFixture from "../../../packages/contracts/fixtures/v1/trip-list.json";
 import peopleFixture from "../../../packages/contracts/fixtures/v1/trip-people.json";
 import workspaceFixture from "../../../packages/contracts/fixtures/v1/trip-workspace.json";
@@ -140,6 +142,7 @@ describe("Voyage API v1", () => {
 
   it("keeps sanitized fixtures aligned with every native read schema", () => {
     expect(v1TripListResponseSchema.parse(listFixture)).toEqual(listFixture);
+    expect(v1TripBriefingResponseSchema.parse(briefingFixture)).toEqual(briefingFixture);
     expect(v1TripWorkspaceResponseSchema.parse(workspaceFixture)).toEqual(workspaceFixture);
     expect(v1TripPeopleResponseSchema.parse(peopleFixture)).toEqual(peopleFixture);
   });

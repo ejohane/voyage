@@ -44,6 +44,35 @@ struct V1ContractDecodingTests {
     #expect(domain.plans[0].revision == 3)
   }
 
+  @Test("Canonical briefing fixture decodes typed arrival items and provenance")
+  func tripBriefingFixture() throws {
+    let dto = try JSONDecoder().decode(
+      V1TripBriefingDTO.self,
+      from: TestFixtures.data(named: "trip-briefing")
+    )
+    let domain = dto.domain
+
+    #expect(dto.schemaVersion == 1)
+    #expect(domain.revision == String(repeating: "c", count: 64))
+    #expect(domain.generatorVersion == "arrival-v1")
+    #expect(domain.inputFingerprint == String(repeating: "d", count: 64))
+    #expect(domain.sections.count == 1)
+    #expect(domain.sections[0].items.count == 3)
+    guard case .flightArrival(let flight) = domain.sections[0].items[0] else {
+      Issue.record("Expected a flight arrival")
+      return
+    }
+    #expect(flight.airport.iataCode == "LIS")
+    #expect(flight.airport.latitude == 38.7742)
+    #expect(flight.airport.longitude == -9.1342)
+    #expect(flight.provenance == .booked)
+    guard case .stayArrival(let stay) = domain.sections[0].items[2] else {
+      Issue.record("Expected a stay arrival")
+      return
+    }
+    #expect(stay.propertyName == "Memmo Alfama")
+  }
+
   @Test("Canonical people fixture decodes into v1 membership domain models")
   func tripPeopleFixture() throws {
     let dto = try JSONDecoder().decode(

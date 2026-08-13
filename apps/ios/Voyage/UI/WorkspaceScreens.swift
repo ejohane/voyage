@@ -60,6 +60,8 @@ private struct WorkspaceOverviewView: View {
         TripSummaryView(trip: workspace.trip, travel: workspace.travel)
       }
 
+      ArrivalBriefingStateView(session: session, workspace: workspace)
+
       Section {
         TripQuickActionsCard(
           travelCount: workspace.travel.count,
@@ -114,6 +116,10 @@ private struct WorkspaceOverviewView: View {
     .navigationBarTitleDisplayMode(.large)
     .refreshable {
       await session.loadWorkspace(tripID: workspace.trip.id, forceRefresh: true)
+      await session.loadBriefing(tripID: workspace.trip.id)
+    }
+    .task(id: workspace.revision) {
+      await session.loadBriefing(tripID: workspace.trip.id)
     }
     .navigationDestination(item: $selectedQuickAction) { action in
       switch action {

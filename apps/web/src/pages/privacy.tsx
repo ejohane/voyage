@@ -25,7 +25,10 @@ function PrivacyPage() {
           places. When you select a suggestion, Voyage stores the text you entered and the selected
           Google Place ID. Voyage does not persist the other Google search result details. When you
           view a linked stay, Voyage requests current property details and photos from Google Maps
-          for display without storing that content.
+          for display without storing that content. In the iOS app, an arrival briefing can use
+          Apple Maps on your device to estimate driving time from the booked arrival or
+          rental-pickup location to the first stay. Voyage keeps that estimate on your device for
+          the current app session and does not send the route request to Voyage’s servers.
         </p>
         <p>
           Google processes this information under the{" "}
@@ -45,9 +48,10 @@ function PrivacyPage() {
         <p>
           Voyage relies on service providers to operate the product, including Clerk for account
           authentication, Cloudflare for hosting and data storage, Resend for trip invitation email,
-          and Google Maps Platform for destination and property search, maps, property details, and
-          photos. These providers process information on Voyage’s behalf or as described in their
-          own terms and privacy notices.
+          Google Maps Platform for destination and property search, maps, property details, and
+          photos, and Apple Maps for route estimates requested by the iOS app. These providers
+          process information on Voyage’s behalf or as described in their own terms and privacy
+          notices.
         </p>
       </LegalSection>
 
