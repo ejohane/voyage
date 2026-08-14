@@ -29,6 +29,10 @@ enum TestFixtures {
     try JSONDecoder().decode(V1TripBriefingDTO.self, from: data(named: "trip-briefing")).domain
   }
 
+  static func people() throws -> TripPeople {
+    try JSONDecoder().decode(V1TripPeopleDTO.self, from: data(named: "trip-people")).domain
+  }
+
   enum FixtureError: Error, CustomStringConvertible {
     case missing(name: String, bundlePath: String)
 

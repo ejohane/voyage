@@ -78,6 +78,7 @@ struct TripCreateView: View {
           Text("You can add more destinations and details after creating the trip.")
         }
       }
+      .disabled(!session.allowsMutations)
       .navigationTitle("New Trip")
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
@@ -89,7 +90,7 @@ struct TripCreateView: View {
           Button("Create") {
             Task { await save() }
           }
-          .disabled(isSaving || !hasTripName)
+          .disabled(isSaving || !hasTripName || !session.allowsMutations)
           .accessibilityIdentifier("trip.create.save")
         }
       }

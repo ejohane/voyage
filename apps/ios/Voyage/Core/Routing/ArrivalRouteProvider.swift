@@ -2,7 +2,7 @@ import CoreLocation
 import Foundation
 import MapKit
 
-struct ArrivalRouteRequest: Identifiable, Equatable, Hashable, Sendable {
+struct ArrivalRouteRequest: Identifiable, Codable, Equatable, Hashable, Sendable {
   let id: String
   let originLatitude: Double
   let originLongitude: Double
@@ -50,7 +50,7 @@ struct ArrivalRouteRequest: Identifiable, Equatable, Hashable, Sendable {
   private static let placeholderAddresses = ["tbd", "unknown", "not set", "n/a", "na"]
 }
 
-struct ArrivalRouteEstimate: Equatable, Sendable {
+struct ArrivalRouteEstimate: Codable, Equatable, Sendable {
   let durationMinutes: Int
   let distanceMeters: Int
   let destinationLatitude: Double
@@ -64,7 +64,7 @@ struct ArrivalRouteEstimate: Equatable, Sendable {
 enum ArrivalRouteState: Equatable, Sendable {
   case idle
   case loading
-  case loaded(ArrivalRouteEstimate)
+  case loaded(ArrivalRouteEstimate, savedAt: Date, freshness: ContentFreshness)
   case failed
 }
 

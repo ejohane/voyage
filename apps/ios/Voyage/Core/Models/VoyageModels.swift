@@ -385,8 +385,8 @@ struct BriefingIssueCode: OpenStringValue {
   static let routeUnavailable = Self(rawValue: "route_unavailable")
 }
 
-struct BriefingFlightArrivalItem: Identifiable, Equatable, Sendable {
-  struct AirportSummary: Equatable, Sendable {
+struct BriefingFlightArrivalItem: Identifiable, Codable, Equatable, Sendable {
+  struct AirportSummary: Codable, Equatable, Sendable {
     let id: Int
     let iataCode: String
     let name: String
@@ -404,7 +404,7 @@ struct BriefingFlightArrivalItem: Identifiable, Equatable, Sendable {
   let referenceNumber: String?
 }
 
-struct BriefingRentalPickupItem: Identifiable, Equatable, Sendable {
+struct BriefingRentalPickupItem: Identifiable, Codable, Equatable, Sendable {
   let id: String
   let provenance: BriefingProvenance
   let sourceTravelID: UUID
@@ -414,7 +414,7 @@ struct BriefingRentalPickupItem: Identifiable, Equatable, Sendable {
   let confirmationNumber: String?
 }
 
-struct BriefingDriveEstimateItem: Identifiable, Equatable, Sendable {
+struct BriefingDriveEstimateItem: Identifiable, Codable, Equatable, Sendable {
   let id: String
   let provenance: BriefingProvenance
   let originLabel: String
@@ -426,7 +426,7 @@ struct BriefingDriveEstimateItem: Identifiable, Equatable, Sendable {
   let directionsURL: URL
 }
 
-struct BriefingStayArrivalItem: Identifiable, Equatable, Sendable {
+struct BriefingStayArrivalItem: Identifiable, Codable, Equatable, Sendable {
   let id: String
   let provenance: BriefingProvenance
   let sourceStayID: UUID
@@ -436,7 +436,7 @@ struct BriefingStayArrivalItem: Identifiable, Equatable, Sendable {
   let checkInWindow: String?
 }
 
-enum BriefingItem: Identifiable, Equatable, Sendable {
+enum BriefingItem: Identifiable, Codable, Equatable, Sendable {
   case flightArrival(BriefingFlightArrivalItem)
   case rentalPickup(BriefingRentalPickupItem)
   case driveEstimate(BriefingDriveEstimateItem)
@@ -452,20 +452,20 @@ enum BriefingItem: Identifiable, Equatable, Sendable {
   }
 }
 
-struct BriefingIssue: Identifiable, Equatable, Sendable {
+struct BriefingIssue: Identifiable, Codable, Equatable, Sendable {
   let id: String
   let code: BriefingIssueCode
   let provenance: BriefingProvenance
 }
 
-struct ArrivalBriefingSection: Identifiable, Equatable, Sendable {
+struct ArrivalBriefingSection: Identifiable, Codable, Equatable, Sendable {
   let id: String
   let date: LocalDate
   let items: [BriefingItem]
   let issues: [BriefingIssue]
 }
 
-struct TripBriefing: Equatable, Sendable {
+struct TripBriefing: Codable, Equatable, Sendable {
   let schemaVersion: Int
   let generatedAt: String
   let revision: String

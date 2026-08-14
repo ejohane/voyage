@@ -40,17 +40,28 @@ private struct TripsView: View {
 
   @State private var presentedSheet: TripsSheet?
 
+  private var canCreateTrip: Bool {
+    guard session.allowsMutations,
+      case .loaded(_, _, .fresh) = session.tripIndexState
+    else {
+      return false
+    }
+    return true
+  }
+
   var body: some View {
     content
       .refreshable {
         await session.refreshTrips()
       }
       .toolbar {
-        ToolbarItem(placement: .primaryAction) {
-          Button("New Trip", systemImage: "plus") {
-            presentedSheet = .create
+        if canCreateTrip {
+          ToolbarItem(placement: .primaryAction) {
+            Button("New Trip", systemImage: "plus") {
+              presentedSheet = .create
+            }
+            .accessibilityIdentifier("trip.create")
           }
-          .accessibilityIdentifier("trip.create")
         }
       }
       .sheet(item: $presentedSheet) { _ in
@@ -76,7 +87,7 @@ private struct TripsView: View {
         await session.refreshTrips()
       }
       .accessibilityIdentifier("trips.error")
-    case .loaded(let index, _, let freshness):
+    case .loaded(let index, let savedAt, let freshness):
       if index.trips.isEmpty {
         ContentUnavailableView {
           Label("No trips yet", systemImage: "suitcase")
@@ -87,20 +98,28 @@ private struct TripsView: View {
               : "Create a trip to start planning your next journey."
           )
         } actions: {
-          Button("Create Trip", systemImage: "plus") {
-            presentedSheet = .create
+          if canCreateTrip {
+            Button("Create Trip", systemImage: "plus") {
+              presentedSheet = .create
+            }
+            .buttonStyle(.borderedProminent)
+            .accessibilityIdentifier("trips.empty.create")
           }
-          .buttonStyle(.borderedProminent)
-          .accessibilityIdentifier("trips.empty.create")
         }
         .accessibilityIdentifier("trips.empty")
       } else {
         List {
-          ForEach(index.trips) { trip in
-            NavigationLink(value: AppRoute.workspace(tripID: trip.id)) {
-              TripRow(trip: trip)
+          Section {
+            ForEach(index.trips) { trip in
+              NavigationLink(value: AppRoute.workspace(tripID: trip.id)) {
+                TripRow(trip: trip)
+              }
+              .accessibilityIdentifier("trip.row.\(trip.id.uuidString.lowercased())")
             }
-            .accessibilityIdentifier("trip.row.\(trip.id.uuidString.lowercased())")
+          } footer: {
+            if freshness == .stale || !session.connectivity.isConnected {
+              SnapshotFreshnessText(savedAt: savedAt)
+            }
           }
         }
         .listStyle(.insetGrouped)

@@ -9,7 +9,8 @@ smaller than the web application:
 - List the trips the signed-in user can access.
 - Show a trip's destinations, travel, stays, scheduled plans, and members.
 - Create, edit, and delete scheduled plans when the membership role permits it.
-- Keep the last successfully opened trip data available when the network is unavailable.
+- Automatically keep every accessible trip and its essential saved details available read-only
+  when the network is unavailable. See the [seamless offline-mode plan](IOS_OFFLINE_MODE.md).
 
 Trip creation, invitation management, travel and stay editing, idea management, Gmail import, and
 administrative settings remain web-only in this release. The iOS app uses Voyage's versioned HTTP
@@ -125,18 +126,22 @@ when useful for diagnostics.
 
 The API is authoritative. Offline storage is a last-known-good snapshot, not a second database:
 
-1. Read the snapshot for the current Clerk user and show it immediately with a stale/offline state.
-2. Fetch from the API with the stored `ETag` when connectivity permits.
-3. On `200`, decode fully, then atomically replace the snapshot and its metadata.
-4. On `304`, retain the snapshot and update the last successful refresh time.
-5. On transport failure, retain readable data and show a retry action.
-6. On decoding, authorization, or membership failure, do not replace a good snapshot with a partial
-   value. Authentication and access loss are presented distinctly from ordinary offline state.
+1. Read the trip index for the current Clerk user and show it immediately with a stale/offline state.
+2. Restore and opportunistically refresh the workspace, people response, arrival briefing, and
+   last-known route for every accessible trip in a bounded background pool.
+3. Fetch conditionally with a stored `ETag` wherever the API supports it.
+4. On `200`, decode fully, then atomically replace the relevant snapshot and its metadata.
+5. On `304`, retain the snapshot and update the last successful refresh time.
+6. On transport failure, retain readable data and let optional live-only rows fail independently.
+7. On decoding, authorization, or membership failure, do not replace a good snapshot with a partial
+   value. A complete trip-index refresh or confirmed access loss prunes every cached value for the
+   inaccessible trip.
 
 Snapshots are namespaced by Clerk user ID. Signing out deletes that user's snapshots before the
 next account may render. Google Maps property media and other remote images are not included in the
-offline snapshot. Plan mutations are online-only in this release; the app never presents an
-unsubmitted edit as synchronized.
+offline snapshot. Plan and provider-import mutations are online-only in this release; network state
+and snapshot freshness remove their entry points, and session guards reject rather than queue an
+offline request.
 
 ## Observability and failure handling
 

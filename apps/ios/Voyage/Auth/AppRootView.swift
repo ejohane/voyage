@@ -31,6 +31,7 @@ struct AppRootView: View {
 @MainActor
 private struct AuthenticatedAppRoot: View {
   @Environment(Clerk.self) private var clerk
+  @Environment(\.scenePhase) private var scenePhase
   @State private var session: VoyageSession
 
   init(configuration: AppConfiguration, userID: String) {
@@ -55,6 +56,10 @@ private struct AuthenticatedAppRoot: View {
     }
     .task {
       await session.start()
+    }
+    .onChange(of: scenePhase) { _, phase in
+      guard phase == .active else { return }
+      Task { await session.refreshTrips() }
     }
   }
 }
