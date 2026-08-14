@@ -3,8 +3,8 @@
 ## Principles
 
 The iOS app receives only the data needed to present and coordinate trips the signed-in member may
-access. Voyage's Worker remains the authorization boundary. Local persistence exists to make
-previously opened trips useful offline; it is not used for advertising, cross-app tracking, or
+access. Voyage's Worker remains the authorization boundary. Local persistence exists to make every
+accessible trip useful offline; it is not used for advertising, cross-app tracking, or
 behavioral profiling.
 
 The public policy is the Voyage web privacy page. This document is the engineering checklist that
@@ -16,8 +16,9 @@ keeps the native implementation, App Store disclosures, and that public policy a
 | --- | --- | --- |
 | Clerk account identity, name, email, and session | Sign-in and authenticated API access | Session material uses Clerk's Keychain-backed storage. Never log or place it in the trip cache. |
 | Trip, destination, travel, stay, and scheduled-plan data | Present and coordinate accessible trips | Last-known-good values may be stored in a per-account offline snapshot. |
-| Member names, roles, and policy-visible emails | Show who is traveling | Treat as personal data; cache only if the people feature explicitly requires offline access. |
+| Member names, roles, and policy-visible emails | Show who is traveling | Treat as personal data; keep the policy-filtered people response in the protected per-account snapshot. |
 | Booking URLs, confirmation numbers, and notes | Show details the user stored in Voyage | Treat as sensitive user content. Never log, index globally, or include in diagnostics. |
+| Arrival briefing and Apple Maps route estimate | Connect the booked arrival to the first stay | Keep the generated briefing and a last-known route result in the protected per-account snapshot; show age when stale. |
 | Google Maps property details and photos | Display current property context | Fetch for display only. Exclude from the app-owned offline snapshot. |
 | Request metadata | Diagnose failures | Status, duration, route template, cache outcome, and `X-Request-ID` are allowed; bodies and credentials are not. |
 
@@ -36,6 +37,9 @@ shipped feature needs it and this inventory has been updated.
   failure, canceled request, or server error cannot replace readable data.
 - Purge the current user's snapshots as part of sign-out before rendering another account.
 - Remove obsolete schema snapshots when they can no longer be safely migrated.
+- Remove every snapshot kind for trips omitted by a complete authenticated trip-index refresh or
+  confirmed inaccessible by the API. Otherwise retain accessible trips without an arbitrary age
+  expiry so older trip details remain useful offline.
 - Do not persist remote property photos or arbitrary web content in the app-owned offline store.
 - Accept server-side create-plan replays for seven days, then purge the expired row on the next
   daily Worker cleanup (a normal physical-retention bound of less than eight days). Replace a

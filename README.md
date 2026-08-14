@@ -84,6 +84,7 @@ bun run deploy
 - [MCP Phase 3](docs/MCP_PHASE_3.md)
 - [MCP public submission](docs/MCP_PUBLIC_SUBMISSION.md)
 - [iOS architecture](docs/IOS_ARCHITECTURE.md)
+- [iOS seamless offline mode](docs/IOS_OFFLINE_MODE.md)
 - [iOS API compatibility](docs/IOS_COMPATIBILITY.md)
 - [iOS privacy](docs/IOS_PRIVACY.md)
 - [iOS validation and release](docs/IOS_RELEASE.md)

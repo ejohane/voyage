@@ -33,11 +33,16 @@ struct ArrivalRouteTests {
       cache: InMemorySnapshotCache(),
       arrivalRouteProvider: provider
     )
+    let tripID = try TestFixtures.workspace().trip.id
 
-    await session.loadArrivalRoute(request)
-    await session.loadArrivalRoute(request)
+    await session.loadArrivalRoute(request, tripID: tripID)
+    await session.loadArrivalRoute(request, tripID: tripID)
 
-    #expect(session.arrivalRouteState(for: request.id) == .loaded(estimate))
+    guard case .loaded(let loaded, _, .fresh) = session.arrivalRouteState(for: request.id) else {
+      Issue.record("Expected a fresh route estimate")
+      return
+    }
+    #expect(loaded == estimate)
     #expect(provider.requests == [request])
   }
 
@@ -56,12 +61,17 @@ struct ArrivalRouteTests {
       cache: InMemorySnapshotCache(),
       arrivalRouteProvider: provider
     )
+    let tripID = try TestFixtures.workspace().trip.id
 
-    await session.loadArrivalRoute(request)
+    await session.loadArrivalRoute(request, tripID: tripID)
     #expect(session.arrivalRouteState(for: request.id) == .failed)
 
-    await session.loadArrivalRoute(request, forceRefresh: true)
-    #expect(session.arrivalRouteState(for: request.id) == .loaded(estimate))
+    await session.loadArrivalRoute(request, tripID: tripID, forceRefresh: true)
+    guard case .loaded(let loaded, _, .fresh) = session.arrivalRouteState(for: request.id) else {
+      Issue.record("Expected a refreshed route estimate")
+      return
+    }
+    #expect(loaded == estimate)
     #expect(provider.requests == [request, request])
   }
 
@@ -74,8 +84,9 @@ struct ArrivalRouteTests {
       cache: InMemorySnapshotCache(),
       arrivalRouteProvider: provider
     )
+    let tripID = try TestFixtures.workspace().trip.id
 
-    await session.loadArrivalRoute(request)
+    await session.loadArrivalRoute(request, tripID: tripID)
 
     #expect(session.arrivalRouteState(for: request.id) == .idle)
   }

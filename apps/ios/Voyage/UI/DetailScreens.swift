@@ -15,7 +15,7 @@ struct ItineraryView: View {
   }
 
   private var canEdit: Bool {
-    freshness == .fresh && workspace.trip.accessLevel.canEditPlans
+    session.allowsMutations && freshness == .fresh && workspace.trip.accessLevel.canEditPlans
   }
 
   var body: some View {
@@ -326,51 +326,69 @@ struct PeopleView: View {
   let session: VoyageSession
   let trip: Trip
 
-  @State private var isLoading = true
-
-  private var people: TripPeople? {
-    session.peopleByTripID[trip.id]
-  }
-
   var body: some View {
     Group {
-      if let people {
+      switch session.peopleState(for: trip.id) {
+      case .idle, .loading:
+        ProgressView("Loading people…")
+      case .loaded(let people, let savedAt, let freshness):
         if people.members.isEmpty {
           ContentUnavailableView(
             "No people",
             systemImage: "person.2",
-            description: Text("Trip members will appear here.")
+            description: Text(
+              freshness == .stale
+                ? "No people were included in the last saved trip snapshot."
+                : "Trip members will appear here."
+            )
           )
         } else {
-          List(people.members) { member in
-            PersonRow(member: member)
+          List {
+            Section {
+              ForEach(people.members) { member in
+                PersonRow(member: member)
+              }
+            } footer: {
+              if freshness == .stale || !session.connectivity.isConnected {
+                SnapshotFreshnessText(savedAt: savedAt)
+              }
+            }
           }
           .listStyle(.insetGrouped)
         }
-      } else if isLoading {
-        ProgressView("Loading people…")
-      } else {
+      case .failed(let error):
         UnavailableStateView(
           title: "Couldn’t load people",
           systemImage: "person.crop.circle.badge.exclamationmark",
-          message: session.lastError?.localizedDescription ?? "Check your connection and try again.",
+          message: error.localizedDescription,
           retryTitle: "Try Again"
         ) {
-          await loadPeople()
+          await session.loadPeople(tripID: trip.id)
         }
       }
     }
     .navigationTitle("People")
     .task(id: trip.id) {
-      await loadPeople()
+      await session.loadPeople(tripID: trip.id)
     }
     .accessibilityIdentifier("people.screen")
   }
+}
 
-  private func loadPeople() async {
-    isLoading = true
-    await session.loadPeople(tripID: trip.id)
-    isLoading = false
+struct SnapshotFreshnessText: View {
+  let savedAt: Date
+
+  private var relativeDate: String {
+    let formatter = RelativeDateTimeFormatter()
+    formatter.unitsStyle = .full
+    return formatter.localizedString(for: savedAt, relativeTo: Date())
+  }
+
+  var body: some View {
+    Label("Saved \(relativeDate)", systemImage: "clock")
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .accessibilityLabel("Saved trip data from \(savedAt.formatted(date: .abbreviated, time: .shortened))")
   }
 }
 

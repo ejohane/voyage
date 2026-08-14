@@ -24,19 +24,30 @@ struct ArrivalBriefingStateView: View {
           .accessibilityIdentifier("briefing.loading")
         }
       }
-    case .loaded(let briefing):
+    case .loaded(let briefing, let savedAt, let freshness):
       if let arrival = briefing.sections.first {
-        ArrivalBriefingSectionView(session: session, section: arrival, workspace: workspace)
+        ArrivalBriefingSectionView(
+          session: session,
+          section: arrival,
+          workspace: workspace,
+          savedAt: savedAt,
+          freshness: session.connectivity.isConnected ? freshness : .stale
+        )
       }
     case .failed:
       if hasCandidateAnchors {
         Section("Arrival briefing") {
-          Button {
-            Task { await session.loadBriefing(tripID: workspace.trip.id) }
-          } label: {
-            Label("Try loading the arrival briefing again", systemImage: "arrow.clockwise")
+          if session.connectivity.isConnected {
+            Button {
+              Task { await session.loadBriefing(tripID: workspace.trip.id) }
+            } label: {
+              Label("Try loading the arrival briefing again", systemImage: "arrow.clockwise")
+            }
+            .accessibilityIdentifier("briefing.retry")
+          } else {
+            Label("Arrival briefing unavailable offline", systemImage: "wifi.slash")
+              .foregroundStyle(.secondary)
           }
-          .accessibilityIdentifier("briefing.retry")
         }
       }
     }
@@ -47,6 +58,8 @@ private struct ArrivalBriefingSectionView: View {
   let session: VoyageSession
   let section: ArrivalBriefingSection
   let workspace: TripWorkspace
+  let savedAt: Date
+  let freshness: ContentFreshness
 
   private var routeRequest: ArrivalRouteRequest? {
     ArrivalRouteRequest(section: section)
@@ -71,6 +84,9 @@ private struct ArrivalBriefingSectionView: View {
         Text(section.date.longDisplayText)
           .font(.headline)
           .foregroundStyle(.primary)
+        if freshness == .stale {
+          SnapshotFreshnessText(savedAt: savedAt)
+        }
       }
       .textCase(nil)
       .accessibilityElement(children: .combine)
@@ -106,8 +122,12 @@ private struct ArrivalBriefingSectionView: View {
       EmptyView()
     case .stayArrival(let arrival):
       if let routeRequest {
-        BriefingAppleRouteStateView(session: session, request: routeRequest)
-          .accessibilityIdentifier("briefing.route.\(routeRequest.id)")
+        BriefingAppleRouteStateView(
+          session: session,
+          tripID: workspace.trip.id,
+          request: routeRequest
+        )
+        .accessibilityIdentifier("briefing.route.\(routeRequest.id)")
       }
       if let stay = workspace.stays.first(where: { $0.id == arrival.sourceStayID }) {
         NavigationLink {
@@ -125,6 +145,7 @@ private struct ArrivalBriefingSectionView: View {
 @MainActor
 private struct BriefingAppleRouteStateView: View {
   let session: VoyageSession
+  let tripID: UUID
   let request: ArrivalRouteRequest
 
   var body: some View {
@@ -149,31 +170,48 @@ private struct BriefingAppleRouteStateView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Estimating drive to \(request.destinationLabel) with Apple Maps")
         .accessibilityIdentifier("briefing.route.loading")
-      case .loaded(let estimate):
+      case .loaded(let estimate, let savedAt, let freshness):
         Button {
           AppleMapsRouteLauncher.open(request, estimate: estimate)
         } label: {
-          BriefingRouteRow(request: request, estimate: estimate)
+          BriefingRouteRow(
+            request: request,
+            estimate: estimate,
+            savedAt: savedAt,
+            freshness: session.connectivity.isConnected ? freshness : .stale
+          )
         }
         .accessibilityHint("Opens driving directions in Apple Maps")
         .accessibilityIdentifier("briefing.route.loaded")
       case .failed:
-        Button {
-          Task { await session.loadArrivalRoute(request, forceRefresh: true) }
-        } label: {
+        if session.connectivity.isConnected {
+          Button {
+            Task {
+              await session.loadArrivalRoute(request, tripID: tripID, forceRefresh: true)
+            }
+          } label: {
+            BriefingRow(
+              systemImage: "arrow.clockwise",
+              tint: .teal,
+              title: "Try the drive estimate again",
+              detail: "Apple Maps couldn’t calculate the route to \(request.destinationLabel).",
+              provenance: "Tap to retry"
+            )
+          }
+          .accessibilityIdentifier("briefing.route.retry")
+        } else {
           BriefingRow(
-            systemImage: "arrow.clockwise",
+            systemImage: "wifi.slash",
             tint: .teal,
-            title: "Try the drive estimate again",
-            detail: "Apple Maps couldn’t calculate the route to \(request.destinationLabel).",
-            provenance: "Tap to retry"
+            title: "Drive estimate unavailable offline",
+            detail: "Reconnect to estimate the route to \(request.destinationLabel).",
+            provenance: "Apple Maps"
           )
         }
-        .accessibilityIdentifier("briefing.route.retry")
       }
     }
     .task(id: request.id) {
-      await session.loadArrivalRoute(request)
+      await session.loadArrivalRoute(request, tripID: tripID)
     }
   }
 }
@@ -221,6 +259,8 @@ private struct BriefingRentalRow: View {
 private struct BriefingRouteRow: View {
   let request: ArrivalRouteRequest
   let estimate: ArrivalRouteEstimate
+  let savedAt: Date
+  let freshness: ContentFreshness
 
   var body: some View {
     BriefingRow(
@@ -228,8 +268,17 @@ private struct BriefingRouteRow: View {
       tint: .teal,
       title: "About \(estimate.durationMinutes.durationText) to \(request.destinationLabel)",
       detail: "From \(request.originLabel)",
-      provenance: "Estimated · Apple Maps"
+      provenance:
+        freshness == .stale
+        ? "Last known · Apple Maps · \(relativeDate(savedAt))"
+        : "Estimated · Apple Maps"
     )
+  }
+
+  private func relativeDate(_ date: Date) -> String {
+    let formatter = RelativeDateTimeFormatter()
+    formatter.unitsStyle = .short
+    return formatter.localizedString(for: date, relativeTo: Date())
   }
 }
 

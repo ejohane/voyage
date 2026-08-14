@@ -191,6 +191,7 @@ struct PlanEditorView: View {
           }
         }
       }
+      .disabled(!session.allowsMutations)
       .navigationTitle(mode.plan == nil ? "New Plan" : "Edit Plan")
       .navigationBarTitleDisplayMode(.inline)
       .interactiveDismissDisabled(isWorking || isAmbiguousCreateRetry)
@@ -204,7 +205,7 @@ struct PlanEditorView: View {
             Task { await save() }
           }
           .fontWeight(.semibold)
-          .disabled(isWorking)
+          .disabled(isWorking || !session.allowsMutations)
           .accessibilityIdentifier("plan.editor.save")
         }
       }
@@ -421,7 +422,7 @@ struct PlanDetailView: View {
     guard case .loaded(_, _, let freshness) = session.workspaceState(for: workspace.trip.id) else {
       return false
     }
-    return freshness == .fresh
+    return session.allowsMutations && freshness == .fresh
   }
 
   var body: some View {

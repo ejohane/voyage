@@ -233,9 +233,45 @@ struct VoyageSessionTests {
     #expect(session.lastError == conflict)
   }
 
+  @Test("Offline mutations fail immediately and are never queued")
+  func offlineMutationsAreRejected() async throws {
+    let workspace = try TestFixtures.workspace()
+    let plan = try #require(workspace.plans.first)
+    let expected = APIError.transport(
+      message: "Voyage is offline and saved trips are read-only."
+    )
+    let session = VoyageSession(
+      api: SessionAPI(createPlans: [plan]),
+      cache: InMemorySnapshotCache(),
+      automaticallyRefreshAccessibleTrips: false,
+      connectivity: ConnectivityMonitor(isConnected: false, monitorsNetwork: false)
+    )
+
+    do {
+      _ = try await session.createPlan(
+        tripID: workspace.trip.id,
+        input: makePlanInput(),
+        idempotencyKey: UUID()
+      )
+      Issue.record("Expected offline plan creation to be rejected")
+    } catch let error as APIError {
+      #expect(error == expected)
+    } catch {
+      Issue.record("Unexpected error: \(error)")
+    }
+
+    #expect(session.planMutationState == .idle)
+    #expect(!session.allowsMutations)
+  }
+
   @Test("An authenticated membership loss evicts the cached workspace", arguments: [403, 404])
   func membershipLossEvictsCachedWorkspace(status: Int) async throws {
     let workspace = try TestFixtures.workspace()
+    let people = try TestFixtures.people()
+    let briefing = try TestFixtures.briefing()
+    let routeRequest = try #require(
+      briefing.sections.first.flatMap(ArrivalRouteRequest.init(section:))
+    )
     let savedAt = Date(timeIntervalSince1970: 1_700_000_000)
     let snapshot = CachedWorkspace(
       value: workspace,
@@ -245,6 +281,24 @@ struct VoyageSessionTests {
     let error = serverError(status: status)
     let cache = InMemorySnapshotCache()
     try await cache.saveWorkspace(snapshot)
+    try await cache.savePeople(CachedPeople(value: people, savedAt: savedAt), tripID: workspace.trip.id)
+    try await cache.saveBriefing(
+      CachedBriefing(value: briefing, savedAt: savedAt),
+      tripID: workspace.trip.id
+    )
+    try await cache.saveArrivalRoute(
+      CachedArrivalRoute(
+        tripID: workspace.trip.id,
+        request: routeRequest,
+        estimate: ArrivalRouteEstimate(
+          durationMinutes: 24,
+          distanceMeters: 9_250,
+          destinationLatitude: 38.7108,
+          destinationLongitude: -9.1277
+        ),
+        savedAt: savedAt
+      )
+    )
     let session = VoyageSession(
       api: SessionAPI(workspaceError: error),
       cache: cache
@@ -255,6 +309,9 @@ struct VoyageSessionTests {
     #expect(session.workspaceState(for: workspace.trip.id) == .failed(error))
     #expect(session.lastError == error)
     #expect(try await cache.loadWorkspace(tripID: workspace.trip.id) == nil)
+    #expect(try await cache.loadPeople(tripID: workspace.trip.id) == nil)
+    #expect(try await cache.loadBriefing(tripID: workspace.trip.id) == nil)
+    #expect(try await cache.loadArrivalRoute(requestID: routeRequest.id) == nil)
   }
 
   @Test(
@@ -317,6 +374,119 @@ struct VoyageSessionTests {
     #expect(try await cache.loadWorkspace(tripID: workspace.trip.id) == snapshot)
   }
 
+  @Test("Every accessible trip refreshes and persists in the background")
+  func automaticAccessibleTripRefresh() async throws {
+    let firstWorkspace = try TestFixtures.workspace()
+    let secondTripID = UUID(uuidString: "77777777-7777-4777-8777-777777777777")!
+    let secondWorkspace = replacingTripID(firstWorkspace, with: secondTripID)
+    let orphanTripID = UUID(uuidString: "99999999-9999-4999-8999-999999999999")!
+    let orphanWorkspace = replacingTripID(firstWorkspace, with: orphanTripID)
+    let index = TripIndex(
+      schemaVersion: 1,
+      generatedAt: "2026-08-14T12:00:00.000Z",
+      revision: String(repeating: "a", count: 64),
+      trips: [firstWorkspace.trip, secondWorkspace.trip]
+    )
+    let cache = InMemorySnapshotCache()
+    try await cache.saveWorkspace(
+      CachedWorkspace(
+        value: orphanWorkspace,
+        entityTag: APIClient.entityTag(forRevision: orphanWorkspace.revision),
+        savedAt: Date(timeIntervalSince1970: 1_700_000_000)
+      )
+    )
+    let briefing = try TestFixtures.briefing()
+    let api = SessionAPI(
+      listResult: .modified(
+        index,
+        metadata: APIResponseMetadata(
+          entityTag: APIClient.entityTag(forRevision: index.revision),
+          requestID: "request-all-trips"
+        )
+      ),
+      workspaceResultsByTripID: [
+        firstWorkspace.trip.id: modified(firstWorkspace, requestID: "request-first"),
+        secondTripID: modified(secondWorkspace, requestID: "request-second"),
+      ],
+      briefingResults: [briefing, briefing]
+    )
+    let session = VoyageSession(
+      api: api,
+      cache: cache,
+      arrivalRouteProvider: UnavailableArrivalRouteProvider()
+    )
+
+    await session.start()
+    await session.waitForBackgroundSnapshotRefresh()
+
+    let accessibleIDs = Set(index.trips.map(\.id))
+    #expect(Set(await api.workspaceTripIDs) == accessibleIDs)
+    #expect(Set(await api.peopleTripIDs) == accessibleIDs)
+    #expect(Set(await api.briefingTripIDs) == accessibleIDs)
+    #expect(try await cache.loadWorkspace(tripID: firstWorkspace.trip.id)?.value == firstWorkspace)
+    #expect(try await cache.loadWorkspace(tripID: secondTripID)?.value == secondWorkspace)
+    #expect(try await cache.loadPeople(tripID: firstWorkspace.trip.id) != nil)
+    #expect(try await cache.loadPeople(tripID: secondTripID) != nil)
+    #expect(try await cache.loadBriefing(tripID: firstWorkspace.trip.id)?.value == briefing)
+    #expect(try await cache.loadBriefing(tripID: secondTripID)?.value == briefing)
+    #expect(try await cache.loadWorkspace(tripID: orphanTripID) == nil)
+  }
+
+  @Test("People, briefing, and route snapshots remain visible when refreshes fail")
+  func extendedSnapshotsRestoreBeforeFailedRefresh() async throws {
+    let workspace = try TestFixtures.workspace()
+    let people = try TestFixtures.people()
+    let briefing = try TestFixtures.briefing()
+    let request = try #require(
+      briefing.sections.first.flatMap(ArrivalRouteRequest.init(section:))
+    )
+    let estimate = ArrivalRouteEstimate(
+      durationMinutes: 24,
+      distanceMeters: 9_250,
+      destinationLatitude: 38.7108,
+      destinationLongitude: -9.1277
+    )
+    let savedAt = Date(timeIntervalSince1970: 1_700_000_000)
+    let cache = InMemorySnapshotCache()
+    try await cache.savePeople(CachedPeople(value: people, savedAt: savedAt), tripID: workspace.trip.id)
+    try await cache.saveBriefing(
+      CachedBriefing(value: briefing, savedAt: savedAt),
+      tripID: workspace.trip.id
+    )
+    try await cache.saveArrivalRoute(
+      CachedArrivalRoute(
+        tripID: workspace.trip.id,
+        request: request,
+        estimate: estimate,
+        savedAt: savedAt
+      )
+    )
+    let offline = APIError.transport(message: "offline")
+    let session = VoyageSession(
+      api: SessionAPI(briefingError: offline, peopleError: offline),
+      cache: cache,
+      arrivalRouteProvider: UnavailableArrivalRouteProvider(),
+      automaticallyRefreshAccessibleTrips: false
+    )
+
+    await session.loadPeople(tripID: workspace.trip.id)
+    await session.loadBriefing(tripID: workspace.trip.id)
+    await session.loadArrivalRoute(request, tripID: workspace.trip.id)
+
+    #expect(
+      session.peopleState(for: workspace.trip.id)
+        == .loaded(people, savedAt: savedAt, freshness: .stale)
+    )
+    #expect(
+      session.briefingState(for: workspace.trip.id)
+        == .loaded(briefing, savedAt: savedAt, freshness: .stale)
+    )
+    #expect(
+      session.arrivalRouteState(for: request.id)
+        == .loaded(estimate, savedAt: savedAt, freshness: .stale)
+    )
+  }
+
   @Test("A purge failure propagates without clearing in-memory session state")
   func purgeFailurePreservesSessionState() async throws {
     let index = try TestFixtures.tripIndex()
@@ -377,7 +547,15 @@ struct VoyageSessionTests {
     await session.loadBriefing(tripID: workspace.trip.id)
 
     #expect(self.workspace(from: session, tripID: workspace.trip.id) == workspace)
-    #expect(session.briefingState(for: workspace.trip.id) == .loaded(briefing))
+    guard
+      case .loaded(let loadedBriefing, _, .fresh) = session.briefingState(
+        for: workspace.trip.id
+      )
+    else {
+      Issue.record("Expected a fresh briefing")
+      return
+    }
+    #expect(loadedBriefing == briefing)
     #expect(await api.briefingTripIDs == [workspace.trip.id])
   }
 
@@ -435,6 +613,29 @@ struct VoyageSessionTests {
     )
   }
 
+  private func replacingTripID(_ workspace: TripWorkspace, with id: UUID) -> TripWorkspace {
+    let current = workspace.trip
+    let trip = Trip(
+      id: id,
+      name: current.name,
+      startDate: current.startDate,
+      endDate: current.endDate,
+      stops: current.stops,
+      accessLevel: current.accessLevel,
+      createdAt: current.createdAt,
+      updatedAt: current.updatedAt
+    )
+    return TripWorkspace(
+      schemaVersion: workspace.schemaVersion,
+      generatedAt: workspace.generatedAt,
+      revision: workspace.revision,
+      trip: trip,
+      travel: [],
+      stays: [],
+      plans: []
+    )
+  }
+
   private func copy(
     _ plan: Plan,
     id: UUID? = nil,
@@ -477,11 +678,15 @@ actor SessionAPI: VoyageAPI {
   private(set) var listIfNoneMatches: [String?] = []
 
   private var workspaceResults: [APIReadResult<TripWorkspace>]
+  private var workspaceResultsByTripID: [UUID: APIReadResult<TripWorkspace>]
   private(set) var workspaceIfNoneMatches: [String?] = []
+  private(set) var workspaceTripIDs: [UUID] = []
   private let workspaceError: APIError?
   private var briefingResults: [TripBriefing]
   private let briefingError: APIError?
   private(set) var briefingTripIDs: [UUID] = []
+  private let peopleError: APIError?
+  private(set) var peopleTripIDs: [UUID] = []
   private var createTrips: [Trip]
   private var createPlans: [Plan]
   private var updatePlans: [Plan]
@@ -493,9 +698,11 @@ actor SessionAPI: VoyageAPI {
     listResult: APIReadResult<TripIndex>? = nil,
     suspendList: Bool = false,
     workspaceResults: [APIReadResult<TripWorkspace>] = [],
+    workspaceResultsByTripID: [UUID: APIReadResult<TripWorkspace>] = [:],
     workspaceError: APIError? = nil,
     briefingResults: [TripBriefing] = [],
     briefingError: APIError? = nil,
+    peopleError: APIError? = nil,
     createTrips: [Trip] = [],
     createPlans: [Plan] = [],
     updatePlans: [Plan] = [],
@@ -512,9 +719,11 @@ actor SessionAPI: VoyageAPI {
       )
     self.suspendList = suspendList
     self.workspaceResults = workspaceResults
+    self.workspaceResultsByTripID = workspaceResultsByTripID
     self.workspaceError = workspaceError
     self.briefingResults = briefingResults
     self.briefingError = briefingError
+    self.peopleError = peopleError
     self.createTrips = createTrips
     self.createPlans = createPlans
     self.updatePlans = updatePlans
@@ -567,14 +776,20 @@ actor SessionAPI: VoyageAPI {
     tripID: UUID,
     ifNoneMatch: String?
   ) async throws -> APIReadResult<TripWorkspace> {
+    workspaceTripIDs.append(tripID)
     workspaceIfNoneMatches.append(ifNoneMatch)
     if let workspaceError { throw workspaceError }
+    if let result = workspaceResultsByTripID.removeValue(forKey: tripID) {
+      return result
+    }
     guard !workspaceResults.isEmpty else { throw APIError.invalidResponse }
     return workspaceResults.removeFirst()
   }
 
   func people(tripID: UUID) async throws -> TripPeople {
-    TripPeople(schemaVersion: 1, generatedAt: "", members: [])
+    peopleTripIDs.append(tripID)
+    if let peopleError { throw peopleError }
+    return TripPeople(schemaVersion: 1, generatedAt: "", members: [])
   }
 
   func briefing(tripID: UUID) async throws -> TripBriefing {
@@ -616,6 +831,13 @@ actor SessionAPI: VoyageAPI {
   }
 }
 
+@MainActor
+private final class UnavailableArrivalRouteProvider: ArrivalRouteProviding {
+  func estimate(_ request: ArrivalRouteRequest) async throws -> ArrivalRouteEstimate {
+    throw ArrivalRouteError.routeUnavailable
+  }
+}
+
 private enum PurgeFailure: Error {
   case expected
 }
@@ -647,8 +869,36 @@ private actor PurgeFailingSnapshotCache: SnapshotCaching {
     try await backing.touchWorkspace(tripID: tripID, at: date)
   }
 
-  func removeWorkspace(tripID: UUID) async throws {
-    try await backing.removeWorkspace(tripID: tripID)
+  func loadPeople(tripID: UUID) async throws -> CachedPeople? {
+    try await backing.loadPeople(tripID: tripID)
+  }
+
+  func savePeople(_ snapshot: CachedPeople, tripID: UUID) async throws {
+    try await backing.savePeople(snapshot, tripID: tripID)
+  }
+
+  func loadBriefing(tripID: UUID) async throws -> CachedBriefing? {
+    try await backing.loadBriefing(tripID: tripID)
+  }
+
+  func saveBriefing(_ snapshot: CachedBriefing, tripID: UUID) async throws {
+    try await backing.saveBriefing(snapshot, tripID: tripID)
+  }
+
+  func loadArrivalRoute(requestID: String) async throws -> CachedArrivalRoute? {
+    try await backing.loadArrivalRoute(requestID: requestID)
+  }
+
+  func saveArrivalRoute(_ snapshot: CachedArrivalRoute) async throws {
+    try await backing.saveArrivalRoute(snapshot)
+  }
+
+  func removeTrip(tripID: UUID) async throws {
+    try await backing.removeTrip(tripID: tripID)
+  }
+
+  func retainTrips(ids: Set<UUID>) async throws {
+    try await backing.retainTrips(ids: ids)
   }
 
   func purge() async throws {

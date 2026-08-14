@@ -51,7 +51,7 @@ private struct WorkspaceOverviewView: View {
   }
 
   private var canEdit: Bool {
-    freshness == .fresh && workspace.trip.accessLevel.canEditPlans
+    session.allowsMutations && freshness == .fresh && workspace.trip.accessLevel.canEditPlans
   }
 
   var body: some View {
@@ -103,7 +103,7 @@ private struct WorkspaceOverviewView: View {
           Label("You have view-only access to this trip.", systemImage: "eye")
             .foregroundStyle(.secondary)
         }
-      } else if freshness == .stale {
+      } else if freshness == .stale || !session.allowsMutations {
         Section {
           Label("Reconnect to add or edit plans.", systemImage: "wifi.slash")
             .foregroundStyle(.secondary)
@@ -282,7 +282,9 @@ private struct TripDirectoryView: View {
       }
 
       Section("Bookings") {
-        if workspace.trip.accessLevel.canEditPlans && freshness == .fresh {
+        if workspace.trip.accessLevel.canEditPlans && freshness == .fresh
+          && session.allowsMutations
+        {
           NavigationLink {
             GmailImportView(session: session, workspace: workspace)
           } label: {
