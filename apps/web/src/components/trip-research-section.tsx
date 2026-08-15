@@ -90,10 +90,18 @@ function TripResearchSection({ trip }: { trip: Trip }) {
   const [capture, setCapture] = useState("");
   const [selectedId, setSelectedId] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const [showDismissed, setShowDismissed] = useState(false);
 
   const items = research.data ?? [];
   const selected = items.find((item) => item.id === selectedId);
-  const visibleItems = useMemo(() => items.filter((item) => item.state !== "dismissed"), [items]);
+  const dismissedCount = useMemo(
+    () => items.filter((item) => item.state === "dismissed").length,
+    [items],
+  );
+  const visibleItems = useMemo(
+    () => items.filter((item) => showDismissed || item.state !== "dismissed"),
+    [items, showDismissed],
+  );
 
   async function handleCapture(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -128,9 +136,22 @@ function TripResearchSection({ trip }: { trip: Trip }) {
               Drop in a link or note now. Organize it only when that becomes useful.
             </p>
           </div>
-          <p className="text-xs text-muted-foreground">
-            {visibleItems.length} {visibleItems.length === 1 ? "item" : "items"}
-          </p>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>
+              {visibleItems.length} {visibleItems.length === 1 ? "item" : "items"}
+            </span>
+            {dismissedCount > 0 ? (
+              <Button
+                className="h-auto px-2 py-1 text-xs"
+                onClick={() => setShowDismissed((current) => !current)}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                {showDismissed ? "Hide dismissed" : `Show dismissed (${dismissedCount})`}
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         {canEdit ? (
@@ -191,9 +212,13 @@ function TripResearchSection({ trip }: { trip: Trip }) {
               <CardContent className="grid min-h-44 place-items-center py-8 text-center">
                 <div>
                   <Lightbulb className="mx-auto size-5 text-muted-foreground" />
-                  <p className="mt-3 text-sm font-medium">Nothing to sort yet</p>
+                  <p className="mt-3 text-sm font-medium">
+                    {dismissedCount > 0 ? "Dismissed items are hidden" : "Nothing to sort yet"}
+                  </p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    A rough note or a pasted link is enough.
+                    {dismissedCount > 0
+                      ? "Show them whenever you want to restore one."
+                      : "A rough note or a pasted link is enough."}
                   </p>
                 </div>
               </CardContent>
