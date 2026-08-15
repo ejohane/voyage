@@ -10,7 +10,10 @@ import {
   tripTravelEndpoint,
   type V1PlanResponse,
   type V1TripPeopleResponse,
+  v1CreateScheduledPlanInputSchema,
   v1PlanEndpoint,
+  v1ScheduledPlanSchema,
+  v1TravelSchema,
   v1TripBriefingResponseSchema,
   v1TripListResponseSchema,
   v1TripPeopleEndpoint,
@@ -145,6 +148,32 @@ describe("Voyage API v1", () => {
     expect(v1TripBriefingResponseSchema.parse(briefingFixture)).toEqual(briefingFixture);
     expect(v1TripWorkspaceResponseSchema.parse(workspaceFixture)).toEqual(workspaceFixture);
     expect(v1TripPeopleResponseSchema.parse(peopleFixture)).toEqual(peopleFixture);
+  });
+
+  it("keeps provenance extensions outside the frozen native v1 contract", () => {
+    expect(
+      v1CreateScheduledPlanInputSchema.safeParse({
+        ...scheduledPlanInput(workspaceFixture.trip.stops[0].id),
+        timeZone: "Europe/Lisbon",
+      }).success,
+    ).toBe(false);
+    expect(
+      v1ScheduledPlanSchema.parse({
+        ...workspaceFixture.plans[0],
+        timeZone: "Europe/Lisbon",
+        placeRef: { provider: "google", placeId: "place-1" },
+        priceQuotes: [
+          { amount: "15.00", currency: "EUR", unit: "adult", displayText: "€15 per adult" },
+        ],
+      }),
+    ).not.toHaveProperty("timeZone");
+    expect(
+      v1TravelSchema.parse({
+        ...workspaceFixture.travel[0],
+        departureTimeZone: "America/Chicago",
+        arrivalTimeZone: "Europe/Lisbon",
+      }),
+    ).not.toHaveProperty("departureTimeZone");
   });
 
   it("requires authentication and returns version and request correlation headers", async () => {

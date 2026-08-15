@@ -24,12 +24,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { ApiRequestError } from "@/lib/api";
 
 type PlanFormProps = {
+  initialDraft?: Partial<CreatePlanInput>;
   initialPlan?: TripPlan;
   initialScheduledDate?: string;
   initialStopId?: string;
   onCancel: () => void;
   onSubmit: (input: CreatePlanInput) => Promise<void>;
   presentation?: "dialog" | "inline" | "inspector";
+  requireScheduledDate?: boolean;
   submitLabel?: string;
   stops: TripStop[];
 };
@@ -51,36 +53,45 @@ type PlanFormValues = {
 function initialValues(
   stops: TripStop[],
   initialPlan?: TripPlan,
+  initialDraft?: Partial<CreatePlanInput>,
   initialStopId?: string,
   initialScheduledDate?: string,
 ): PlanFormValues {
   return {
-    tripStopId: initialPlan?.tripStopId ?? initialStopId ?? (stops.length === 1 ? stops[0].id : ""),
-    title: initialPlan?.title ?? "",
-    category: initialPlan?.category ?? "activity",
-    status: initialPlan?.status ?? (initialScheduledDate ? "planned" : "idea"),
-    scheduledDate: initialPlan?.scheduledDate ?? initialScheduledDate ?? "",
-    startTime: initialPlan?.startTime ?? "",
-    endTime: initialPlan?.endTime ?? "",
-    location: initialPlan?.location ?? "",
-    confirmationNumber: initialPlan?.confirmationNumber ?? "",
-    bookingUrl: initialPlan?.bookingUrl ?? "",
-    notes: initialPlan?.notes ?? "",
+    tripStopId:
+      initialPlan?.tripStopId ??
+      initialDraft?.tripStopId ??
+      initialStopId ??
+      (stops.length === 1 ? stops[0].id : ""),
+    title: initialPlan?.title ?? initialDraft?.title ?? "",
+    category: initialPlan?.category ?? initialDraft?.category ?? "activity",
+    status:
+      initialPlan?.status ?? initialDraft?.status ?? (initialScheduledDate ? "planned" : "idea"),
+    scheduledDate:
+      initialPlan?.scheduledDate ?? initialDraft?.scheduledDate ?? initialScheduledDate ?? "",
+    startTime: initialPlan?.startTime ?? initialDraft?.startTime ?? "",
+    endTime: initialPlan?.endTime ?? initialDraft?.endTime ?? "",
+    location: initialPlan?.location ?? initialDraft?.location ?? "",
+    confirmationNumber: initialPlan?.confirmationNumber ?? initialDraft?.confirmationNumber ?? "",
+    bookingUrl: initialPlan?.bookingUrl ?? initialDraft?.bookingUrl ?? "",
+    notes: initialPlan?.notes ?? initialDraft?.notes ?? "",
   };
 }
 
 function PlanForm({
+  initialDraft,
   initialPlan,
   initialScheduledDate,
   initialStopId,
   onCancel,
   onSubmit,
   presentation = "dialog",
+  requireScheduledDate = false,
   submitLabel,
   stops,
 }: PlanFormProps) {
   const [values, setValues] = useState(() =>
-    initialValues(stops, initialPlan, initialStopId, initialScheduledDate),
+    initialValues(stops, initialPlan, initialDraft, initialStopId, initialScheduledDate),
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [formError, setFormError] = useState<string>();
@@ -152,6 +163,10 @@ function PlanForm({
           ),
         ),
       );
+      return;
+    }
+    if (requireScheduledDate && (!parsed.data.scheduledDate || parsed.data.status === "idea")) {
+      setFieldErrors({ scheduledDate: ["Choose a date before adding this to the itinerary."] });
       return;
     }
 
@@ -377,8 +392,12 @@ function PlanForm({
       <div className={isInspector ? "grid gap-4" : "grid gap-4 sm:grid-cols-[1fr_11rem]"}>
         <FormField
           id="plan-date"
-          label="Date (optional)"
-          description="Leave this blank to keep the plan in Ideas."
+          label={requireScheduledDate ? "Date" : "Date (optional)"}
+          description={
+            requireScheduledDate
+              ? "Required before this becomes a scheduled plan."
+              : "Leave this blank to keep the plan in Ideas."
+          }
           error={fieldErrors.scheduledDate?.[0]}
         >
           <DatePicker
@@ -396,7 +415,7 @@ function PlanForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="idea">Idea</SelectItem>
+              {!requireScheduledDate ? <SelectItem value="idea">Idea</SelectItem> : null}
               <SelectItem value="planned">Planned</SelectItem>
               <SelectItem value="booked">Booked</SelectItem>
             </SelectContent>

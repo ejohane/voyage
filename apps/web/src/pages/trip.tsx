@@ -1,5 +1,6 @@
 import {
   BedDouble,
+  BookOpen,
   CheckCircle2,
   LayoutDashboard,
   Lightbulb,
@@ -9,28 +10,34 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { Link, NavLink, useLocation, useParams } from "react-router-dom";
+import { Link, Navigate, NavLink, useLocation, useParams } from "react-router-dom";
 import { TripIdeasSection } from "@/components/trip-ideas-section";
 import { ItinerarySection } from "@/components/trip-itinerary-section";
 import { TripPeopleSection } from "@/components/trip-people-section";
 import { OverviewSection, StaysSection, TravelSection } from "@/components/trip-planning-sections";
+import { TripResearchSection } from "@/components/trip-research-section";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiRequestError } from "@/lib/api";
+import { researchEnabledForTrip } from "@/lib/research-feature";
 import { useTrip } from "@/lib/trips";
 import { cn } from "@/lib/utils";
 
-type TripSection = "overview" | "itinerary" | "ideas" | "travel" | "stays" | "people";
+type TripSection = "overview" | "itinerary" | "ideas" | "research" | "travel" | "stays" | "people";
 
-const sectionDefinitions = [
-  { icon: LayoutDashboard, label: "Overview", value: "overview", path: "" },
-  { icon: ListChecks, label: "Itinerary", value: "itinerary", path: "/itinerary" },
-  { icon: Lightbulb, label: "Ideas", value: "ideas", path: "/ideas" },
-  { icon: Route, label: "Transportation", value: "travel", path: "/travel" },
-  { icon: BedDouble, label: "Stays", value: "stays", path: "/stays" },
-  { icon: Users, label: "People", value: "people", path: "/people" },
-] as const;
+function tripSectionDefinitions(researchEnabled: boolean) {
+  return [
+    { icon: LayoutDashboard, label: "Overview", value: "overview", path: "" },
+    { icon: ListChecks, label: "Itinerary", value: "itinerary", path: "/itinerary" },
+    researchEnabled
+      ? { icon: BookOpen, label: "Research", value: "research", path: "/research" }
+      : { icon: Lightbulb, label: "Ideas", value: "ideas", path: "/ideas" },
+    { icon: Route, label: "Transportation", value: "travel", path: "/travel" },
+    { icon: BedDouble, label: "Stays", value: "stays", path: "/stays" },
+    { icon: Users, label: "People", value: "people", path: "/people" },
+  ] as const;
+}
 
 function TripPage({ section = "overview" }: { section?: TripSection }) {
   const { tripId = "" } = useParams();
@@ -74,6 +81,15 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
       </main>
     );
   }
+
+  const researchEnabled = researchEnabledForTrip(trip.data.id);
+  if (section === "ideas" && researchEnabled) {
+    return <Navigate replace to={`/trips/${trip.data.id}/research`} />;
+  }
+  if (section === "research" && !researchEnabled) {
+    return <Navigate replace to={`/trips/${trip.data.id}/ideas`} />;
+  }
+  const sectionDefinitions = tripSectionDefinitions(researchEnabled);
 
   return (
     <main className="min-w-0 pb-8">
@@ -134,6 +150,7 @@ function TripPage({ section = "overview" }: { section?: TripSection }) {
         {section === "overview" ? <OverviewSection trip={trip.data} /> : null}
         {section === "itinerary" ? <ItinerarySection trip={trip.data} /> : null}
         {section === "ideas" ? <TripIdeasSection trip={trip.data} /> : null}
+        {section === "research" ? <TripResearchSection trip={trip.data} /> : null}
         {section === "travel" ? <TravelSection trip={trip.data} /> : null}
         {section === "stays" ? <StaysSection trip={trip.data} /> : null}
         {section === "people" ? <TripPeopleSection trip={trip.data} /> : null}
