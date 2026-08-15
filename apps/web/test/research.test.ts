@@ -178,6 +178,39 @@ describe("Research and provenance API", () => {
     ).toEqual({ count: 1 });
   });
 
+  it("tombstones a deleted capture and refuses to recreate it by replay", async () => {
+    const { trip } = await createTrip();
+    const key = crypto.randomUUID();
+    const input = { body: "A temporary research note" };
+    const created = await (
+      await capture(trip.id, input, "user_owner", key)
+    ).json<ResearchItemResponse>();
+
+    const deleted = await request(
+      researchItemEndpoint(trip.id, created.researchItem.id),
+      "user_owner",
+      { method: "DELETE", headers: { "If-Match": '"1"' } },
+    );
+    const replay = await capture(trip.id, input, "user_owner", key);
+
+    expect(deleted.status).toBe(204);
+    expect(replay.status).toBe(409);
+    expect(
+      await env.DB.prepare(
+        `SELECT response_json, resource_deleted_at
+         FROM research_capture_idempotency
+         WHERE user_id = ? AND idempotency_key = ?`,
+      )
+        .bind("user_owner", key)
+        .first<{ response_json: string | null; resource_deleted_at: string | null }>(),
+    ).toEqual({ response_json: null, resource_deleted_at: expect.any(String) });
+    expect(
+      await env.DB.prepare("SELECT count(*) AS count FROM research_items").first<{
+        count: number;
+      }>(),
+    ).toEqual({ count: 0 });
+  });
+
   it("protects updates and deletes with strong revisions", async () => {
     const { trip } = await createTrip();
     const created = await (
