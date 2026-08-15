@@ -96,6 +96,8 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_RESEARCH_ALPHA_ENABLED: ${{ vars.VITE_RESEARCH_ALPHA_ENABLED }}
+          VITE_RESEARCH_ALPHA_TRIP_IDS: ${{ vars.VITE_RESEARCH_ALPHA_TRIP_IDS }}
 
       - name: Deploy production MCP Worker
         run: bun run deploy:mcp:production

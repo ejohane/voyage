@@ -12,6 +12,7 @@ import { format, parse } from "date-fns";
 import {
   ArrowUpRight,
   BedDouble,
+  BookOpen,
   BusFront,
   CalendarCheck,
   CarFront,
@@ -61,6 +62,8 @@ import {
   useUpdateStay,
   useUpdateTravel,
 } from "@/lib/planning";
+import { useResearch } from "@/lib/research";
+import { researchEnabledForTrip } from "@/lib/research-feature";
 import { cn } from "@/lib/utils";
 
 type SectionProps = { trip: Trip };
@@ -177,10 +180,12 @@ function TravelTypeBadge({ type }: { type: Travel["type"] }) {
 }
 
 function OverviewSection({ trip }: SectionProps) {
+  const researchEnabled = researchEnabledForTrip(trip.id);
   const travel = useTravel(trip.id);
   const stays = useStays(trip.id);
   const plans = usePlans(trip.id);
   const people = useTripPeople(trip.id);
+  const research = useResearch(trip.id, researchEnabled);
   const travelBooked = travel.data?.filter((item) => item.status === "booked").length ?? 0;
   const staysBooked = stays.data?.filter((item) => item.status === "booked").length ?? 0;
   const scheduledPlans = plans.data?.filter((item) => item.scheduledDate).length ?? 0;
@@ -240,19 +245,31 @@ function OverviewSection({ trip }: SectionProps) {
 
         <WorkspaceCard
           className="min-h-48 border-blue-200 bg-blue-50/55 md:col-span-2"
-          description="A fast scratchpad for restaurants, sights, reminders, and maybes."
-          href={`/trips/${trip.id}/ideas`}
-          icon={Lightbulb}
-          meta={
-            plans.isPending
-              ? "Loading ideas…"
-              : plans.isError
-                ? "Open ideas"
-                : savedIdeas
-                  ? `${savedIdeas} saved ${savedIdeas === 1 ? "idea" : "ideas"}`
-                  : "Ready for your first idea"
+          description={
+            researchEnabled
+              ? "Drop in links and notes now; organize and schedule only the keepers."
+              : "A fast scratchpad for restaurants, sights, reminders, and maybes."
           }
-          title="Ideas"
+          href={`/trips/${trip.id}/${researchEnabled ? "research" : "ideas"}`}
+          icon={researchEnabled ? BookOpen : Lightbulb}
+          meta={
+            researchEnabled
+              ? research.isPending
+                ? "Loading Research…"
+                : research.isError
+                  ? "Open Research"
+                  : research.data.length
+                    ? `${research.data.length} saved ${research.data.length === 1 ? "item" : "items"}`
+                    : "Ready for your first note"
+              : plans.isPending
+                ? "Loading ideas…"
+                : plans.isError
+                  ? "Open ideas"
+                  : savedIdeas
+                    ? `${savedIdeas} saved ${savedIdeas === 1 ? "idea" : "ideas"}`
+                    : "Ready for your first idea"
+          }
+          title={researchEnabled ? "Research" : "Ideas"}
         />
 
         <WorkspaceCard

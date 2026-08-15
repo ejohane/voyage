@@ -1,0 +1,360 @@
+{
+  "fixtureVersion": 1,
+  "description": "Sanitized structural fixture derived from a collaborative Italy planning document. It contains no real names, booking references, or private source text.",
+  "candidates": [
+    {
+      "id": "10000000-0000-4000-8000-000000000001",
+      "candidateKey": "outbound-flight",
+      "payload": {
+        "kind": "travel",
+        "fields": {
+          "kind": "journey",
+          "type": "flight",
+          "status": "planning",
+          "departureAt": "2026-08-30T15:35",
+          "arrivalAt": "2026-08-31T12:15",
+          "arrivalTimeZone": "Europe/Rome"
+        },
+        "departureTemporal": {
+          "localValue": "2026-08-30T15:35",
+          "timeZone": null,
+          "precision": "inferred",
+          "rawText": "Fly Sunday 30th - flight 3:35pm"
+        },
+        "arrivalTemporal": {
+          "localValue": "2026-08-31T12:15",
+          "timeZone": "Europe/Rome",
+          "precision": "inferred",
+          "rawText": "Land Monday Aug 31st, 12:15"
+        }
+      },
+      "confidence": 0.61,
+      "dedupeKey": "flight:2026-08-30:unknown-italy",
+      "missingFields": [
+        "fields.departureLocation",
+        "fields.arrivalLocation",
+        "fields.carrier",
+        "fields.referenceNumber"
+      ],
+      "attentionIssues": [
+        {
+          "code": "missing_required_field",
+          "severity": "blocking",
+          "fieldPath": "fields.departureLocation",
+          "message": "The source does not identify the departure or arrival airport.",
+          "evidenceIds": ["20000000-0000-4000-8000-000000000001"]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "20000000-0000-4000-8000-000000000001",
+          "fieldPath": "fields.departureAt",
+          "excerpt": "Fly Sunday 30th - flight 3:35pm; land Monday Aug 31st, 12:15",
+          "locator": { "section": "arrival", "start": 0, "end": 67 },
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000002",
+      "candidateKey": "rental-car",
+      "payload": {
+        "kind": "travel",
+        "fields": {
+          "kind": "rental",
+          "type": "car",
+          "status": "booked",
+          "carrier": "Example Car Rental",
+          "confirmationNumber": "SANITIZED"
+        }
+      },
+      "confidence": 0.78,
+      "dedupeKey": "rental:sanitized",
+      "missingFields": [
+        "fields.departureLocation",
+        "fields.arrivalLocation",
+        "fields.departureAt",
+        "fields.arrivalAt"
+      ],
+      "attentionIssues": [
+        {
+          "code": "missing_required_field",
+          "severity": "blocking",
+          "fieldPath": "fields.departureAt",
+          "message": "Pickup and return locations and times are missing.",
+          "evidenceIds": ["20000000-0000-4000-8000-000000000002"]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "20000000-0000-4000-8000-000000000002",
+          "fieldPath": "fields.confirmationNumber",
+          "excerpt": "Car rental: Example Car Rental - booking reference SANITIZED",
+          "locator": { "section": "arrival" },
+          "confidence": 0.97
+        }
+      ]
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000003",
+      "candidateKey": "old-town-hotel",
+      "payload": {
+        "kind": "stay",
+        "fields": {
+          "status": "planning",
+          "propertyName": "Old Town Boutique Hotel",
+          "address": "1 Example Street, Puglia, Italy",
+          "bookingDetails": {
+            "checkInWindow": null,
+            "checkOutWindow": null,
+            "roomType": null,
+            "guestSummary": null,
+            "mealPlan": "Breakfast included",
+            "cancellationSummary": null,
+            "cancellationDeadline": null,
+            "totalPriceText": null,
+            "amenities": ["breakfast"]
+          }
+        }
+      },
+      "confidence": 0.72,
+      "dedupeKey": "stay:old-town-boutique",
+      "missingFields": ["fields.checkInDate", "fields.checkOutDate", "fields.tripStopId"],
+      "attentionIssues": [
+        {
+          "code": "ambiguous_date",
+          "severity": "blocking",
+          "fieldPath": "fields.checkInDate",
+          "message": "The accommodation dates are only implied by surrounding sections.",
+          "evidenceIds": ["20000000-0000-4000-8000-000000000003"]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "20000000-0000-4000-8000-000000000003",
+          "fieldPath": "fields.propertyName",
+          "excerpt": "Stay: Old Town Boutique Hotel; hotel breakfast included",
+          "locator": { "section": "puglia-stay" },
+          "confidence": 0.93
+        }
+      ]
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000004",
+      "candidateKey": "winery-tour",
+      "payload": {
+        "kind": "plan",
+        "fields": {
+          "title": "Winery tour",
+          "category": "activity",
+          "status": "planned",
+          "scheduledDate": "2026-09-03",
+          "startTime": "15:00",
+          "endTime": "16:00",
+          "timeZone": "Europe/Rome",
+          "location": "Example Winery, Puglia",
+          "bookingUrl": "https://winery.example/",
+          "priceQuotes": [
+            {
+              "amount": "15.00",
+              "currency": "EUR",
+              "unit": "adult",
+              "displayText": "€15 per adult"
+            }
+          ]
+        }
+      },
+      "confidence": 0.94,
+      "dedupeKey": "plan:winery:2026-09-03T15:00",
+      "missingFields": ["fields.tripStopId"],
+      "attentionIssues": [
+        {
+          "code": "missing_required_field",
+          "severity": "blocking",
+          "fieldPath": "fields.tripStopId",
+          "message": "Choose the trip destination before promotion.",
+          "evidenceIds": ["20000000-0000-4000-8000-000000000004"]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "20000000-0000-4000-8000-000000000004",
+          "fieldPath": "fields.startTime",
+          "excerpt": "3pm winery tour - one hour - €15 per adult",
+          "locator": { "section": "thursday" },
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000005",
+      "candidateKey": "dinner-options",
+      "payload": {
+        "kind": "research",
+        "fields": {
+          "title": "Old-town dinner options",
+          "body": "Three restaurant alternatives, from easy pizza to a traditional regional meal. Make a reservation because evenings may be busy.",
+          "category": "food",
+          "state": "inbox"
+        }
+      },
+      "confidence": 0.9,
+      "dedupeKey": "research:dinner-options:old-town",
+      "missingFields": [],
+      "attentionIssues": [],
+      "evidence": [
+        {
+          "id": "20000000-0000-4000-8000-000000000005",
+          "fieldPath": "fields.body",
+          "excerpt": "Dinner: pizza, a traditional regional meal, or a quiet terrace; make a reservation.",
+          "locator": { "section": "old-town-dinner" },
+          "confidence": 0.96
+        }
+      ]
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000006",
+      "candidateKey": "shallow-beach-option",
+      "payload": {
+        "kind": "research",
+        "fields": {
+          "title": "Shallow beach option",
+          "body": "Recommended with toddlers. The source lists conflicting drive estimates of 55 minutes and one hour.",
+          "category": "place",
+          "state": "inbox"
+        }
+      },
+      "confidence": 0.86,
+      "dedupeKey": "research:place:shallow-beach",
+      "missingFields": [],
+      "attentionIssues": [
+        {
+          "code": "conflicting_evidence",
+          "severity": "warning",
+          "fieldPath": "fields.body",
+          "message": "Two drive-time estimates refer to the same place.",
+          "evidenceIds": [
+            "20000000-0000-4000-8000-000000000006",
+            "20000000-0000-4000-8000-000000000007"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "20000000-0000-4000-8000-000000000006",
+          "fieldPath": "fields.body",
+          "excerpt": "Shallow beach - 55 mins - recommended with toddlers",
+          "locator": { "section": "beaches", "line": 3 },
+          "confidence": 0.9
+        },
+        {
+          "id": "20000000-0000-4000-8000-000000000007",
+          "fieldPath": "fields.body",
+          "excerpt": "Shallow beach - 1 hour",
+          "locator": { "section": "beaches", "line": 4 },
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000007",
+      "candidateKey": "airport-timing-conflict",
+      "payload": {
+        "kind": "research",
+        "fields": {
+          "title": "Resolve airport and rental-car timing",
+          "body": "The source says to return the car by 10:00 but arrive at the airport at 10:50.",
+          "category": "logistics",
+          "state": "inbox"
+        }
+      },
+      "confidence": 0.99,
+      "dedupeKey": "research:airport-rental-conflict:2026-09-05",
+      "missingFields": [],
+      "attentionIssues": [
+        {
+          "code": "conflicting_evidence",
+          "severity": "blocking",
+          "message": "The airport arrival occurs after the stated rental return deadline.",
+          "evidenceIds": [
+            "20000000-0000-4000-8000-000000000008",
+            "20000000-0000-4000-8000-000000000009"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "20000000-0000-4000-8000-000000000008",
+          "excerpt": "Return car by 10:00am",
+          "locator": { "section": "saturday", "line": 3 },
+          "confidence": 0.99
+        },
+        {
+          "id": "20000000-0000-4000-8000-000000000009",
+          "excerpt": "Arrive airport 10:50am",
+          "locator": { "section": "saturday", "line": 4 },
+          "confidence": 0.99
+        }
+      ]
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000008",
+      "candidateKey": "regional-foods",
+      "payload": {
+        "kind": "research",
+        "fields": {
+          "title": "Regional foods to try",
+          "body": "Orecchiette, burrata, focaccia, local olive oil, and wine.",
+          "category": "food",
+          "state": "inbox"
+        }
+      },
+      "confidence": 0.95,
+      "dedupeKey": "research:regional-foods:puglia",
+      "missingFields": [],
+      "attentionIssues": [],
+      "evidence": [
+        {
+          "id": "20000000-0000-4000-8000-000000000010",
+          "fieldPath": "fields.body",
+          "excerpt": "Foods: orecchiette, burrata, focaccia, local olive oil and wine",
+          "locator": { "section": "foods" },
+          "confidence": 0.99
+        }
+      ]
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000009",
+      "candidateKey": "island-flight-baggage",
+      "payload": {
+        "kind": "research",
+        "fields": {
+          "title": "Island flight baggage allowance",
+          "body": "One personal item, one 10 kg carry-on, and no checked bags.",
+          "category": "transportation",
+          "state": "inbox"
+        }
+      },
+      "confidence": 0.98,
+      "dedupeKey": "research:baggage:island-flight",
+      "missingFields": [],
+      "attentionIssues": [
+        {
+          "code": "unsupported_value",
+          "severity": "warning",
+          "message": "Canonical Travel does not yet have structured baggage fields.",
+          "evidenceIds": ["20000000-0000-4000-8000-000000000011"]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "20000000-0000-4000-8000-000000000011",
+          "fieldPath": "fields.body",
+          "excerpt": "One personal item; one 10 kg carry-on; no checked bags",
+          "locator": { "section": "island-flight" },
+          "confidence": 0.99
+        }
+      ]
+    }
+  ]
+}

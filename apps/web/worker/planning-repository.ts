@@ -3,6 +3,7 @@ import type {
   CreatePlanInput,
   CreateStayInput,
   CreateTravelInput,
+  MoneyQuote,
   PlanCategory,
   PlanStatus,
   ReservationStatus,
@@ -15,9 +16,11 @@ import type {
   UpdatePlanInput,
   UpdateStayInput,
   UpdateTravelInput,
+  V1CreateScheduledPlanInput,
   V1ScheduledPlan,
+  V1UpdateScheduledPlanInput,
 } from "@voyage/contracts";
-import { stayAmenitySchema, v1ScheduledPlanSchema } from "@voyage/contracts";
+import { moneyQuoteSchema, stayAmenitySchema, v1ScheduledPlanSchema } from "@voyage/contracts";
 
 type TravelRow = {
   id: string;
@@ -33,6 +36,8 @@ type TravelRow = {
   arrival_location: string;
   departure_at: string;
   arrival_at: string | null;
+  departure_time_zone: string | null;
+  arrival_time_zone: string | null;
   carrier: string | null;
   reference_number: string | null;
   vehicle_description: string | null;
@@ -103,7 +108,11 @@ type PlanRow = {
   scheduled_date: string | null;
   start_time: string | null;
   end_time: string | null;
+  time_zone: string | null;
   location: string | null;
+  place_provider: "google" | null;
+  place_id: string | null;
+  price_quotes_json?: string | null;
   confirmation_number: string | null;
   booking_url: string | null;
   notes: string | null;
@@ -175,6 +184,8 @@ function mapTravel(row: TravelRow): Travel {
     arrivalLocation: row.arrival_location,
     departureAt: row.departure_at,
     arrivalAt: row.arrival_at,
+    departureTimeZone: row.departure_time_zone,
+    arrivalTimeZone: row.arrival_time_zone,
     carrier: row.carrier,
     referenceNumber: row.reference_number,
     vehicleDescription: row.vehicle_description,
@@ -318,6 +329,20 @@ function bookingDetailsStatement(
     );
 }
 
+function parsedPriceQuotes(value: string | null | undefined): MoneyQuote[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((entry): MoneyQuote[] => {
+      const result = moneyQuoteSchema.safeParse(entry);
+      return result.success ? [result.data] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
 function mapPlan(row: PlanRow): TripPlan {
   return {
     id: row.id,
@@ -329,13 +354,65 @@ function mapPlan(row: PlanRow): TripPlan {
     scheduledDate: row.scheduled_date,
     startTime: row.start_time,
     endTime: row.end_time,
+    timeZone: row.time_zone,
     location: row.location,
+    placeRef:
+      row.place_provider === "google" && row.place_id
+        ? { provider: "google", placeId: row.place_id }
+        : null,
+    priceQuotes: parsedPriceQuotes(row.price_quotes_json),
     confirmationNumber: row.confirmation_number,
     bookingUrl: row.booking_url,
     notes: row.notes,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+const planSelect = `SELECT
+  trip_plans.*,
+  (
+    SELECT json_group_array(
+      json_object(
+        'amount', quote.amount,
+        'currency', quote.currency,
+        'unit', quote.unit,
+        'displayText', quote.display_text
+      )
+    )
+    FROM (
+      SELECT amount, currency, unit, display_text
+      FROM plan_price_quotes
+      WHERE plan_id = trip_plans.id
+      ORDER BY position
+    ) AS quote
+  ) AS price_quotes_json
+FROM trip_plans`;
+
+function planPriceQuoteStatements(
+  database: D1Database,
+  planId: string,
+  quotes: MoneyQuote[],
+  now: string,
+) {
+  return quotes.map((quote, position) =>
+    database
+      .prepare(
+        `INSERT INTO plan_price_quotes (
+           id, plan_id, position, amount, currency, unit, display_text, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        planId,
+        position,
+        quote.amount,
+        quote.currency,
+        quote.unit,
+        quote.displayText,
+        now,
+      ),
+  );
 }
 
 function mapV1ScheduledPlan(row: PlanRow): V1ScheduledPlan {
@@ -365,9 +442,10 @@ export async function createTravel(
       `INSERT INTO travel_segments (
         id, trip_id, kind, type, status, departure_stop_id, arrival_stop_id,
         departure_airport_id, arrival_airport_id, departure_location, arrival_location, departure_at, arrival_at,
+        departure_time_zone, arrival_time_zone,
         carrier, reference_number, vehicle_description, confirmation_number, booking_url, notes,
         created_by_user_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -383,6 +461,8 @@ export async function createTravel(
       input.arrivalLocation,
       input.departureAt,
       input.arrivalAt,
+      input.departureTimeZone ?? null,
+      input.arrivalTimeZone ?? null,
       input.carrier,
       input.referenceNumber,
       input.vehicleDescription,
@@ -431,6 +511,8 @@ export async function updateTravel(
     arrivalLocation: "arrival_location",
     departureAt: "departure_at",
     arrivalAt: "arrival_at",
+    departureTimeZone: "departure_time_zone",
+    arrivalTimeZone: "arrival_time_zone",
     carrier: "carrier",
     referenceNumber: "reference_number",
     vehicleDescription: "vehicle_description",
@@ -636,7 +718,7 @@ export async function deleteStay(
 export async function listPlans(database: D1Database, tripId: string): Promise<TripPlan[]> {
   const result = await database
     .prepare(
-      `SELECT * FROM trip_plans
+      `${planSelect}
        WHERE trip_id = ?
        ORDER BY
          CASE WHEN scheduled_date IS NULL THEN 1 ELSE 0 END,
@@ -657,7 +739,7 @@ export async function listV1ScheduledPlans(
 ): Promise<V1ScheduledPlan[]> {
   const result = await database
     .prepare(
-      `SELECT * FROM trip_plans
+      `${planSelect}
        WHERE trip_id = ? AND scheduled_date IS NOT NULL AND status IN ('planned', 'booked')
        ORDER BY scheduled_date,
          CASE WHEN start_time IS NULL THEN 1 ELSE 0 END,
@@ -680,34 +762,42 @@ export async function createPlan(
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
-  await database
-    .prepare(
-      `INSERT INTO trip_plans (
+  await database.batch([
+    database
+      .prepare(
+        `INSERT INTO trip_plans (
         id, trip_id, trip_stop_id, title, category, status, scheduled_date, start_time, end_time,
-        location, confirmation_number, booking_url, notes, created_by_user_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      id,
-      tripId,
-      input.tripStopId,
-      input.title,
-      input.category,
-      input.status,
-      input.scheduledDate,
-      input.startTime,
-      input.endTime,
-      input.location,
-      input.confirmationNumber,
-      input.bookingUrl,
-      input.notes,
-      userId,
-      now,
-      now,
-    )
-    .run();
+        time_zone, location, place_provider, place_id, confirmation_number, booking_url, notes,
+        created_by_user_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        id,
+        tripId,
+        input.tripStopId,
+        input.title,
+        input.category,
+        input.status,
+        input.scheduledDate,
+        input.startTime,
+        input.endTime,
+        input.timeZone ?? null,
+        input.location,
+        input.placeRef?.provider ?? null,
+        input.placeRef?.placeId ?? null,
+        input.confirmationNumber,
+        input.bookingUrl,
+        input.notes,
+        userId,
+        now,
+        now,
+      ),
+    ...planPriceQuoteStatements(database, id, input.priceQuotes ?? [], now),
+  ]);
 
-  return { id, tripId, ...input, createdAt: now, updatedAt: now };
+  const plan = await getPlan(database, tripId, id);
+  if (!plan) throw new Error("Created plan could not be loaded.");
+  return plan;
 }
 
 function idempotencyExpiry(createdAt: Date) {
@@ -763,7 +853,7 @@ export async function createV1ScheduledPlanIdempotently(
   userId: string,
   idempotencyKey: string,
   requestHash: string,
-  input: CreatePlanInput,
+  input: V1CreateScheduledPlanInput,
 ): Promise<IdempotentPlanCreateResult> {
   const createdAt = new Date();
   await deleteExpiredV1IdempotencyRecords(database, createdAt);
@@ -849,7 +939,7 @@ export async function getPlan(
   planId: string,
 ): Promise<TripPlan | null> {
   const row = await database
-    .prepare("SELECT * FROM trip_plans WHERE id = ? AND trip_id = ?")
+    .prepare(`${planSelect} WHERE trip_plans.id = ? AND trip_id = ?`)
     .bind(planId, tripId)
     .first<PlanRow>();
 
@@ -863,7 +953,7 @@ export async function getV1ScheduledPlan(
 ): Promise<V1ScheduledPlan | null> {
   const row = await database
     .prepare(
-      `SELECT * FROM trip_plans
+      `${planSelect}
        WHERE id = ? AND trip_id = ? AND scheduled_date IS NOT NULL
          AND status IN ('planned', 'booked')`,
     )
@@ -879,7 +969,9 @@ export async function updatePlan(
   planId: string,
   input: UpdatePlanInput,
 ): Promise<TripPlan | null> {
-  const columns: Record<keyof UpdatePlanInput, string> = {
+  if (!(await getPlan(database, tripId, planId))) return null;
+
+  const columns: Partial<Record<keyof UpdatePlanInput, string>> = {
     tripStopId: "trip_stop_id",
     title: "title",
     category: "category",
@@ -887,22 +979,39 @@ export async function updatePlan(
     scheduledDate: "scheduled_date",
     startTime: "start_time",
     endTime: "end_time",
+    timeZone: "time_zone",
     location: "location",
     confirmationNumber: "confirmation_number",
     bookingUrl: "booking_url",
     notes: "notes",
   };
-  const fields = Object.entries(input) as [keyof UpdatePlanInput, unknown][];
+  const fields = (Object.entries(input) as [keyof UpdatePlanInput, unknown][]).filter(
+    ([field]) => field !== "placeRef" && field !== "priceQuotes",
+  );
+  const assignments = fields.map(([field]) => `${columns[field]} = ?`);
+  const values = fields.map(([, value]) => value);
+  if (input.placeRef !== undefined) {
+    assignments.push("place_provider = ?", "place_id = ?");
+    values.push(input.placeRef?.provider ?? null, input.placeRef?.placeId ?? null);
+  }
   const updatedAt = new Date().toISOString();
-  const result = await database
-    .prepare(
-      `UPDATE trip_plans
-       SET ${fields.map(([field]) => `${columns[field]} = ?`).join(", ")},
+  const statements = [
+    database
+      .prepare(
+        `UPDATE trip_plans
+       SET ${assignments.join(", ")}${assignments.length ? "," : ""}
            revision = revision + 1, updated_at = ?
        WHERE id = ? AND trip_id = ?`,
-    )
-    .bind(...fields.map(([, value]) => value), updatedAt, planId, tripId)
-    .run();
+      )
+      .bind(...values, updatedAt, planId, tripId),
+  ];
+  if (input.priceQuotes !== undefined) {
+    statements.push(
+      database.prepare("DELETE FROM plan_price_quotes WHERE plan_id = ?").bind(planId),
+      ...planPriceQuoteStatements(database, planId, input.priceQuotes, updatedAt),
+    );
+  }
+  const [result] = await database.batch(statements);
 
   return result.meta.changes === 0 ? null : getPlan(database, tripId, planId);
 }
@@ -918,9 +1027,9 @@ export async function updateV1ScheduledPlanIfRevision(
   tripId: string,
   planId: string,
   expectedRevision: number,
-  input: UpdatePlanInput,
+  input: V1UpdateScheduledPlanInput,
 ): Promise<RevisionProtectedPlanMutationResult> {
-  const columns: Record<keyof UpdatePlanInput, string> = {
+  const columns: Record<keyof V1UpdateScheduledPlanInput, string> = {
     tripStopId: "trip_stop_id",
     title: "title",
     category: "category",
@@ -933,7 +1042,7 @@ export async function updateV1ScheduledPlanIfRevision(
     bookingUrl: "booking_url",
     notes: "notes",
   };
-  const fields = Object.entries(input) as [keyof UpdatePlanInput, unknown][];
+  const fields = Object.entries(input) as [keyof V1UpdateScheduledPlanInput, unknown][];
   const updatedAt = new Date().toISOString();
   const updated = await database
     .prepare(

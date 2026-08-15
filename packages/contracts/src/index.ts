@@ -156,6 +156,18 @@ export function planEndpoint(tripId: string, planId: string) {
   return `${tripPlansEndpoint(tripId)}/${planId}` as const;
 }
 
+export function tripResearchEndpoint(tripId: string) {
+  return `${tripEndpoint(tripId)}/research` as const;
+}
+
+export function researchItemEndpoint(tripId: string, researchItemId: string) {
+  return `${tripResearchEndpoint(tripId)}/${researchItemId}` as const;
+}
+
+export function researchPlanPromotionEndpoint(tripId: string, researchItemId: string) {
+  return `${researchItemEndpoint(tripId, researchItemId)}/promotions/plan` as const;
+}
+
 export type HealthResponse = {
   status: "ok";
   service: "voyage-api";
@@ -206,6 +218,20 @@ const localDateTimeSchema = z
     );
   }, "Use a valid local date and time.");
 
+export const timeZoneSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .refine((value) => {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Use a valid IANA time zone.");
+
 const nullableText = (maximum: number, message: string) =>
   z.string().trim().max(maximum, message).nullable();
 const nullableUrlSchema = z
@@ -234,9 +260,31 @@ export const locationKindSchema = z.enum([
   "place",
 ]);
 
-export const tripStopLocationSchema = z.object({
+export const placeRefSchema = z.object({
   provider: z.literal("google"),
   placeId: z.string().trim().min(1).max(300),
+});
+
+export const tripStopLocationSchema = placeRefSchema;
+
+export const moneyQuoteUnitSchema = z.enum([
+  "total",
+  "person",
+  "adult",
+  "child",
+  "couple",
+  "night",
+  "bottle",
+  "other",
+]);
+
+export const moneyQuoteSchema = z.object({
+  amount: z
+    .string()
+    .regex(/^\d+(?:\.\d{1,3})?$/, "Use a positive decimal amount without a currency symbol."),
+  currency: z.string().regex(/^[A-Z]{3}$/, "Use a three-letter currency code."),
+  unit: moneyQuoteUnitSchema,
+  displayText: z.string().trim().min(1).max(160),
 });
 
 const tripStopFieldsSchema = z.object({
@@ -478,6 +526,8 @@ const travelBaseFieldsSchema = z.object({
     .max(160, "Keep the arrival location under 160 characters."),
   departureAt: localDateTimeSchema,
   arrivalAt: localDateTimeSchema.nullable(),
+  departureTimeZone: timeZoneSchema.nullable().optional(),
+  arrivalTimeZone: timeZoneSchema.nullable().optional(),
   carrier: nullableText(120, "Keep the carrier under 120 characters."),
   referenceNumber: nullableText(80, "Keep the route or flight number under 80 characters."),
   vehicleDescription: nullableText(200, "Keep the vehicle description under 200 characters."),
@@ -541,10 +591,14 @@ export const travelSchema = travelBaseFieldsSchema
 export const travelResponseSchema = z.object({ travel: travelSchema });
 export const travelListResponseSchema = z.object({ travel: z.array(travelSchema) });
 
-export const stayPropertyRefSchema = z.object({
-  provider: z.literal("google"),
-  placeId: z.string().trim().min(1).max(300),
-});
+// Native v1 is intentionally frozen while the web/API surface gains provenance fields.
+// Strip the additive time-zone fields so an enriched canonical record cannot silently alter v1.
+export const v1TravelSchema = travelSchema.transform(
+  ({ departureTimeZone: _departureTimeZone, arrivalTimeZone: _arrivalTimeZone, ...travel }) =>
+    travel,
+);
+
+export const stayPropertyRefSchema = placeRefSchema;
 
 export const stayAmenitySchema = z.enum([
   "wifi",
@@ -683,7 +737,10 @@ const planBaseFieldsSchema = z.object({
   scheduledDate: nullableDateSchema,
   startTime: timeOnlySchema.nullable(),
   endTime: timeOnlySchema.nullable(),
+  timeZone: timeZoneSchema.nullable().optional(),
   location: nullableText(300, "Keep the location under 300 characters."),
+  placeRef: placeRefSchema.nullable().optional(),
+  priceQuotes: z.array(moneyQuoteSchema).max(10).optional(),
   confirmationNumber: nullableText(120, "Keep the confirmation number under 120 characters."),
   bookingUrl: nullableUrlSchema,
   notes: nullableText(2_000, "Keep notes under 2,000 characters."),
@@ -737,15 +794,24 @@ export const updatePlanInputSchema = planBaseFieldsSchema
   .partial()
   .refine((value) => Object.keys(value).length > 0, "Provide at least one field to update.");
 
-export const v1CreateScheduledPlanInputSchema = createPlanInputSchema.refine(
-  (value) => value.scheduledDate !== null && value.status !== "idea",
-  {
+const v1PlanBaseFieldsSchema = planBaseFieldsSchema.omit({
+  timeZone: true,
+  placeRef: true,
+  priceQuotes: true,
+});
+
+export const v1CreateScheduledPlanInputSchema = v1PlanBaseFieldsSchema
+  .strict()
+  .superRefine(validatePlan)
+  .refine((value) => value.scheduledDate !== null && value.status !== "idea", {
     message: "Native trip plans must have a date and a planned or booked status.",
     path: ["scheduledDate"],
-  },
-);
+  });
 
-export const v1UpdateScheduledPlanInputSchema = updatePlanInputSchema;
+export const v1UpdateScheduledPlanInputSchema = v1PlanBaseFieldsSchema
+  .partial()
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, "Provide at least one field to update.");
 
 export const tripPlanSchema = planBaseFieldsSchema.extend({
   id: z.string().uuid(),
@@ -757,11 +823,15 @@ export const tripPlanSchema = planBaseFieldsSchema.extend({
 export const planResponseSchema = z.object({ plan: tripPlanSchema });
 export const planListResponseSchema = z.object({ plans: z.array(tripPlanSchema) });
 
-export const v1ScheduledPlanSchema = tripPlanSchema
+export const v1ScheduledPlanSchema = v1PlanBaseFieldsSchema
   .extend({
+    id: z.string().uuid(),
+    tripId: z.string().uuid(),
     scheduledDate: dateOnlySchema,
     status: z.enum(["planned", "booked"]),
     revision: z.number().int().positive(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
   })
   .superRefine(validatePlan);
 
@@ -770,7 +840,7 @@ export const v1PlanResponseSchema = z.object({ plan: v1ScheduledPlanSchema });
 export const v1TripWorkspaceResponseSchema = apiV1EnvelopeSchema.extend({
   revision: apiV1RevisionSchema,
   trip: tripSchema,
-  travel: z.array(travelSchema),
+  travel: z.array(v1TravelSchema),
   stays: z.array(staySchema),
   plans: z.array(v1ScheduledPlanSchema),
 });
@@ -981,6 +1051,266 @@ export const gmailImportResponseSchema = z.object({
   ),
 });
 
+export const researchStateSchema = z.enum(["inbox", "considering", "shortlisted", "dismissed"]);
+
+export const researchCategorySchema = z.enum([
+  "place",
+  "activity",
+  "food",
+  "stay",
+  "transportation",
+  "logistics",
+  "other",
+]);
+
+export const sourceArtifactKindSchema = z.enum([
+  "url",
+  "file",
+  "pasted_text",
+  "email",
+  "provider_document",
+]);
+export const sourceArtifactVisibilitySchema = z.enum(["private", "planners", "trip"]);
+export const sourceArtifactProcessingStateSchema = z.enum([
+  "captured",
+  "queued",
+  "processing",
+  "ready",
+  "partial",
+  "failed",
+  "unsupported",
+]);
+
+const optionalSourceUrlSchema = z.string().trim().url().max(2_048).nullable();
+
+export const captureResearchSourceSchema = z.object({
+  kind: sourceArtifactKindSchema.default("url"),
+  provider: z.string().trim().min(1).max(100).nullable().default(null),
+  externalId: z.string().trim().min(1).max(500).nullable().default(null),
+  originalUrl: optionalSourceUrlSchema,
+  capturedTitle: z.string().trim().min(1).max(500).nullable().default(null),
+  siteName: z.string().trim().min(1).max(200).nullable().default(null),
+  visibility: sourceArtifactVisibilitySchema.default("planners"),
+});
+
+const researchItemInputFieldsSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  body: z.string().trim().max(10_000).nullable().default(null),
+  state: researchStateSchema.default("inbox"),
+  category: researchCategorySchema.nullable().default(null),
+  tripStopId: z.string().uuid().nullable().default(null),
+  placeRef: placeRefSchema.nullable().default(null),
+  attribution: z.string().trim().min(1).max(500).nullable().default(null),
+  priceQuotes: z.array(moneyQuoteSchema).max(10).default([]),
+});
+
+export const createResearchItemInputSchema = researchItemInputFieldsSchema
+  .extend({ source: captureResearchSourceSchema.optional() })
+  .superRefine((value, context) => {
+    if (value.title || value.body || value.source?.originalUrl) return;
+    context.addIssue({
+      code: "custom",
+      message: "Add a note or link.",
+      path: ["body"],
+    });
+  });
+
+export const updateResearchItemInputSchema = researchItemInputFieldsSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, "Provide at least one field to update.");
+
+export const sourceArtifactVersionSchema = z.object({
+  id: z.string().uuid(),
+  sequence: z.number().int().positive(),
+  mimeType: z.string().max(200).nullable(),
+  byteLength: z.number().int().nonnegative().nullable(),
+  contentHash: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .nullable(),
+  normalizedContentHash: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .nullable(),
+  capturedAt: z.string(),
+});
+
+export const sourceArtifactSchema = z.object({
+  id: z.string().uuid(),
+  tripId: z.string().uuid(),
+  kind: sourceArtifactKindSchema,
+  provider: z.string().nullable(),
+  externalId: z.string().nullable(),
+  originalUrl: optionalSourceUrlSchema,
+  canonicalUrl: optionalSourceUrlSchema,
+  capturedTitle: z.string().nullable(),
+  siteName: z.string().nullable(),
+  visibility: sourceArtifactVisibilitySchema,
+  processingState: sourceArtifactProcessingStateSchema,
+  capturedByUserId: z.string(),
+  latestVersion: sourceArtifactVersionSchema.nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const researchPromotionSummarySchema = z.object({
+  id: z.string().uuid(),
+  targetKind: z.enum(["research", "plan", "stay", "travel"]),
+  targetId: z.string().uuid(),
+  targetState: z.enum(["scheduled", "unscheduled", "missing"]),
+  promotedAt: z.string(),
+});
+
+export const researchItemSchema = researchItemInputFieldsSchema.omit({ title: true }).extend({
+  id: z.string().uuid(),
+  tripId: z.string().uuid(),
+  title: z.string().trim().min(1).max(200),
+  sources: z.array(sourceArtifactSchema),
+  promotions: z.array(researchPromotionSummarySchema),
+  createdByUserId: z.string(),
+  revision: z.number().int().positive(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const researchItemResponseSchema = z.object({ researchItem: researchItemSchema });
+export const researchListResponseSchema = z.object({
+  researchItems: z.array(researchItemSchema),
+  nextCursor: z.string().nullable(),
+});
+
+export const researchListQuerySchema = z.object({
+  state: researchStateSchema.optional(),
+  category: researchCategorySchema.optional(),
+  tripStopId: z.string().uuid().optional(),
+  cursor: z.string().min(1).max(500).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+export const researchPlanPromotionInputSchema = createPlanInputSchema.refine(
+  (value) => value.scheduledDate !== null && value.status !== "idea",
+  {
+    message: "Choose a date and planned or booked status before promotion.",
+    path: ["scheduledDate"],
+  },
+);
+export const researchPlanPromotionResponseSchema = z.object({
+  researchItem: researchItemSchema,
+  plan: tripPlanSchema,
+  idempotentReplay: z.boolean(),
+});
+
+export const extractionRunStatusSchema = z.enum([
+  "queued",
+  "processing",
+  "completed",
+  "partial",
+  "failed",
+]);
+export const candidateReviewStateSchema = z.enum([
+  "pending",
+  "accepted",
+  "dismissed",
+  "superseded",
+]);
+export const candidateIssueCodeSchema = z.enum([
+  "missing_required_field",
+  "ambiguous_date",
+  "ambiguous_location",
+  "conflicting_evidence",
+  "suspected_duplicate",
+  "unsupported_value",
+]);
+export const candidateAttentionIssueSchema = z.object({
+  code: candidateIssueCodeSchema,
+  severity: z.enum(["warning", "blocking"]),
+  fieldPath: z.string().max(300).optional(),
+  message: z.string().trim().min(1).max(500),
+  evidenceIds: z.array(z.string().uuid()).max(50).default([]),
+});
+
+export const candidateTemporalValueSchema = z.object({
+  localValue: z.string().trim().min(1).max(100),
+  timeZone: timeZoneSchema.nullable(),
+  precision: z.enum(["exact", "approximate", "inferred"]),
+  rawText: z.string().trim().min(1).max(500),
+});
+
+const candidateResearchPayloadSchema = z.object({
+  kind: z.literal("research"),
+  fields: researchItemInputFieldsSchema.partial().extend({
+    title: z.string().trim().min(1).max(200),
+  }),
+});
+const candidateTravelPayloadSchema = z.object({
+  kind: z.literal("travel"),
+  fields: travelBaseFieldsSchema.partial(),
+  departureTemporal: candidateTemporalValueSchema.optional(),
+  arrivalTemporal: candidateTemporalValueSchema.optional(),
+});
+const candidateStayPayloadSchema = z.object({
+  kind: z.literal("stay"),
+  fields: stayBaseFieldsSchema.partial(),
+});
+const candidatePlanPayloadSchema = z.object({
+  kind: z.literal("plan"),
+  fields: planBaseFieldsSchema.partial(),
+});
+
+export const artifactCandidatePayloadSchema = z.discriminatedUnion("kind", [
+  candidateResearchPayloadSchema,
+  candidateTravelPayloadSchema,
+  candidateStayPayloadSchema,
+  candidatePlanPayloadSchema,
+]);
+
+export const candidateEvidenceSchema = z.object({
+  id: z.string().uuid(),
+  artifactVersionId: z.string().uuid(),
+  fieldPath: z.string().max(300).nullable(),
+  excerpt: z.string().trim().min(1).max(2_000),
+  locator: z.record(z.string(), z.unknown()),
+  confidence: z.number().min(0).max(1).nullable(),
+  createdAt: z.string(),
+});
+
+export const artifactCandidateSchema = z.object({
+  id: z.string().uuid(),
+  extractionRunId: z.string().uuid(),
+  candidateKey: z.string().trim().min(1).max(300),
+  payload: artifactCandidatePayloadSchema,
+  payloadHash: z.string().regex(/^[a-f0-9]{64}$/),
+  confidence: z.number().min(0).max(1),
+  dedupeKey: z.string().max(500).nullable(),
+  suggestedTripStopId: z.string().uuid().nullable(),
+  missingFields: z.array(z.string().max(300)).max(100),
+  attentionIssues: z.array(candidateAttentionIssueSchema).max(100),
+  reviewState: candidateReviewStateSchema,
+  evidence: z.array(candidateEvidenceSchema),
+  revision: z.number().int().positive(),
+  reviewedByUserId: z.string().nullable(),
+  reviewedAt: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const candidatePromotionTargetSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("research"),
+    input: researchItemInputFieldsSchema.extend({
+      title: z.string().trim().min(1).max(200),
+    }),
+  }),
+  z.object({ kind: z.literal("travel"), input: createTravelInputSchema }),
+  z.object({ kind: z.literal("stay"), input: createStayInputSchema }),
+  z.object({ kind: z.literal("plan"), input: researchPlanPromotionInputSchema }),
+]);
+
+export const candidatePromotionReviewSchema = z.object({
+  target: candidatePromotionTargetSchema,
+  resolvedBlockingIssues: z.array(z.number().int().nonnegative()).max(100).default([]),
+});
+
 export const apiErrorSchema = z.object({
   error: z.object({
     code: z.enum([
@@ -1026,6 +1356,10 @@ export type InvitationSummary = z.infer<typeof invitationSummarySchema>;
 export type InvitationSummaryResponse = z.infer<typeof invitationSummaryResponseSchema>;
 export type InvitationActionResponse = z.infer<typeof invitationActionResponseSchema>;
 export type LocationKind = z.infer<typeof locationKindSchema>;
+export type PlaceRef = z.infer<typeof placeRefSchema>;
+export type TimeZone = z.infer<typeof timeZoneSchema>;
+export type MoneyQuoteUnit = z.infer<typeof moneyQuoteUnitSchema>;
+export type MoneyQuote = z.infer<typeof moneyQuoteSchema>;
 export type TripStopLocation = z.infer<typeof tripStopLocationSchema>;
 export type LocationSuggestion = z.infer<typeof locationSuggestionSchema>;
 export type LocationSuggestionsResponse = z.infer<typeof locationSuggestionsResponseSchema>;
@@ -1085,3 +1419,31 @@ export type GmailScanInput = z.infer<typeof gmailScanInputSchema>;
 export type GmailScanResponse = z.infer<typeof gmailScanResponseSchema>;
 export type GmailImportInput = z.infer<typeof gmailImportInputSchema>;
 export type GmailImportResponse = z.infer<typeof gmailImportResponseSchema>;
+export type ResearchState = z.infer<typeof researchStateSchema>;
+export type ResearchCategory = z.infer<typeof researchCategorySchema>;
+export type SourceArtifactKind = z.infer<typeof sourceArtifactKindSchema>;
+export type SourceArtifactVisibility = z.infer<typeof sourceArtifactVisibilitySchema>;
+export type SourceArtifactProcessingState = z.infer<typeof sourceArtifactProcessingStateSchema>;
+export type CaptureResearchSource = z.infer<typeof captureResearchSourceSchema>;
+export type CreateResearchItemRequest = z.input<typeof createResearchItemInputSchema>;
+export type CreateResearchItemInput = z.infer<typeof createResearchItemInputSchema>;
+export type UpdateResearchItemInput = z.infer<typeof updateResearchItemInputSchema>;
+export type SourceArtifactVersion = z.infer<typeof sourceArtifactVersionSchema>;
+export type SourceArtifact = z.infer<typeof sourceArtifactSchema>;
+export type ResearchPromotionSummary = z.infer<typeof researchPromotionSummarySchema>;
+export type ResearchItem = z.infer<typeof researchItemSchema>;
+export type ResearchItemResponse = z.infer<typeof researchItemResponseSchema>;
+export type ResearchListResponse = z.infer<typeof researchListResponseSchema>;
+export type ResearchListQuery = z.infer<typeof researchListQuerySchema>;
+export type ResearchPlanPromotionInput = z.infer<typeof researchPlanPromotionInputSchema>;
+export type ResearchPlanPromotionResponse = z.infer<typeof researchPlanPromotionResponseSchema>;
+export type ExtractionRunStatus = z.infer<typeof extractionRunStatusSchema>;
+export type CandidateReviewState = z.infer<typeof candidateReviewStateSchema>;
+export type CandidateIssueCode = z.infer<typeof candidateIssueCodeSchema>;
+export type CandidateAttentionIssue = z.infer<typeof candidateAttentionIssueSchema>;
+export type CandidateTemporalValue = z.infer<typeof candidateTemporalValueSchema>;
+export type ArtifactCandidatePayload = z.infer<typeof artifactCandidatePayloadSchema>;
+export type CandidateEvidence = z.infer<typeof candidateEvidenceSchema>;
+export type ArtifactCandidate = z.infer<typeof artifactCandidateSchema>;
+export type CandidatePromotionTarget = z.infer<typeof candidatePromotionTargetSchema>;
+export type CandidatePromotionReview = z.infer<typeof candidatePromotionReviewSchema>;

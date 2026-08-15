@@ -24,6 +24,7 @@ import { createInvitationRoutes } from "./invitations-routes";
 import { createLocationRoutes } from "./location-routes";
 import { deleteExpiredV1IdempotencyRecords } from "./planning-repository";
 import { createPlanningRoutes } from "./planning-routes";
+import { createResearchRoutes } from "./research-routes";
 import { createTripsRoutes } from "./trips-routes";
 import type { WorkerEnvironment } from "./types";
 import type { UserDirectory } from "./user-directory";
@@ -87,6 +88,7 @@ export function createApp(dependencies: AppDependencies = {}) {
     tripsEndpoint,
     createPlanningRoutes(authenticateRequest, { placesClient: dependencies.placesClient }),
   );
+  app.route(tripsEndpoint, createResearchRoutes(authenticateRequest));
   app.route(
     "/api/integrations/gmail",
     createGmailIntegrationRoutes(authenticateRequest, { fetcher: dependencies.gmailFetch }),

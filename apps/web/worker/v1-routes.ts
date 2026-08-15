@@ -7,6 +7,7 @@ import {
   v1CreateScheduledPlanInputSchema,
   v1PlanResponseSchema,
   v1ScheduledPlanSchema,
+  v1TravelSchema,
   v1TripBriefingResponseSchema,
   v1TripListResponseSchema,
   v1TripPeopleResponseSchema,
@@ -184,11 +185,12 @@ export function createV1Routes(
     const trip = await getTrip(context.env.DB, context.var.authUserId, tripId);
     if (!trip) return context.json(error("not_found", "Trip not found."), 404);
 
-    const [travel, stays, plans] = await Promise.all([
+    const [canonicalTravel, stays, plans] = await Promise.all([
       listTravel(context.env.DB, tripId),
       listStays(context.env.DB, tripId),
       listV1ScheduledPlans(context.env.DB, tripId),
     ]);
+    const travel = canonicalTravel.map((item) => v1TravelSchema.parse(item));
     const workspace = { trip, travel, stays, plans };
     const revision = await sha256(workspace);
     const etag = quotedEtag(revision);
@@ -349,7 +351,20 @@ export function createV1Routes(
     if (!parsed.success) {
       return context.json(validationError(parsed.error.flatten().fieldErrors), 422);
     }
-    const merged = v1CreateScheduledPlanInputSchema.safeParse({ ...existing, ...parsed.data });
+    const merged = v1CreateScheduledPlanInputSchema.safeParse({
+      tripStopId: existing.tripStopId,
+      title: existing.title,
+      category: existing.category,
+      status: existing.status,
+      scheduledDate: existing.scheduledDate,
+      startTime: existing.startTime,
+      endTime: existing.endTime,
+      location: existing.location,
+      confirmationNumber: existing.confirmationNumber,
+      bookingUrl: existing.bookingUrl,
+      notes: existing.notes,
+      ...parsed.data,
+    });
     if (!merged.success) {
       return context.json(validationError(merged.error.flatten().fieldErrors), 422);
     }

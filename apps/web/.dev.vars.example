@@ -1,4 +1,6 @@
 VITE_CLERK_PUBLISHABLE_KEY=pk_test_your_publishable_key
+VITE_RESEARCH_ALPHA_ENABLED=false
+VITE_RESEARCH_ALPHA_TRIP_IDS=
 CLERK_JWT_KEY="-----BEGIN PUBLIC KEY-----
 your_development_instance_jwt_public_key
 -----END PUBLIC KEY-----"

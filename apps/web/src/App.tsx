@@ -79,6 +79,7 @@ function App() {
             <Route path="/trips/:tripId" element={<TripPage />} />
             <Route path="/trips/:tripId/itinerary" element={<TripPage section="itinerary" />} />
             <Route path="/trips/:tripId/ideas" element={<TripPage section="ideas" />} />
+            <Route path="/trips/:tripId/research" element={<TripPage section="research" />} />
             <Route path="/trips/:tripId/travel" element={<TripPage section="travel" />} />
             <Route path="/trips/:tripId/stays" element={<TripPage section="stays" />} />
             <Route path="/trips/:tripId/people" element={<TripPage section="people" />} />

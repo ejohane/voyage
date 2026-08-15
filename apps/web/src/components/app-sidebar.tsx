@@ -1,6 +1,7 @@
 import { UserButton, useUser } from "@clerk/react";
 import {
   BedDouble,
+  BookOpen,
   ChevronDown,
   ChevronRight,
   LayoutDashboard,
@@ -35,16 +36,21 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import { researchEnabledForTrip } from "@/lib/research-feature";
 import { useTrips } from "@/lib/trips";
 
-const tripSections = [
-  { icon: LayoutDashboard, label: "Overview", path: "" },
-  { icon: ListChecks, label: "Itinerary", path: "/itinerary" },
-  { icon: Lightbulb, label: "Ideas", path: "/ideas" },
-  { icon: Route, label: "Transportation", path: "/travel" },
-  { icon: BedDouble, label: "Stays", path: "/stays" },
-  { icon: Users, label: "People", path: "/people" },
-];
+function tripSections(tripId: string) {
+  return [
+    { icon: LayoutDashboard, label: "Overview", path: "" },
+    { icon: ListChecks, label: "Itinerary", path: "/itinerary" },
+    researchEnabledForTrip(tripId)
+      ? { icon: BookOpen, label: "Research", path: "/research" }
+      : { icon: Lightbulb, label: "Ideas", path: "/ideas" },
+    { icon: Route, label: "Transportation", path: "/travel" },
+    { icon: BedDouble, label: "Stays", path: "/stays" },
+    { icon: Users, label: "People", path: "/people" },
+  ];
+}
 
 function AppSidebar() {
   const trips = useTrips();
@@ -176,7 +182,7 @@ function AppSidebar() {
                     ) : null}
                     {expanded ? (
                       <SidebarMenuSub>
-                        {tripSections.map((section) => {
+                        {tripSections(trip.id).map((section) => {
                           const href = `/trips/${trip.id}${section.path}`;
                           const sectionActive =
                             section.path === ""
